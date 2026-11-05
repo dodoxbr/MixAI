@@ -91,7 +91,7 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 276 testes (Vitest) + 15 de integração com navegador (test/e2e)
+test/                 283 testes (Vitest) + 15 de integração com navegador (test/e2e)
 web/                  interface Angular (36 testes unitários)
 ```
 
@@ -138,7 +138,7 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-276 testes do servidor + 36 da interface + 15 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+283 testes do servidor + 36 da interface + 15 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
