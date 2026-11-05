@@ -96,7 +96,7 @@ Saída esperada:
 [mixai-server] modo: LABORATÓRIO (.../data/lab-state.json)
 [mixai-server] Laboratório pronto (sem conexão com a mesa física)
 [mixai-server] escutando em http://127.0.0.1:8790
-[mixai-server] acesso só neste notebook (para os celulares, configure server.lan no config.yaml).
+[mixai-server] acesso só neste notebook (para os celulares, configure server.lan no config/config.local.yaml).
 ```
 
 **Claude Desktop:**
@@ -122,19 +122,106 @@ No show, o Yoga usa **Ethernet para a Ui16** e **Wi-Fi para os celulares**. São
 | IP da mesa (ex.: `10.10.1.1`, no cabo) | a Ui16 | `mixer.ip` |
 | IP do **Wi-Fi do notebook** (ex.: `192.168.0.20`) | onde os celulares acessam o MixAI | `server.lan.host` |
 
-1. No Yoga, descubra o IP do Wi-Fi: `ipconfig`, adaptador "Wi-Fi", linha "Endereço IPv4".
-2. Em `config/config.yaml`:
-   ```yaml
-   server:
-     lan:
-       enabled: true
-       host: 192.168.0.20   # IP do Wi-Fi do NOTEBOOK (não o da mesa)
-   ```
-3. Reinicie o servidor. Ele passa a escutar em `127.0.0.1` **e** em `192.168.0.20`.
-4. Na primeira vez, o Windows pergunta pelo firewall: permita **só em "Redes privadas"**.
-5. No celular, na mesma rede Wi-Fi, abra `http://192.168.0.20:8790/api/hello`.
-   - Responde um JSON com `"mode":"lab"`: a rede está ok.
-   - A tela de verdade vem na E3; até lá o acesso é pela API.
+O IP do Wi-Fi **não fica no código nem no `config.yaml` do repositório**: cada máquina põe o seu no `config/config.local.yaml` (fora do Git). Assim o `git pull` nunca dá conflito.
+
+### 1. Descubra o IPv4 do Wi-Fi do Yoga
+
+No PowerShell (não precisa ser administrador):
+
+```powershell
+Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "Wi-Fi" | Select-Object IPAddress
+```
+
+Ou `ipconfig` → adaptador **"Adaptador de Rede sem Fio Wi-Fi"** → linha **"Endereço IPv4"** (ex.: `192.168.0.20`). Não use o endereço do adaptador **Ethernet**: esse é o da rede da mesa.
+
+### 2. Reserve esse IP no roteador (recomendado)
+
+Sem reserva, o roteador pode dar outro IP ao Yoga no dia seguinte, e o servidor recusa subir com o `lan.host` antigo.
+
+1. Descubra o endereço físico (MAC) do Wi-Fi: `Get-NetAdapter -Name "Wi-Fi" | Select-Object MacAddress` (ou `ipconfig /all` → "Endereço Físico").
+2. Entre na página do roteador (normalmente `http://192.168.0.1` ou `http://192.168.1.1`, usuário e senha na etiqueta).
+3. Procure **"Reserva de DHCP"**, "Endereço IP estático", "DHCP Reservation" ou "Address Reservation" (o nome muda por fabricante).
+4. Associe o MAC do Yoga a um IP fixo da faixa da rede (ex.: `192.168.0.20`) e salve. Reinicie o Wi-Fi do Yoga.
+5. Sem acesso ao roteador: use `MIXAI_LAN_HOST` na hora (`$env:MIXAI_LAN_HOST="192.168.0.20"; npm run serve:lab`).
+
+### 3. Crie o `config/config.local.yaml`
+
+```powershell
+Copy-Item config\config.local.example.yaml config\config.local.yaml
+notepad config\config.local.yaml
+```
+
+Deixe só o que muda nesta máquina:
+
+```yaml
+server:
+  lan:
+    enabled: true
+    host: "192.168.0.20"   # IPv4 do Wi-Fi do NOTEBOOK (não o da mesa)
+```
+
+Ao subir, o servidor mostra `configuração local aplicada: ...config.local.yaml` e passa a escutar em `127.0.0.1` **e** no IP do Wi-Fi.
+
+### 4. Rede **Privada** e firewall (PowerShell como administrador)
+
+Estes dois passos mudam configurações do Windows e **exigem o PowerShell aberto como administrador** (menu Iniciar → "PowerShell" → botão direito → **Executar como administrador**). Sem isso, o Windows responde "Acesso negado".
+
+a) Marque a rede Wi-Fi da banda como **Privada** (o Windows trata redes "Públicas" como não confiáveis e bloqueia conexões de entrada):
+
+```powershell
+Get-NetConnectionProfile            # veja o "Name" da rede Wi-Fi e o NetworkCategory
+Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private
+```
+
+Pela interface: Configurações → Rede e Internet → Wi-Fi → (a rede) → Tipo de perfil de rede → **Rede privada**.
+
+b) Libere a porta do LAB **só em redes privadas**:
+
+```powershell
+New-NetFirewallRule -DisplayName "MixAI LAB" -Direction Inbound -Protocol TCP -LocalPort 8790 -Profile Private -Action Allow
+```
+
+Recomendado: restrinja também à **sub-rede local** confiável, para a regra nunca valer fora dela:
+
+```powershell
+Set-NetFirewallRule -DisplayName "MixAI LAB" -RemoteAddress LocalSubnet
+```
+
+Conferir e desfazer:
+
+```powershell
+Get-NetFirewallRule -DisplayName "MixAI LAB" | Format-List DisplayName, Enabled, Profile, Direction, Action
+Remove-NetFirewallRule -DisplayName "MixAI LAB"
+```
+
+Se na primeira execução aparecer a janela do firewall pedindo permissão para o Node.js, marque **só "Redes privadas"**. A regra da mesa real (porta `8791`) é a mesma com outro nome e porta, e **só deve ser criada quando o modo REAL pela rede for liberado** (ver "Segurança da rede").
+
+### 5. Teste no celular
+
+No celular, **no mesmo Wi-Fi**, abra `http://192.168.0.20:8790` (troque pelo IP do Yoga). Deve aparecer a tela de PIN. Se não abrir:
+- confira se o Wi-Fi do Yoga está como **Privada** (`Get-NetConnectionProfile`);
+- confira a regra (`Get-NetFirewallRule -DisplayName "MixAI LAB"`);
+- confira o IP (passo 1) e o `config.local.yaml` (passo 3);
+- celular e Yoga precisam estar na mesma rede (Wi-Fi de convidados costuma isolar aparelhos).
+
+### Migrar uma configuração local antiga (quem editou o `config.yaml`)
+
+Se você já tinha mudado o `config/config.yaml` no Yoga (IP do Wi-Fi, porta, etc.), mova essas mudanças para o arquivo local **antes** do `git pull`, sem perder nada:
+
+```powershell
+git diff config/config.yaml > minhas-mudancas.txt     # guarda o que você mudou
+notepad minhas-mudancas.txt                            # veja as linhas com "+"
+Copy-Item config\config.local.example.yaml config\config.local.yaml
+notepad config\config.local.yaml                      # copie para cá SÓ os valores que você mudou
+git checkout -- config/config.yaml                     # volta o config.yaml ao do repositório
+git pull
+npm ci; npm run build; npm run build:web
+npm run serve:lab                                      # deve mostrar "configuração local aplicada"
+```
+
+- Copie a **seção inteira** de cada valor (ex.: `server:` → `lan:` → `host:`), não só a linha.
+- Nada de PIN nem chave da API no `config.local.yaml`: o servidor recusa subir com segredos ali. PINs continuam no `config/secrets.yaml` (`npm run pin`); a chave, no `secrets.yaml` ou em `ANTHROPIC_API_KEY`.
+- O `config/channels.yaml` (nomes da banda) não muda.
 
 O servidor recusa iniciar se `server.lan.host` for:
 - `0.0.0.0`/`::` (todas as interfaces);
@@ -250,18 +337,23 @@ O servidor confere as pendências a cada segundo e avisa as telas.
 
 ## Perfis (autorização sempre no servidor)
 
-| Ação | Operador | Músico | Assistente (MCP) |
-| --- | --- | --- | --- |
-| Ver estado | tudo | só AUX 1 | tudo (tools) |
-| Canais do PA, mutes do PA | sim | **não** | sim (com as travas) |
-| Master | sim | **não** | sim, mas sempre vira pendência |
-| AUX 1 (fones) | sim | **sim** | sim |
-| Outros AUX | sim | não | sim |
-| Snapshot | sim | não | sim, mas sempre vira pendência |
-| Desfazer | sim | não | os próprios ajustes simples: direto. Master, alteração crítica (master, passo grande, mute em grupo) ou alteração feita por uma pessoa: **vira pendência** |
-| Histórico | sim | não | sim (`get_action_log`) |
-| Reset do laboratório | sim | não | não |
-| **Aprovar/recusar pendência** | **sim** | **não** | **não** |
+O perfil músico tem duas políticas (`server.musicianAccess`, padrão `fones_only`; detalhes em `09-AJUSTES-YOGA.md`):
+
+| Ação | Operador | Músico `fones_only` (padrão) | Músico `pa_without_master` | Assistente (MCP) |
+| --- | --- | --- | --- | --- |
+| Ver estado | tudo | só AUX 1 | AUX 1 + canais do PA (nunca master, EQ/HPF) | tudo (tools) |
+| Volume dos canais no PA | sim | **não** | em passos de até 3 dB; acima: **pendência** do operador; sem arraste | sim (com as travas) |
+| Mute no PA | sim | **não** | um canal por vez | sim (com as travas) |
+| Master | sim | **não** | **não** | sim, mas sempre vira pendência |
+| AUX 1 (fones) | sim | **sim** | **sim** | sim |
+| Outros AUX | sim | não | não | sim |
+| Snapshot / cenas | sim | não | não | sim, mas sempre vira pendência |
+| Desfazer | sim | não | não | os próprios ajustes simples: direto. Master, alteração crítica (master, passo grande, mute em grupo) ou alteração feita por uma pessoa: **vira pendência** |
+| Histórico | sim | não | não | sim (`get_action_log`) |
+| Reset do laboratório | sim | não | não | não |
+| **Aprovar/recusar pendência** | **sim** | **não** | **não** | **não** |
+
+Cada alteração fica no histórico com **perfil + sessão** (`músico · sessão 3fa2c1`; aprovações: `...; aprovado por operador · sessão ...`). O PIN do músico é compartilhado, então a sessão identifica um login/aparelho, não uma pessoa.
 
 **Autenticação e segredos:**
 - **PIN:** de 4 a 8 dígitos.
@@ -343,8 +435,8 @@ O servidor confere as pendências a cada segundo e avisa as telas.
 | --- | --- | --- |
 | HTTP/WebSocket sem TLS na rede local | quem estiver no mesmo Wi-Fi pode capturar o PIN ou o token e controlar a mesa | padrão só `127.0.0.1`; com `server.lan`, rede privada dedicada e confiável (ver "Segurança da rede"); PIN trocável. Transporte criptografado a decidir numa etapa futura |
 | PIN de 4 dígitos | adivinhável sem bloqueio | bloqueio progressivo por aparelho e geral; use 6+ dígitos para o operador |
-| Firewall do Windows | celulares não acessam | permitir só em "Redes privadas" na primeira execução (documentado) |
-| IP do Wi-Fi muda (DHCP) | o servidor não sobe com o `lan.host` antigo | reservar o IP no roteador, ou usar `MIXAI_LAN_HOST` na hora |
+| Firewall do Windows | celulares não acessam | rede Wi-Fi como Privada e regra `New-NetFirewallRule ... -Profile Private` (PowerShell como administrador), restrita à sub-rede local (documentado) |
+| IP do Wi-Fi muda (DHCP) | o servidor não sobe com o `lan.host` antigo | reservar o IP no roteador (passo 2), ou usar `MIXAI_LAN_HOST` na hora |
 | O servidor cai durante o show | o MCP e as telas ficam sem controle | a mesa continua com o último ajuste; a interface oficial da Soundcraft é o plano B. Reiniciar = novas sessões (novo login) |
 | O assistente fica sem saber da aprovação | ele não recebe aviso ativo | ele confere com `get_mix_state`/`get_action_log`. A tela da E3 mostra o resultado ao operador |
 | Token do assistente é um arquivo local | outro programa do mesmo usuário poderia usá-lo | permissão 600 e só de `127.0.0.1`; o assistente nunca aprova pendências |

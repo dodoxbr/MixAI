@@ -19,7 +19,7 @@ da mesa; o MCP do Claude Desktop é só um cliente dele. Detalhes: `docs/lab/06-
 cd mixai
 npm install
 npm run build
-npm test        # 283 testes, todos devem passar
+npm test        # 311 testes, todos devem passar
 npm ci --prefix web && npm run build:web   # interface (E3)
 ```
 
@@ -66,14 +66,17 @@ log
 
 ```bash
 npm run pin -- operador   # cadastra o PIN do operador (grava só o hash, fora do Git)
-npm run pin -- musico     # opcional: PIN dos músicos (só ajustam o AUX 1, os fones)
+npm run pin -- musico     # opcional: PIN dos músicos (fones; PA só se server.musicianAccess permitir)
 npm run serve:lab         # laboratório em http://127.0.0.1:8790
 npm run serve:real        # mesa física em http://127.0.0.1:8791
 ```
 
 - Só um processo controla a mesa: um segundo servidor (ou o console) é recusado.
 - Por padrão só o próprio notebook acessa (`127.0.0.1`). Para os celulares no Wi-Fi, configure
-  `server.lan` com o IP do **Wi-Fi do notebook** (não o da mesa) — passo a passo em `docs/lab/06-E2-SERVIDOR.md`.
+  `server.lan` com o IP do **Wi-Fi do notebook** (não o da mesa) no **`config/config.local.yaml`**
+  (fora do Git; modelo em `config/config.local.example.yaml`), não no `config.yaml`. Passo a passo
+  do Windows (rede Privada, firewall como administrador, reserva de IP) em `docs/lab/06-E2-SERVIDOR.md`.
+- O `npm run pin` precisa de um terminal interativo (não aceita PIN por pipe ou argumento).
 - **Atenção:** pela rede o acesso é HTTP/WebSocket **sem criptografia**: PIN e tokens podem ser
   capturados por quem estiver no mesmo Wi-Fi. No modo REAL pela rede, use só uma rede privada
   dedicada e confiável (roteador da banda, senha forte, sem convidados), nunca o Wi-Fi do evento.
@@ -84,8 +87,10 @@ npm run serve:real        # mesa física em http://127.0.0.1:8791
 
 Com o servidor rodando (`npm run serve:lab`), abra **http://127.0.0.1:8790** no Yoga e entre com o
 PIN. O operador vê a **Mesa** (faders do PA ou dos FONES, MUTE, master com aprovação, Desfazer,
-Histórico e os cartões de aprovação); o músico vê só os **Fones** (− / + de 2 dB no AUX 1).
-Celulares: configure `server.lan` e abra `http://<ip-do-wi-fi-do-notebook>:8790`.
+Histórico e os cartões de aprovação); o músico vê só os **Fones** (− / + de 2 dB no AUX 1) ou,
+com `server.musicianAccess: pa_without_master`, as abas **FONES** e **PA** (canais em passos de até
+3 dB, mute de um canal; nunca o master; acima de 3 dB o operador aprova — `docs/lab/09-AJUSTES-YOGA.md`).
+Celulares: configure `server.lan` (no `config.local.yaml`) e abra `http://<ip-do-wi-fi-do-notebook>:8790`.
 Detalhes, capturas e testes: `docs/lab/07-E3-INTERFACE.md`.
 
 ![Mesa no Yoga](docs/lab/img/e3-yoga-mesa-pa.png)
@@ -247,8 +252,12 @@ test/                 testes (Vitest)
   `npm run serve:lab` (ou `serve:real`).
 - **"Outro processo do MixAI ... já controla isto"**: já existe um servidor (ou console) aberto.
   Use o que está rodando, ou feche-o.
-- **Celular não abre a página**: confira `server.lan.host` (IP do Wi-Fi do notebook), se o
-  celular está no mesmo Wi-Fi e se o firewall do Windows permitiu em "Redes privadas".
+- **Celular não abre a página**: confira `server.lan.host` no `config/config.local.yaml` (IP do
+  Wi-Fi do notebook), se o celular está no mesmo Wi-Fi, se a rede está como **Privada** e se existe
+  a regra "MixAI LAB" no firewall (PowerShell como administrador; ver `docs/lab/06-E2-SERVIDOR.md`).
+- **Mandei um pedido no assistente e "nada aconteceu"**: a resposta sempre aparece na conversa
+  (desde a correção da `09-AJUSTES-YOGA.md`). Se o botão Enviar estiver desabilitado, o motivo está
+  escrito logo abaixo dele.
 - **"CONTROL_STOPPED" ou "DEGRADED_READ_ONLY" durante um evento**: não insista pelo MixAI;
   use a interface oficial da Soundcraft. O som continua com o último ajuste.
 - **Voltar para a versão anterior** (fora de evento): `git checkout baseline-v0.1.0 && npm ci && npm run build`

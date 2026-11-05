@@ -12,3 +12,5 @@ data/
 # Hashes de PIN (gerados por npm run pin)
 config/secrets.yaml
 .scratch/
+# Configuração local da máquina (IP do Wi-Fi, porta, política dos músicos). Sem segredos.
+config/config.local.yaml

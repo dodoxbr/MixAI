@@ -18,13 +18,17 @@ async function main() {
   info(
     `modo: ${mode === 'lab' ? `LABORATÓRIO (${loaded.labFile})` : mode === 'mock' ? 'simulador em memória' : `MESA REAL em ${loaded.config.mixer.ip}`}`,
   );
+  if (loaded.localConfigFile) info(`configuração local aplicada: ${loaded.localConfigFile}`);
+  if (loaded.config.server.musicianAccess !== 'fones_only') {
+    info(`músicos: ${loaded.config.server.musicianAccess} (PA em passos de até ${loaded.config.server.musicianPaStepDB} dB; nunca o master)`);
+  }
   const server = await startServer(loaded, { log: info });
   info(server.app.mixer.statusText());
   for (const url of server.urls) info(`escutando em ${url}`);
   const auth = server.core.auth.configured();
   if (!auth.operator) info('ATENÇÃO: PIN do operador não configurado. Rode "npm run pin -- operador".');
   if (!auth.musician) info('PIN dos músicos não configurado (opcional). Rode "npm run pin -- musico".');
-  if (server.urls.length === 1) info('acesso só neste notebook (para os celulares, configure server.lan no config.yaml).');
+  if (server.urls.length === 1) info('acesso só neste notebook (para os celulares, configure server.lan no config/config.local.yaml).');
 
   const shutdown = async () => {
     info('desligando...');

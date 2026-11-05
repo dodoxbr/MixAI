@@ -773,21 +773,22 @@ mx-root {
   font-size: 0.85rem;
   color: var(--warn, #f2c14e);
 }
-/* Coluna lateral com o assistente aberto: aprovações (no máximo 40%, com rolagem própria)
-   e o assistente dividem a altura; a conversa rola por dentro e nunca some da tela. */
+/* Coluna lateral com o assistente aberto: aprovações (no máximo 30%, com rolagem própria),
+   assistente e histórico (no máximo 20%) dividem a altura; a conversa rola por dentro e a
+   mensagem nova nunca some da tela. */
 .side.has-assistant > .mx-pending-cards {
   flex: 0 1 auto;
-  max-height: 40%;
+  max-height: 30%;
   min-height: 0;
   overflow-y: auto;
 }
 .side.has-assistant > .mx-assistant-panel {
-  flex: 1 1 260px;
-  min-height: 260px;
+  flex: 1 0 300px;
+  min-height: 300px;
 }
 .side.has-assistant > .history {
   flex: 0 1 auto;
-  max-height: 30%;
+  max-height: 20%;
   min-height: 0;
   overflow-y: auto;
 }

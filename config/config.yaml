@@ -1,5 +1,8 @@
 # Configuração do MixAI
-# Variáveis de ambiente têm prioridade: MIXAI_MODE, MIXAI_IP, MIXAI_CONFIG_DIR, MIXAI_LOG_DIR
+# Ajustes desta máquina (IP do Wi-Fi, porta...): crie config/config.local.yaml (fora do Git)
+# a partir de config/config.local.example.yaml. Só os campos escritos lá mudam.
+# Precedência: config.yaml < config.local.yaml < variáveis de ambiente (MIXAI_MODE, MIXAI_IP,
+# MIXAI_PORT, MIXAI_LAN_HOST, MIXAI_CONFIG_DIR, MIXAI_LOG_DIR) < argumentos (--lab, --real...)
 
 mixer:
   # lab  = laboratório persistente (sem conexão com a mesa; guarda o estado em data/)
@@ -30,13 +33,21 @@ lab:
 server:
   # Servidor único (E2): npm run serve:lab (porta 8790) ou serve:real (porta 8791).
   # port: 8790          # vazio = padrão do modo
-  # Por padrão só este notebook acessa (127.0.0.1). Para os celulares no Wi-Fi:
+  # Por padrão só este notebook acessa (127.0.0.1). Para os celulares no Wi-Fi, NÃO edite
+  # aqui: ponha server.lan no config/config.local.yaml (assim o git pull não dá conflito).
   lan:
     enabled: false
     # IP do Wi-Fi do NOTEBOOK (ipconfig > Wi-Fi > Endereço IPv4). Nunca o IP da mesa.
     host: ""
   # AUX que os músicos podem ajustar (retorno compartilhado dos fones)
   musicianAux: 1
+  # O que os músicos podem fazer:
+  #   fones_only        = só os fones (padrão)
+  #   pa_without_master = fones + canais do PA em passos de até musicianPaStepDB; acima disso
+  #                       vira aprovação do operador. Nunca o master, cenas ou aprovações.
+  # Para mudar só nesta máquina, use config/config.local.yaml (fora do Git).
+  musicianAccess: fones_only
+  musicianPaStepDB: 3
   # Validade da sessão aberta com PIN (horas)
   sessionHours: 12
   # PINs: rode "npm run pin -- operador" / "npm run pin -- musico".
