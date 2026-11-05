@@ -13,6 +13,8 @@ interface Pending {
   hash: string;
   revisions: Array<[ParamKey, number]>;
   summary: string;
+  /** Identidade opaca do estado relevante (ex.: revisão global + snapshot atual). */
+  guard?: string;
   expiresAt: number;
   /** Usada com sucesso, ou invalidada por uma tentativa errada: não serve mais. */
   closed: boolean;
@@ -52,11 +54,16 @@ export class PendingStore {
     private newId: () => string = () => randomBytes(4).toString('hex'),
   ) {}
 
-  create(hash: string, revisions: Array<[ParamKey, number]>, summary: string): { id: string; expiresInSec: number } {
+  create(
+    hash: string,
+    revisions: Array<[ParamKey, number]>,
+    summary: string,
+    guard?: string,
+  ): { id: string; expiresInSec: number } {
     this.prune();
     let id = this.newId();
     while (this.items.has(id)) id = this.newId();
-    this.items.set(id, { id, hash, revisions, summary, expiresAt: this.clock() + this.ttlMs, closed: false });
+    this.items.set(id, { id, hash, revisions, summary, guard, expiresAt: this.clock() + this.ttlMs, closed: false });
     return { id, expiresInSec: Math.round(this.ttlMs / 1000) };
   }
 
@@ -65,6 +72,7 @@ export class PendingStore {
     id: string,
     hash: string,
     revisionOf: (key: ParamKey) => number,
+    guard?: string,
   ): { ok: true } | { ok: false; code: PendingFailure; message: string } {
     const p = this.items.get(id);
     if (!p) return { ok: false, code: 'NOT_FOUND', message: `Confirmação "${id}" não encontrada. Peça de novo.` };
@@ -81,7 +89,7 @@ export class PendingStore {
       };
     }
     const changed = p.revisions.filter(([key, rev]) => revisionOf(key) !== rev).map(([key]) => key);
-    if (changed.length) {
+    if (changed.length || (p.guard !== undefined && p.guard !== guard)) {
       return {
         ok: false,
         code: 'CONFIRMATION_STALE',

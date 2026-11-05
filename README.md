@@ -17,7 +17,7 @@ mesa simulada e console de teste.
 cd mixai
 npm install
 npm run build
-npm test        # 105 testes, todos devem passar
+npm test        # 119 testes, todos devem passar
 ```
 
 ## Testar sem a mesa (modo simulado)
@@ -130,6 +130,8 @@ perguntar a você e repetir o mesmo comando com `confirmation_id`. Veja a seçã
 **Desfazer.**
 - O desfazer compara a **revisão** de cada parâmetro: se outra pessoa (ou a mesa, ou uma
   reconexão) mexeu depois, ele recusa aquele item para não apagar a mudança dela.
+- Comandos com resultado **incerto** (enviados perto de uma queda, ou interrompidos por erro)
+  **não podem ser desfeitos** pelo MixAI, mesmo que a mesa mostre o valor esperado.
 - Alterações seguidas do próprio MixAI no mesmo fader podem ser desfeitas em sequência.
 - Operações em vários canais que caem no meio são marcadas como **PARCIAL**, e o desfazer
   cobre só o que foi enviado.

@@ -29,6 +29,7 @@ export class MockMixer implements MixerAdapter {
   private changeListeners = new Set<ChangeListener>();
   private verificationListeners = new Set<(r: VerificationReport[]) => void>();
   private writesBeforeFailure: number | undefined;
+  private writesBeforeThrow: { n: number; error: Error } | undefined;
   /** Escritas feitas pelo MixAI (útil nos testes). Mudanças simuladas de fora não entram aqui. */
   readonly writes: string[] = [];
 
@@ -87,6 +88,14 @@ export class MockMixer implements MixerAdapter {
       }
       this.writesBeforeFailure -= 1;
     }
+    if (this.writesBeforeThrow) {
+      if (this.writesBeforeThrow.n <= 0) {
+        const { error } = this.writesBeforeThrow;
+        this.writesBeforeThrow = undefined;
+        throw error;
+      }
+      this.writesBeforeThrow.n -= 1;
+    }
     if (!this.values.has(key)) throw new Error(`Parâmetro inexistente na mesa simulada: ${key}`);
     this.values.set(key, value);
     this.writes.push(`${key}=${value}`);
@@ -113,6 +122,11 @@ export class MockMixer implements MixerAdapter {
   }
   async loadSnapshot(show: string, snapshot: string): Promise<WriteOutcome> {
     if (this.state !== 'READY') throw new LinkUnavailableError(this.state);
+    if (this.writesBeforeThrow) {
+      const { error } = this.writesBeforeThrow;
+      this.writesBeforeThrow = undefined;
+      throw error;
+    }
     if (!this.shows[show]?.includes(snapshot)) throw new Error(`Snapshot "${snapshot}" não existe no show "${show}"`);
     this.current = { show, snapshot };
     this.writes.push(`snapshot ${show}/${snapshot}`);
@@ -152,6 +166,14 @@ export class MockMixer implements MixerAdapter {
   /** Faz um parâmetro ficar desconhecido (a "mesa" ainda não mandou esse valor). */
   simulateUnknown(key: ParamKey) {
     this.values.delete(key);
+  }
+  /** A escrita depois de `n` escritas bem-sucedidas lança um erro inesperado (não de conexão). */
+  throwOnWriteAfter(n: number, error: Error = new Error('erro inesperado simulado')) {
+    this.writesBeforeThrow = { n, error };
+  }
+  /** Outro aparelho carregou um snapshot (muda o snapshot atual sem passar pelo MixAI). */
+  simulateSnapshotLoaded(show: string, snapshot: string) {
+    this.current = { show, snapshot };
   }
   /** A próxima escrita depois de `n` escritas bem-sucedidas derruba a conexão. */
   failAfterWrites(n: number) {

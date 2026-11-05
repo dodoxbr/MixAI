@@ -116,7 +116,7 @@ describe('desfazer causal', () => {
     mixer.simulateResync([], [{ key: VOZ1, target: -8, outcome: 'indeterminate' }]);
     const r = await controller.undo();
     expect(r.code).toBe('CONFLICT');
-    expect(r.message).toContain('reconexão');
+    expect(r.message).toContain('incerto');
   });
 
   it('carregar snapshot esvazia o desfazer e invalida as revisões', async () => {

@@ -112,10 +112,11 @@ Regras:
 
 - **Mesa real em funcionamento normal:** o resultado é `sent`. As mensagens dizem "enviado à mesa", nunca "aplicado". `observed_target` significa apenas que **o valor desejado foi observado**, e **não prova que o MixAI o executou** (outra pessoa pode ter feito o mesmo ajuste).
 - **Na queda:** escritas `sent` nos últimos `indeterminateWindowMs` (3 s) viram **pendentes de verificação**. Na próxima ressincronização, são classificadas em `observed_target`, `observed_different` ou `indeterminate`. **Nada é reaplicado.**
-- **Desfazer:**
-  - `observed_different` e `indeterminate` **invalidam** o item correspondente;
-  - `observed_target` mantém o item válido, desde que a revisão do parâmetro seja compatível (seção 5);
-  - itens `not_sent` nunca entram na pilha.
+- **Desfazer (política conservadora, ajuste da revisão da implementação):**
+  - **qualquer** escrita verificada após reconexão, **inclusive `observed_target`**, perde o desfazer (ator `uncertain`): ver o valor desejado não prova que foi o MixAI;
+  - escritas fora da janela da queda, cujo valor volta igual na ressincronização, continuam desfazíveis;
+  - itens `not_sent` nunca entram na pilha;
+  - escrita interrompida por **erro inesperado** fica `indeterminate` e também perde o desfazer.
 - **Avisos:** o resultado das verificações aparece em `mixer_status` (lista "verificações após reconexão") e no log.
 
 ## 5. Revisões e desfazer causal (ajuste 2)
@@ -303,3 +304,13 @@ Cada commit compila e passa em todos os testes. Os commits 3 e 4 juntam itens in
    - "sobe o surdo 10 dB" devolve uma pendência e só executa com o `confirmation_id`.
 4. O console funciona como hoje.
 5. Revisão cruzada aprovada no Pull Request. **Sem merge automático.**
+
+## 16. Ajustes da revisão da implementação (aprovada com 4 ajustes + CI)
+
+| # | Ajuste | Implementação | Testes |
+| --- | --- | --- | --- |
+| 1 | Desfazer após reconexão | todo relatório de verificação (inclusive `observed_target`) gera revisão com ator `uncertain`, e o desfazer daquele parâmetro é recusado | `supervisor.test.ts` › desfazer conservador (mesa real com socket falso); `undo-causal.test.ts` |
+| 2 | Confirmação de snapshot | a pendência guarda um `guard` = revisão global + snapshot atual; qualquer mudança na mesa, escrita do próprio MixAI ou troca de snapshot até a confirmação → `CONFIRMATION_STALE` | `pending.test.ts` › confirmação de snapshot (4 cenários) |
+| 3 | Exceções inesperadas | `applyChanges` distingue enviado/aplicado, **incerto** (a escrita que lançou o erro) e não enviado; resultado `PARTIAL`, nunca sucesso; o incerto perde o desfazer; a fila continua; o mesmo vale para o desfazer e o snapshot | `unexpected-errors.test.ts` (4 canais com erro na 2ª escrita, comando simples, desfazer, snapshot) |
+| 4 | Instâncias descartadas após 30 s | **portão por geração**: o RealMixer cria os sockets por um construtor que recusa conexão depois do descarte e derruba a instância de novo. A garantia não depende mais da duração da vigilância (que continua como derrubada rápida, agora configurável por `zombieWatchMs`) | `supervisor.test.ts` › instâncias descartadas (portão continua fechado após a vigilância; biblioteca real tentando reconectar sozinha sem abrir socket; RealMixer com vigilância curta) |
+| 5 | Integração contínua | `.github/workflows/ci.yml`: em PR para `main`, Ubuntu e Windows, Node 22: `npm ci`, `npm run typecheck`, `npm test`, `npm run build` | — |

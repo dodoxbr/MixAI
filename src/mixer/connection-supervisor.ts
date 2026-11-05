@@ -9,12 +9,26 @@ import {
   type VerificationReport,
 } from './types.js';
 
-/** Por quanto tempo uma instância descartada continua vigiada. */
+/** Por quanto tempo (padrão) uma instância descartada continua vigiada pelo status. */
 const ZOMBIE_WATCH_MS = 30_000;
+
+/**
+ * Portão de uma geração. `isAlive()` fica false para sempre depois do descarte.
+ * Quem cria a instância (RealMixer) usa isso para impedir, em definitivo, que uma instância
+ * descartada abra qualquer conexão nova, mesmo depois que a vigilância terminar.
+ */
+export interface GenerationGate {
+  readonly generation: number;
+  isAlive(): boolean;
+  /** Chamado quando uma instância descartada tentou abrir conexão (para derrubá-la de novo). */
+  onBlocked(): void;
+}
 
 export interface SupervisorOptions {
   /** Cria uma instância NOVA da biblioteca (nunca reaproveitada entre gerações). */
-  createUi: () => SoundcraftUI;
+  createUi: (gate: GenerationGate) => SoundcraftUI;
+  /** Duração da vigilância por status das instâncias descartadas (padrão 30 s). */
+  zombieWatchMs?: number;
   /** Parâmetros que precisam ser conhecidos para liberar escrita (READY). */
   requiredKeys: ParamKey[];
   /** Parâmetros acompanhados (inclui os obrigatórios). */
@@ -203,7 +217,24 @@ export class ConnectionSupervisor {
     this.names.clear();
     this.setState('CONNECTING');
     this.trace(`gen ${id}: conectando`);
-    const ui = this.opts.createUi();
+    let killLater: () => void = () => undefined;
+    const gate: GenerationGate = {
+      generation: id,
+      isAlive: () => this.isCurrent(id),
+      onBlocked: () => {
+        this.trace(`gen ${id}: instância descartada tentou abrir conexão; bloqueada`);
+        killLater();
+      },
+    };
+    const ui = this.opts.createUi(gate);
+    killLater = () =>
+      setTimeout(() => {
+        try {
+          void ui.disconnect().catch(() => undefined);
+        } catch {
+          /* ignora */
+        }
+      }, 0);
     const g: Generation = { id, ui, subs: [], timers: new Set() };
     this.gen = g;
     g.subs.push(ui.status$.subscribe((ev) => this.guard(() => this.onStatus(id, ev.type))));
@@ -334,6 +365,10 @@ export class ConnectionSupervisor {
    * Como a queda chega a nós no meio desse processo, o disconnect é chamado na hora E de novo na
    * próxima volta do loop de eventos, e a instância descartada fica vigiada: se ela tentar abrir
    * sozinha, é derrubada de novo. Nada é enviado por ela, porque o MixAI não a usa mais.
+   *
+   * Garantia definitiva (independente do tempo de vigilância): o portão da geração fecha aqui,
+   * e o RealMixer cria os sockets através dele; uma instância descartada não consegue mais
+   * abrir conexão nenhuma, nem minutos depois.
    */
   private dispose() {
     const g = this.gen;
@@ -378,7 +413,7 @@ export class ConnectionSupervisor {
       setTimeout(() => {
         zombie.watch.unsubscribe();
         this.zombies.delete(zombie);
-      }, ZOMBIE_WATCH_MS),
+      }, this.opts.zombieWatchMs ?? ZOMBIE_WATCH_MS),
     );
     this.zombies.add(zombie);
     this.trace(`gen ${g.id}: descartada`);

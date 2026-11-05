@@ -92,3 +92,42 @@ describe('autorização vinculada à operação e ao estado', () => {
     expect(store.consume(id, 'h', () => 0)).toEqual({ ok: true });
   });
 });
+
+describe('confirmação de snapshot ligada ao estado (revisão global + snapshot atual)', () => {
+  const load = (c: Awaited<ReturnType<typeof setup>>['controller'], confirmationId?: string) =>
+    c.loadSnapshot({ show: 'Pagode', snapshot: 'Bar', confirmationId });
+
+  it('sem mudanças: confirma e carrega', async () => {
+    const { controller, mixer } = await setup();
+    const ask = await load(controller);
+    expect(ask.code).toBe('NEEDS_CONFIRMATION');
+    expect((await load(controller, ask.pendingId)).code).toBe('OK');
+    expect(await mixer.currentSnapshot()).toEqual({ show: 'Pagode', snapshot: 'Bar' });
+  });
+
+  it('qualquer mudança na mesa antes da confirmação: CONFIRMATION_STALE e nada carregado', async () => {
+    const { controller, mixer } = await setup();
+    const ask = await load(controller);
+    mixer.simulateExternalChange(paramKey.level(11, MASTER), -30); // canal sem relação com o comando
+    const r = await load(controller, ask.pendingId);
+    expect(r.code).toBe('CONFIRMATION_STALE');
+    expect(await mixer.currentSnapshot()).toEqual({});
+    const fresh = await load(controller);
+    expect((await load(controller, fresh.pendingId)).code).toBe('OK');
+  });
+
+  it('outro aparelho trocou o snapshot antes da confirmação: CONFIRMATION_STALE', async () => {
+    const { controller, mixer } = await setup();
+    const ask = await load(controller);
+    mixer.simulateSnapshotLoaded('Pagode', 'Ensaio');
+    expect((await load(controller, ask.pendingId)).code).toBe('CONFIRMATION_STALE');
+    expect(await mixer.currentSnapshot()).toEqual({ show: 'Pagode', snapshot: 'Ensaio' });
+  });
+
+  it('o próprio MixAI mudou algo antes da confirmação: CONFIRMATION_STALE', async () => {
+    const { controller } = await setup();
+    const ask = await load(controller);
+    await controller.setLevel({ channel: 'voz 1', deltaDB: 1 });
+    expect((await load(controller, ask.pendingId)).code).toBe('CONFIRMATION_STALE');
+  });
+});

@@ -11,7 +11,11 @@ export type ParamKey =
 /** Nível em dB (-Infinity = fader todo para baixo) ou estado de mute. */
 export type ParamValue = number | boolean;
 
-export type Actor = 'mixai' | 'external' | 'resync' | 'snapshot';
+/**
+ * Quem gerou a revisão. `uncertain` = escrita do MixAI cujo resultado não pode ser confirmado
+ * (queda de conexão perto do envio, ou erro inesperado durante o envio).
+ */
+export type Actor = 'mixai' | 'external' | 'resync' | 'snapshot' | 'uncertain';
 
 export const paramKey = {
   level(channel: number, bus: Bus): ParamKey {

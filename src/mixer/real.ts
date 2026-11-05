@@ -1,6 +1,6 @@
 import { DEVICE_CAPABILITIES, SoundcraftUI } from 'soundcraft-ui-connection';
 import type { ParamKey, ParamValue } from '../core/revisions.js';
-import { ConnectionSupervisor } from './connection-supervisor.js';
+import { ConnectionSupervisor, type GenerationGate } from './connection-supervisor.js';
 import {
   LinkUnavailableError,
   type MixerAdapter,
@@ -38,6 +38,28 @@ export function currentValue<T>(source: Subscribable<T>, timeoutMs = 1500): Prom
   });
 }
 
+type SocketCtor = new (url: string, protocols?: string | string[]) => unknown;
+
+/**
+ * Envolve o construtor de WebSocket usado pela biblioteca: depois que a geração é descartada,
+ * qualquer tentativa de abrir conexão é recusada (e a instância é derrubada de novo).
+ * Assim uma instância antiga nunca volta a falar com a mesa, mesmo que a reconexão
+ * automática da biblioteca escape do disconnect.
+ */
+export function gatedSocketCtor(Base: SocketCtor, gate: GenerationGate): SocketCtor {
+  const Gated = function (this: unknown, url: string, protocols?: string | string[]) {
+    if (!gate.isAlive()) {
+      gate.onBlocked();
+      throw new Error(`conexão bloqueada: instância descartada (geração ${gate.generation})`);
+    }
+    return new Base(url, protocols);
+  } as unknown as SocketCtor & Record<string, unknown>;
+  for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'] as const) {
+    (Gated as Record<string, unknown>)[k] = (Base as unknown as Record<string, unknown>)[k];
+  }
+  return Gated;
+}
+
 export interface RealMixerOptions {
   ip: string;
   model?: 'ui12' | 'ui16' | 'ui24';
@@ -47,6 +69,7 @@ export interface RealMixerOptions {
   watchedKeys: ParamKey[];
   nameChannels?: number[];
   connectTimeoutMs?: number;
+  zombieWatchMs?: number;
   syncTimeoutMs?: number;
   indeterminateWindowMs?: number;
   reconnectBaseMs?: number;
@@ -66,11 +89,12 @@ export class RealMixer implements MixerAdapter {
     const c = DEVICE_CAPABILITIES[opts.model ?? 'ui16'];
     this.caps = { model: c.model, inputs: c.input, aux: c.aux };
     this.supervisor = new ConnectionSupervisor({
-      createUi: () => {
-        const options: Record<string, unknown> = { targetIP: opts.ip };
-        if (opts.webSocketCtor) options.webSocketCtor = opts.webSocketCtor;
-        return new SoundcraftUI(options as never);
+      createUi: (gate) => {
+        const Base = (opts.webSocketCtor ?? (globalThis as { WebSocket?: unknown }).WebSocket) as SocketCtor | undefined;
+        if (!Base) throw new Error('WebSocket indisponível neste Node (use Node 22 ou mais novo)');
+        return new SoundcraftUI({ targetIP: opts.ip, webSocketCtor: gatedSocketCtor(Base, gate) } as never);
       },
+      zombieWatchMs: opts.zombieWatchMs,
       requiredKeys: opts.requiredKeys,
       watchedKeys: opts.watchedKeys,
       nameChannels: opts.nameChannels,

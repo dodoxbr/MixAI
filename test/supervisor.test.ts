@@ -1,8 +1,13 @@
 import { ConnectionStatus } from 'soundcraft-ui-connection';
 import { afterEach, describe, expect, it } from 'vitest';
 import { paramKey, type ParamKey, type ParamValue } from '../src/core/revisions.js';
-import { ConnectionSupervisor } from '../src/mixer/connection-supervisor.js';
-import { RealMixer } from '../src/mixer/real.js';
+import { SoundcraftUI } from 'soundcraft-ui-connection';
+import { ChannelMap } from '../src/core/channels.js';
+import { parseChannels, parseConfig } from '../src/core/config.js';
+import { MixController } from '../src/core/controller.js';
+import { ActionLog } from '../src/core/log.js';
+import { ConnectionSupervisor, type GenerationGate } from '../src/mixer/connection-supervisor.js';
+import { gatedSocketCtor, RealMixer } from '../src/mixer/real.js';
 import { auxBus, LinkUnavailableError, MASTER, type VerificationReport } from '../src/mixer/types.js';
 import { createFakeUi, sleep, stateMessages, waitFor } from './support/fake-ui-socket.js';
 import { StubUi } from './support/stub-ui.js';
@@ -363,4 +368,141 @@ describe('RealMixer + biblioteca real + WebSocket falso (integração)', () => {
     expect(await mixer.write(paramKey.level(1, MASTER), -5)).toBe('sent');
     expect(fake.last()!.commands().some((m) => m.startsWith('SETD^i.0.mix^'))).toBe(true);
   });
+});
+
+describe('desfazer conservador após reconexão (mesa real)', () => {
+  it('"observed_target" NÃO mantém o desfazer: o valor certo na mesa não prova que foi o MixAI', async () => {
+    const truth = new Map<ParamKey, ParamValue>();
+    const fake = createFakeUi({
+      initialState: () =>
+        stateMessages({
+          channels: CH,
+          aux: AUX,
+          levelDB: (ch, a) => (truth.get(paramKey.level(ch, a ? auxBus(a) : MASTER)) as number) ?? (a ? -20 : -10),
+        }),
+    });
+    const mixer = new RealMixer({ ip: 'teste', webSocketCtor: fake.Ctor, requiredKeys: REQUIRED, watchedKeys: REQUIRED, ...TIMING });
+    supervisors.push(mixer.supervisor);
+    const names = new ChannelMap(
+      parseChannels({ channels: [{ number: 1, name: 'Voz 1', aliases: [] }, { number: 2, name: 'Voz 2', aliases: [] }], aux: [{ number: 1, name: 'Fones', aliases: [] }] }),
+      { inputs: 12, aux: 6 },
+    );
+    const controller = new MixController(mixer, parseConfig({}).safety, names, new ActionLog(null));
+    await mixer.connect();
+
+    const w = await controller.setLevel({ channel: 'voz 1', db: -6 });
+    expect(w.code).toBe('OK');
+    expect(w.message).toContain('enviado à mesa');
+    truth.set(paramKey.level(1, MASTER), -6); // a mesa mostra o valor desejado depois de voltar
+    fake.sockets[0]!.drop();
+    await waitFor(() => mixer.link() === 'READY', 2000, 'READY de novo');
+
+    const status = await controller.status();
+    expect(JSON.stringify(status.data)).toContain('observed_target');
+    const u = await controller.undo();
+    expect(u.code).toBe('CONFLICT');
+    expect(u.message).toContain('incerto');
+    expect(fake.sockets[1]!.commands()).toEqual([]); // nem reenvio, nem desfazer automático
+  });
+
+  it('escrita fora da janela da queda, com o mesmo valor após reconectar: desfazer continua possível', async () => {
+    const truth = new Map<ParamKey, ParamValue>();
+    const fake = createFakeUi({
+      initialState: () =>
+        stateMessages({
+          channels: CH,
+          aux: AUX,
+          levelDB: (ch, a) => (truth.get(paramKey.level(ch, a ? auxBus(a) : MASTER)) as number) ?? (a ? -20 : -10),
+        }),
+    });
+    const mixer = new RealMixer({ ip: 'teste', webSocketCtor: fake.Ctor, requiredKeys: REQUIRED, watchedKeys: REQUIRED, ...TIMING });
+    supervisors.push(mixer.supervisor);
+    const names = new ChannelMap(parseChannels({ channels: [{ number: 1, name: 'Voz 1', aliases: [] }], aux: [] }), { inputs: 12, aux: 6 });
+    const controller = new MixController(mixer, parseConfig({}).safety, names, new ActionLog(null));
+    await mixer.connect();
+    await controller.setLevel({ channel: 'voz 1', db: -6 });
+    truth.set(paramKey.level(1, MASTER), -6);
+    await sleep(TIMING.indeterminateWindowMs + 50);
+    fake.sockets[0]!.drop();
+    await waitFor(() => mixer.link() === 'READY', 2000, 'READY de novo');
+    expect((await controller.undo()).code).toBe('OK');
+  });
+});
+
+describe('instâncias descartadas depois da vigilância de 30 s', () => {
+  it('o portão da geração fecha no descarte e continua fechado depois que a vigilância termina', async () => {
+    const gates: GenerationGate[] = [];
+    const { sup, ui } = stubSupervisor({
+      zombieWatchMs: 20,
+      createUi: (gate) => {
+        gates.push(gate);
+        return new StubUi() as never;
+      },
+    });
+    void sup.connect().catch(() => undefined);
+    ui(0).emit(ConnectionStatus.Open);
+    ui(0).feedAll(fullState());
+    expect(gates[0]!.isAlive()).toBe(true);
+    ui(0).emit(ConnectionStatus.Close);
+    expect(gates[0]!.isAlive()).toBe(false);
+
+    await sleep(60); // vigilância por status já terminou
+    const calls = ui(0).disconnectCalls;
+    ui(0).emit(ConnectionStatus.Open); // reabertura tardia: o vigia não está mais lá...
+    expect(ui(0).disconnectCalls).toBe(calls);
+    expect(gates[0]!.isAlive()).toBe(false); // ...mas o portão continua fechado (garantia definitiva)
+    expect(sup.generation()).not.toBe(1);
+  });
+
+  it('gatedSocketCtor: geração viva conecta; descartada é bloqueada e avisa', () => {
+    let alive = true;
+    let blocked = 0;
+    const gate: GenerationGate = { generation: 7, isAlive: () => alive, onBlocked: () => blocked++ };
+    const fake = createFakeUi({ autoOpen: false });
+    const Gated = gatedSocketCtor(fake.Ctor as never, gate) as unknown as new (url: string) => unknown;
+    new Gated('ws://teste');
+    expect(fake.sockets.length).toBe(1);
+    alive = false;
+    expect(() => new Gated('ws://teste')).toThrow(/bloqueada/);
+    expect(fake.sockets.length).toBe(1);
+    expect(blocked).toBe(1);
+    expect((Gated as unknown as { OPEN: number }).OPEN).toBe(1);
+  });
+
+  it('biblioteca real: reconexão automática tardia de instância descartada não abre socket', async () => {
+    let alive = true;
+    let blocked = 0;
+    const fake = createFakeUi();
+    let ui: SoundcraftUI;
+    const gate: GenerationGate = {
+      generation: 1,
+      isAlive: () => alive,
+      onBlocked: () => {
+        blocked++;
+        setTimeout(() => void ui.disconnect().catch(() => undefined), 0);
+      },
+    };
+    ui = new SoundcraftUI({ targetIP: 'teste', webSocketCtor: gatedSocketCtor(fake.Ctor as never, gate) } as never);
+    await ui.connect();
+    alive = false; // descartada, e ninguém chamou disconnect (pior caso: a vigilância já acabou)
+    fake.sockets[0]!.drop();
+    await sleep(2600); // a biblioteca tenta reconectar sozinha
+    expect(fake.sockets.length).toBe(1);
+    expect(blocked).toBeGreaterThanOrEqual(1);
+    await sleep(2600); // e não insiste depois de ser derrubada
+    expect(fake.sockets.length).toBe(1);
+    expect(blocked).toBe(1);
+  }, 10000);
+
+  it('RealMixer com vigilância curta: depois dela, nenhuma conexão extra aparece', async () => {
+    const fake = createFakeUi({ initialState: () => stateMessages({ channels: CH, aux: AUX }) });
+    const mixer = new RealMixer({ ip: 'teste', webSocketCtor: fake.Ctor, requiredKeys: REQUIRED, watchedKeys: REQUIRED, ...TIMING, zombieWatchMs: 20 });
+    supervisors.push(mixer.supervisor);
+    await mixer.connect();
+    fake.sockets[0]!.drop();
+    await waitFor(() => mixer.link() === 'READY', 2000, 'READY de novo');
+    await sleep(2700);
+    expect(fake.sockets.length).toBe(2);
+    expect(fake.alive().length).toBe(1);
+  }, 8000);
 });

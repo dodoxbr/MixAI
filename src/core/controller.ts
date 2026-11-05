@@ -71,6 +71,18 @@ interface Change {
   to: ParamValue;
 }
 
+/** Escrita interrompida por um erro inesperado: não se sabe se chegou à mesa. */
+interface UncertainChange extends Change {
+  error: string;
+}
+
+interface ApplyResult {
+  done: DoneChange[];
+  /** No máximo uma: a escrita em andamento quando o erro inesperado aconteceu. */
+  uncertain: UncertainChange[];
+  notSent: Change[];
+}
+
 interface DoneChange extends Change {
   outcome: WriteOutcome;
   revisionBefore: number;
@@ -96,6 +108,7 @@ const ACTOR_TEXT: Record<Actor, string> = {
   external: 'por outro aparelho ou na própria mesa',
   resync: 'na reconexão (a mesa mostrou outro valor ou não confirmou)',
   snapshot: 'por um snapshot',
+  uncertain: 'e o resultado ficou incerto (queda de conexão ou erro durante o envio); por segurança não desfaço',
 };
 
 /**
@@ -251,9 +264,9 @@ export class MixController {
       const blocked = this.authorize(needs, req.confirmationId, command, [key], summary);
       if (blocked) return blocked;
 
-      const { done, notSent } = await this.applyChanges([{ key, label, from: current, to: plan.target }]);
+      const applied = await this.applyChanges([{ key, label, from: current, to: plan.target }]);
       const note = plan.clamped ? ` (limitei ao teto de ${formatDB(ceiling)})` : '';
-      return this.finish('set_level', `${label}: ${formatDB(current)} → ${formatDB(plan.target)}${note}`, done, notSent, {
+      return this.finish('set_level', `${label}: ${formatDB(current)} → ${formatDB(plan.target)}${note}`, applied, {
         channel: ch.value.number,
         bus: bus.kind === 'aux' ? `aux${bus.aux}` : 'master',
         fromDB: current,
@@ -304,10 +317,10 @@ export class MixController {
       const blocked = this.authorize(needs, req.confirmationId, command, changes.map((c) => c.key), summary);
       if (blocked) return blocked;
 
-      const { done, notSent } = await this.applyChanges(changes);
-      const description = `${req.muted ? 'Mutado' : 'Desmutado'} ${where}: ${done.map((d) => d.label).join(', ')}`;
-      return this.finish('mute', description, done, notSent, {
-        channels: done.map((d) => Number(d.key.split('.')[1])),
+      const applied = await this.applyChanges(changes);
+      const description = `${req.muted ? 'Mutado' : 'Desmutado'} ${where}: ${applied.done.map((d) => d.label).join(', ')}`;
+      return this.finish('mute', description, applied, {
+        channels: applied.done.map((d) => Number(d.key.split('.')[1])),
         muted: req.muted,
       });
     });
@@ -331,9 +344,9 @@ export class MixController {
       const blocked = this.authorize(needs, req.confirmationId, { op: 'master', db: req.db, deltaDB: req.deltaDB }, [key], summary);
       if (blocked) return blocked;
 
-      const { done, notSent } = await this.applyChanges([{ key, label: 'Master', from: current, to: plan.target }]);
+      const applied = await this.applyChanges([{ key, label: 'Master', from: current, to: plan.target }]);
       const note = plan.clamped ? ` (limitei ao teto de ${formatDB(this.safety.maxMasterLevelDB)})` : '';
-      return this.finish('master', `Master: ${formatDB(current)} → ${formatDB(plan.target)}${note}`, done, notSent, {
+      return this.finish('master', `Master: ${formatDB(current)} → ${formatDB(plan.target)}${note}`, applied, {
         fromDB: current,
         toDB: plan.target,
       });
@@ -352,6 +365,7 @@ export class MixController {
       const undone: string[] = [];
       const skipped: string[] = [];
       const notSentAll: string[] = [];
+      const uncertainAll: string[] = [];
       for (let i = 0; i < n; i++) {
         const entry = this.undoStack.pop()!;
         const ready: UndoItem[] = [];
@@ -366,9 +380,10 @@ export class MixController {
             ready.push(item);
           }
         }
-        const { done, notSent } = await this.applyChanges(
+        const { done, notSent, uncertain } = await this.applyChanges(
           ready.map((it) => ({ key: it.key, label: it.label, from: it.after, to: it.before })),
         );
+        uncertainAll.push(...uncertain.map((c) => `${c.label} (${c.error})`));
         for (const d of done) {
           const item = ready.find((it) => it.key === d.key)!;
           this.undoStack.relink(item, d.revisionAtWrite);
@@ -380,8 +395,9 @@ export class MixController {
               : `${entry.description} — só: ${done.map((d) => `${d.label} → ${fmt(d.to)}`).join(', ')}`,
           );
         }
-        if (notSent.length) {
-          // Conexão caiu no meio: o que não foi desfeito volta para a pilha, como estava.
+        if (notSent.length || uncertain.length) {
+          // Interrompido no meio: o que não foi enviado volta para a pilha, como estava.
+          // O item de resultado incerto NÃO volta (perdeu o desfazer por segurança).
           const remaining = ready.filter((it) => notSent.some((c) => c.key === it.key));
           this.undoStack.push({ description: entry.description, items: remaining });
           notSentAll.push(...notSent.map((c) => c.label));
@@ -392,12 +408,14 @@ export class MixController {
       const parts = [];
       if (undone.length) parts.push(`Desfeito: ${undone.join(' | ')}`);
       if (skipped.length) parts.push(`Não desfeito (conflito): ${skipped.join(' | ')}`);
-      if (notSentAll.length) parts.push(`Conexão perdida antes de desfazer: ${notSentAll.join(', ')}`);
-      const code: ResultCode = notSentAll.length ? 'PARTIAL' : skipped.length ? (undone.length ? 'PARTIAL' : 'CONFLICT') : 'OK';
+      if (uncertainAll.length) parts.push(`RESULTADO INCERTO ao desfazer (erro inesperado; confira na mesa): ${uncertainAll.join(', ')}`);
+      if (notSentAll.length) parts.push(`Não enviado (fica para desfazer depois): ${notSentAll.join(', ')}`);
+      const code: ResultCode =
+        notSentAll.length || uncertainAll.length ? 'PARTIAL' : skipped.length ? (undone.length ? 'PARTIAL' : 'CONFLICT') : 'OK';
       const ok = code === 'OK';
       const message = parts.join('. ');
-      this.log.add({ action: 'undo', ok, message, details: { undone, skipped, notSent: notSentAll } });
-      return { ok, code, message, data: { undone, skipped, notSent: notSentAll } };
+      this.log.add({ action: 'undo', ok, message, details: { undone, skipped, notSent: notSentAll, uncertain: uncertainAll } });
+      return { ok, code, message, data: { undone, skipped, notSent: notSentAll, uncertain: uncertainAll } };
     });
   }
 
@@ -421,14 +439,25 @@ export class MixController {
         return this.refuse('snapshot', 'NOT_FOUND', `Não encontrei o snapshot "${req.snapshot}" no show "${req.show}".`, { shows });
       }
       const summary = `Carregar o snapshot "${snapName}" do show "${showName}" troca a mix inteira e não dá para desfazer pelo MixAI.`;
-      const blocked = this.authorize(true, req.confirmationId, { op: 'snapshot', show: showName, snapshot: snapName }, [], summary);
+      // A confirmação fica presa à revisão global do estado e ao snapshot carregado agora:
+      // qualquer mudança na mesa (ou troca de snapshot) até a confirmação a invalida.
+      const current = await this.mixer.currentSnapshot().catch(() => ({}));
+      const guard = JSON.stringify({ revision: this.tracker.current(), current });
+      const blocked = this.authorize(true, req.confirmationId, { op: 'snapshot', show: showName, snapshot: snapName }, [], summary, guard);
       if (blocked) return blocked;
       let outcome: WriteOutcome;
       try {
         outcome = await this.mixer.loadSnapshot(showName, snapName);
       } catch (err) {
         if (err instanceof LinkUnavailableError) return this.writeGate() ?? this.refuse('snapshot', 'NO_CONNECTION', 'Sem conexão com a mesa.', {});
-        throw err;
+        // Erro inesperado: a mesa pode ter carregado ou não. Nada do que havia antes é desfazível.
+        this.tracker.bumpAll(this.allKeys(), 'uncertain');
+        this.lastKnown.clear();
+        this.undoStack.clear();
+        const error = err instanceof Error ? err.message : String(err);
+        const message = `RESULTADO INCERTO ao carregar o snapshot "${snapName}" (${error}): confira na mesa. A pilha de desfazer foi zerada.`;
+        this.log.add({ action: 'snapshot', ok: false, message, details: { show: showName, snapshot: snapName, outcome: 'indeterminate', error } });
+        return { ok: false, code: 'PARTIAL', message, data: { show: showName, snapshot: snapName, outcome: 'indeterminate' } };
       }
       this.tracker.bumpAll(this.allKeys(), 'snapshot');
       this.lastKnown.clear();
@@ -442,8 +471,13 @@ export class MixController {
 
   // ---------- execução ----------
 
-  /** Escreve as mudanças em ordem. Para na primeira recusa de conexão: o resto fica "não enviado". */
-  private async applyChanges(changes: Change[]): Promise<{ done: DoneChange[]; notSent: Change[] }> {
+  /**
+   * Escreve as mudanças em ordem.
+   * - Recusa de conexão (LinkUnavailableError): nada daquela escrita saiu; ela e as seguintes ficam "não enviado".
+   * - Qualquer outro erro: a escrita em andamento fica com resultado INCERTO (pode ter saído ou não),
+   *   o parâmetro perde o desfazer, e as seguintes ficam "não enviado". Nunca vira sucesso completo.
+   */
+  private async applyChanges(changes: Change[]): Promise<ApplyResult> {
     const done: DoneChange[] = [];
     for (let i = 0; i < changes.length; i++) {
       const c = changes[i]!;
@@ -451,8 +485,11 @@ export class MixController {
       try {
         outcome = await this.mixer.write(c.key, c.to);
       } catch (err) {
-        if (err instanceof LinkUnavailableError) return { done, notSent: changes.slice(i) };
-        throw err;
+        if (err instanceof LinkUnavailableError) return { done, uncertain: [], notSent: changes.slice(i) };
+        this.tracker.bump(c.key, 'uncertain');
+        this.lastKnown.delete(c.key);
+        const error = err instanceof Error ? err.message : String(err);
+        return { done, uncertain: [{ ...c, error }], notSent: changes.slice(i + 1) };
       }
       const revisionBefore = this.tracker.revisionOf(c.key);
       const actorBefore = this.tracker.actorOf(c.key);
@@ -460,14 +497,16 @@ export class MixController {
       this.lastKnown.set(c.key, c.to);
       done.push({ ...c, outcome, revisionBefore, revisionAtWrite, actorBefore });
     }
-    return { done, notSent: [] };
+    return { done, uncertain: [], notSent: [] };
   }
 
   /** Monta o resultado, o desfazer (só do que foi enviado) e o log, com a etapa de cada parâmetro. */
-  private finish(action: string, description: string, done: DoneChange[], notSent: Change[], data: Record<string, unknown>): Result {
+  private finish(action: string, description: string, applied: ApplyResult, data: Record<string, unknown>): Result {
+    const { done, uncertain, notSent } = applied;
+    const complete = !uncertain.length && !notSent.length;
     if (done.length) {
       this.undoStack.push({
-        description: notSent.length ? `${description} (parcial)` : description,
+        description: complete ? description : `${description} (parcial)`,
         items: done.map((d) => ({
           key: d.key,
           label: d.label,
@@ -480,19 +519,29 @@ export class MixController {
       });
     }
     const changes = [
-      ...done.map((d) => ({ key: d.key, from: d.from, to: d.to, outcome: d.outcome })),
-      ...notSent.map((c) => ({ key: c.key, from: c.from, to: c.to, outcome: 'not_sent' as const })),
+      ...done.map((d) => ({ key: d.key, from: d.from, to: d.to, outcome: d.outcome as string })),
+      ...uncertain.map((c) => ({ key: c.key, from: c.from, to: c.to, outcome: 'indeterminate', error: c.error })),
+      ...notSent.map((c) => ({ key: c.key, from: c.from, to: c.to, outcome: 'not_sent' })),
     ];
     const sent = done.some((d) => d.outcome === 'sent') ? ' (enviado à mesa; a Ui16 não confirma o recebimento)' : '';
-    if (!notSent.length) {
+    if (complete) {
       const message = `${description}${sent}`;
       this.log.add({ action, ok: true, message, details: { ...data, changes } });
       return { ok: true, code: 'OK', message, data: { ...data, changes } };
     }
     const link = this.mixer.link();
-    const message =
-      `Operação PARCIAL: ${done.length ? `${description}${sent}` : 'nada foi enviado'}. ` +
-      `NÃO enviado: ${notSent.map((c) => c.label).join(', ')}. ${this.mixer.statusText()}`;
+    const nothing = uncertain.length ? 'nada foi concluído' : 'nada foi enviado';
+    const parts = [`Operação PARCIAL: ${done.length ? `${description}${sent}` : nothing}.`];
+    if (uncertain.length) {
+      parts.push(
+        `RESULTADO INCERTO (erro inesperado; pode ou não ter chegado à mesa, confira): ${uncertain
+          .map((c) => `${c.label} (${c.error})`)
+          .join(', ')}.`,
+      );
+    }
+    if (notSent.length) parts.push(`NÃO enviado: ${notSent.map((c) => c.label).join(', ')}.`);
+    parts.push(this.mixer.statusText());
+    const message = parts.join(' ');
     this.log.add({ action, ok: false, message, details: { ...data, changes, link } });
     return { ok: false, code: 'PARTIAL', message, data: { ...data, changes, link } };
   }
@@ -507,6 +556,7 @@ export class MixController {
     command: Record<string, unknown>,
     keys: ParamKey[],
     summary: string,
+    guard?: string,
   ): Result | undefined {
     if (!needs) return this.rateLimit();
     const hash = commandHash(command);
@@ -515,6 +565,7 @@ export class MixController {
         hash,
         keys.map((k) => [k, this.tracker.revisionOf(k)]),
         summary,
+        guard,
       );
       return {
         ok: false,
@@ -527,7 +578,7 @@ export class MixController {
     }
     const limited = this.rateLimit();
     if (limited) return limited;
-    const check = this.pending.consume(confirmationId, hash, (k) => this.tracker.revisionOf(k));
+    const check = this.pending.consume(confirmationId, hash, (k) => this.tracker.revisionOf(k), guard);
     if (!check.ok) return this.refuse('confirmation', check.code, check.message, { confirmationId });
     return undefined;
   }
@@ -542,8 +593,10 @@ export class MixController {
   private onVerification(reports: VerificationReport[]) {
     const time = new Date(this.clock()).toISOString();
     for (const r of reports) {
-      // indeterminado: não dá para garantir nada; invalida o desfazer daquele parâmetro.
-      if (r.outcome !== 'observed_target') this.tracker.bump(r.key, 'resync');
+      // Política conservadora: qualquer escrita que caiu na janela de uma queda tem resultado
+      // incerto, inclusive "observed_target" (ver o valor desejado não prova que foi o MixAI).
+      // A revisão nova invalida o desfazer daquele parâmetro.
+      this.tracker.bump(r.key, 'uncertain');
       this.verifications.push({ ...r, time });
       if (this.verifications.length > 50) this.verifications.shift();
       const text: Record<string, string> = {

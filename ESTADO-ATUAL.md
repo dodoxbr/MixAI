@@ -83,7 +83,7 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 105 testes (Vitest)
+test/                 119 testes (Vitest)
 ```
 
 ---
@@ -129,7 +129,7 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-105 testes passando (Linux; validar no Windows ao atualizar). Inclui, além dos 40 originais:
+119 testes passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
