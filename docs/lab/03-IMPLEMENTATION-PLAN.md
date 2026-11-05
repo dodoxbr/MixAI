@@ -1,7 +1,25 @@
 # 03 — Plano de implementação do MixAI Lab
 
-**Data:** 05/11/2026 · Baseado em `01-GAP-ANALYSIS.md` e `02-ARCHITECTURE-REVIEW.md`.
-**Status:** proposta. **Nada será implementado sem autorização explícita.**
+**Data:** 05/11/2026 · **Versão 2** (incorpora a revisão das decisões D1–D11) · Baseado em `01-GAP-ANALYSIS.md` e `02-ARCHITECTURE-REVIEW.md`.
+**Status:** plano aprovado na direção geral. **Cada etapa só começa com autorização explícita.** O escopo exato da E0 está em `04-E0-ESCOPO.md`.
+
+## Decisões aprovadas (revisão de 05/11/2026)
+
+| # | Decisão | Situação | O que muda no plano |
+| --- | --- | --- | --- |
+| D1 | LAB e REAL isolados por processo | **aprovada** | E0 prepara (import dinâmico + teste de "sem rede"); E2 conclui |
+| D2 | Servidor único, MCP como cliente | **aprovada** | E2 |
+| D3 | JSON versionado | **aprovada com ajustes** | E1: escrita **atômica** (arquivo temporário + `rename`), **backup** da versão anterior (`.bak`) e **recuperação** automática do backup se o principal estiver corrompido |
+| D4 | Autorização humana vinculada a uma operação | **aprovada** | E0: o servidor emite a pendência (`pendingId`, hash dos parâmetros, validade) e só executa por esse id. E2: a confirmação passa a vir da tela (canal humano) |
+| D5 | Angular standalone com Signals | **aprovada** | E3 |
+| D6 | Componentes SVG próprios | **aprovada** | E3 |
+| D7 | PIN e dois perfis | **aprovada com ajustes** | E2: autorização **verificada no backend** em cada comando (o frontend só esconde botões, nunca decide) |
+| D8 | Reconexão | **aprovada com revisão** | E0: solução definitiva investigada e comprovada por experimento (descartar a instância + ressincronizar), ver `04-E0-ESCOPO.md` §3 |
+| D9 | Lab → Real só leitura | **aprovada temporariamente** | E1/E5: parâmetros e cenas estruturados para **aplicação controlada no futuro** (item a item, com compatibilidade e autorização) |
+| D10 | Vosk / Whisper | **aprovada para experimentação** | E9: atrás de uma interface `SpeechRecognizer`, sem acoplamento direto |
+| D11 | Primeira entrega visual = mesa web mínima | **aprovada** | E3 |
+
+**Ordem de execução acordada:** commit inicial (feito: `ec7b861`) → 40 testes verdes (feito) → revisão da E0 (este documento + `04-E0-ESCOPO.md`) → testes de regressão → só então a implementação da E0. A correção da reconexão é validada **antes** de qualquer teste de queda de rede com a mesa física.
 
 ## Princípios do plano
 
@@ -44,36 +62,27 @@ Ordem sugerida: **F0** (sábado), **E0 → E1 → E2 → E3** (primeira entrega 
 - **Aceite:** fader e mute mudam na tela oficial; o desfazer volta; o log registra.
 - **Extra recomendado:** desligar o cabo no meio, dar um comando, religar e confirmar que **nada** foi reenviado (valida o achado 4.1 em hardware).
 
-## E0 — Endurecer o núcleo
+## E0 — Correção e fortalecimento do núcleo
 
-- **Objetivo:** corrigir os riscos do gap analysis que já valem hoje, mesmo sem o Lab.
+**Escopo exato, arquivos, testes e rollback: `04-E0-ESCOPO.md`.** Resumo:
+
+- **Objetivo:** corrigir os riscos do gap analysis que já valem hoje, sem mudar o que o usuário vê.
 - **Funcionalidades:**
-  1. `git init` + primeiro commit (antes de tudo).
-  2. **Fila única** de escrita no `MixController` (mutex assíncrono).
-  3. `applyChange()` único, usado por `setLevel`, `setMute` e `setMaster`.
-  4. **Desfazer com conflito:** guarda o valor "depois" e recusa o item se a mesa não estiver mais nesse valor. Passa pelo teto e pelo limite.
-  5. **AUX e canais restritos ao `channels.yaml`:** "aux 4" é recusado enquanto não estiver configurado (flag `allowUnmapped: false`).
-  6. **Portão de conexão** no `RealMixer`: checa `conn.status === OPEN` logo antes de cada escrita.
-  7. `createApp()` com `import()` dinâmico do `RealMixer`.
-  8. Extrair o parser de `console.ts` para `src/core/parser.ts` (sem mudar o comportamento).
-- **Arquivos:** `src/core/controller.ts`, `src/core/app.ts`, `src/mixer/real.ts`, `src/core/channels.ts`, `src/console.ts`, `src/core/parser.ts` (novo), `config/config.yaml`.
-- **Dependências:** nenhuma nova (mutex com ~20 linhas próprias).
-- **Riscos:** baixo; mudanças internas com cobertura existente.
-- **Testes novos:**
-  - dois `setLevel` em paralelo somam corretamente;
-  - desfazer depois de mudança externa recusa e explica;
-  - "aux 4" é recusado;
-  - comando dado durante a reconexão **não chega** ao socket novo (reproduzindo o experimento);
-  - modo mock não carrega `real.js` nem constrói `WebSocket`;
-  - precedência de `MIXAI_MODE`, `--mock`/`--real` e `MIXAI_IP`;
-  - parser com as frases do console.
-- **Aceite:** os 40 testes antigos e os novos passam; as tools MCP continuam com a mesma interface.
+  1. **Reconexão segura (D8):** descartar a instância da biblioteca na primeira queda, reconectar com uma instância nova, **ressincronizar obrigatoriamente** antes de aceitar comandos e classificar operações em andamento como **indeterminadas** até a ressincronização confirmar.
+  2. **Fila única** de escrita + `applyChange()` único.
+  3. **Revisões por parâmetro** e **desfazer pela revisão**; mudanças externas invalidam o desfazer conflitante.
+  4. **Estados distintos:** valor desconhecido × canal em -∞ × conexão indisponível × ressincronizando, com códigos de erro estáveis.
+  5. **Autorização vinculada (D4):** pendência com `pendingId`, hash dos parâmetros e validade de 60 s.
+  6. AUX e canais restritos ao `channels.yaml`; `import()` dinâmico do `RealMixer`; parser extraído do console.
+- **Aceite:** os 40 testes atuais continuam passando (com ajuste explícito apenas onde a confirmação mudou de formato), os testes novos passam, o simulador e o Claude Desktop seguem funcionando com as mesmas tools.
 
 ## E1 — Estado observável e `LabMixer`
 
 - **Objetivo:** ter uma única fonte de estado com eventos, persistente no Lab.
 - **Funcionalidades:**
-  - **Registro de parâmetros:** `ParamId`, `ParamSpec` (unidade, faixa, capacidade).
+  - **Registro de parâmetros:** `ParamId`, `ParamSpec` (unidade, faixa, capacidade). **Desde já inclui EQ de 4 bandas** (`ch.N.eq.bK.freq|q|gain`), **HPF** (`ch.N.eq.hpf.freq|slope`) e **bypass** (`ch.N.eq.bypass`), com unidades e limites tirados da biblioteca 7.1.0 (freq 20–22050 Hz, Q 0,05–15, ganho ±20 dB, HPF 20–1000 Hz, slope 12/24/36). Esses parâmetros nascem com `capability: 'simulated_only'` e só são usados pela E7.
+  - **Preparação para Lab → Real (D9):** cada `ParamSpec` diz se o parâmetro é **aplicável na mesa** (`library_verified`/`hardware_verified`); o diff entre dois estados é uma função genérica sobre `ParamId`, reutilizável por cenas, comparação e, no futuro, pela aplicação item a item.
+  - **Persistência (D3):** escrita atômica (temporário + `rename`), `.bak` da versão anterior, recuperação do `.bak` se o principal estiver corrompido, e aviso no log.
   - **`MixerState`:** revisão global + `changedAt` por parâmetro; `unknown` diferente de -∞.
   - `MixerAdapter` ganha `snapshot()` e `subscribe(listener)`.
   - **`LabMixer`:**
@@ -100,7 +109,8 @@ Ordem sugerida: **F0** (sábado), **E0 → E1 → E2 → E3** (primeira entrega 
   - `mixai serve`: Fastify + WebSocket em `127.0.0.1` e no IP da rede da mesa, nas portas 8790 (LAB) / 8791 (REAL).
   - **WS:** `hello` → `snapshot` → `patch` com revisão; comandos com `requestId`. Ao detectar um buraco na sequência, o cliente pede outro snapshot.
   - **REST** mínimo (para o MCP): os mesmos verbos das tools.
-  - **PIN da roda** e papéis *operador* / *músico* (músico só AUX 1).
+  - **PIN da roda** e papéis *operador* / *músico* (músico só AUX 1). **Autorização verificada no backend** em cada comando (D7); o frontend apenas reflete o papel.
+  - **Confirmação humana pela tela (D4):** pendências criadas pela IA aparecem como cartões, e só um cliente humano autenticado as confirma.
   - **Ação pendente:** `{pendingId, diff, expira}` e `confirm(pendingId)`.
   - **MCP stdio (`dist/index.js`) vira cliente HTTP:** se o servidor não estiver rodando, avisa e não abre a mesa sozinho.
   - Medidores (simulados no LAB, com o rótulo) num canal separado a 10–15 Hz.
@@ -162,6 +172,7 @@ Ordem sugerida: **F0** (sábado), **E0 → E1 → E2 → E3** (primeira entrega 
 
 - **Objetivo:** salvar e comparar configurações no formato do MixAI.
 - **Funcionalidades:** salvar, duplicar, renomear e carregar cena (LAB); exportar e importar JSON com validação zod e `schemaVersion`; diff cena × estado atual.
+- **Preparado para o futuro (D9):** a cena guarda `ParamId → valor` com o perfil do equipamento (`deviceProfile`) e o status de validação. Assim, quando autorizado, será possível listar itens compatíveis, incompatíveis e desconhecidos e aplicar **um item por vez** com autorização humana. A aplicação em si **não** faz parte desta etapa.
 - **Arquivos:** `src/core/scenes.ts`, `data/scenes/*.json`, `web/src/app/scenes/*`.
 - **Riscos:** confusão com os snapshots nativos da Ui16. Resolver nomeando claramente: "Cena do MixAI" ≠ "Snapshot da mesa".
 - **Testes:** JSON inválido é recusado com mensagem; o diff lista só o que mudou; carregar uma cena no LAB entra no desfazer como um item.
@@ -212,27 +223,15 @@ Ordem sugerida: **F0** (sábado), **E0 → E1 → E2 → E3** (primeira entrega 
 ## E9 — Voz por comando
 
 - **Objetivo:** "segure e fale" no celular para comandos diretos.
-- **Funcionalidades:** áudio do celular → notebook → Vosk (`small-pt`, gramática restrita aos nomes e verbos da banda) → parser → cartão de proposta. Whisper só se o Vosk não bastar.
+- **Funcionalidades:** áudio do celular → notebook → reconhecedor → parser → cartão de proposta. O reconhecedor fica atrás de uma interface `SpeechRecognizer` (D10), com implementações experimentais para Vosk (`small-pt`, gramática restrita) e whisper.cpp, comparadas num ensaio antes de escolher.
 - **Riscos:** ruído da roda; precisão em português; binding nativo no Windows.
 - **Aceite:** 9 em cada 10 comandos do vocabulário entendidos num ensaio, e nenhuma ação sem confirmação visual.
 
 ---
 
-## Decisões que precisam de aprovação
+## Histórico das decisões (proposta original, v1)
 
-| # | Decisão | Alternativas | Recomendação |
-| --- | --- | --- | --- |
-| D1 | Isolamento LAB × REAL | (a) modo por comando (especificação) · (b) **modo por processo** | **(b)**, com o `targetMode` só como asserção |
-| D2 | Dono da mesa | (a) MCP e web como processos separados · (b) **servidor único, MCP como cliente** | **(b)** |
-| D3 | Persistência | (a) SQLite + migrations · (b) **JSON versionado** | **(b)**; rever se houver mais de mil cenas ou histórico longo |
-| D4 | Confirmação | (a) `confirm=true` atual · (b) `requestId` + `expectedRevision` (especificação) · (c) **pendência emitida pelo servidor, confirmada por humano** | **(c)** |
-| D5 | Frontend | (a) **Angular 22 standalone + signals** · (b) Svelte/Lit mais leve · (c) HTML puro | **(a)** se você quer manter Angular (o testbed da biblioteca também é Angular 22); (b) só se o tamanho do app virar problema |
-| D6 | Componentes de mesa | (a) **SVG próprios** · (b) `webaudio-controls` · (c) sliders genéricos | **(a)** |
-| D7 | Acesso dos celulares | (a) sem controle · (b) **PIN da roda + 2 papéis** · (c) contas e senhas | **(b)** |
-| D8 | Reconexão na mesa real | (a) portão + quarentena · (b) recriar a instância sem a reconexão da biblioteca | **(a) agora**, (b) avaliar no spike de E6 |
-| D9 | Lab → Real | (a) aplicação em lote (especificação L5) · (b) **diff só de leitura + snapshot nativo da Ui16** | **(b)** na primeira versão |
-| D10 | Voz | (a) **Vosk com gramática** · (b) whisper.cpp · (c) Web Speech | **(a)** para comandos; (b) se precisar de fala livre |
-| D11 | Primeira entrega | (a) EQ Lab · (b) **Mesa web mínima** · (c) Assistente | **(b)**, depois de F0 e E0 |
+As decisões foram aprovadas em 05/11/2026 (tabela no início do documento). A recomendação original da D8 era "(a) portão + quarentena agora, (b) avaliar depois". **Ela foi revista:** o experimento de 05/11 mostrou que só o portão não basta (há operações que se perdem em silêncio na janela da queda) e que descartar a instância funciona. A v2 adota a combinação descrita em `04-E0-ESCOPO.md` §3.
 
 ## O que eu NÃO implementaria agora
 
@@ -240,7 +239,7 @@ Ordem sugerida: **F0** (sábado), **E0 → E1 → E2 → E3** (primeira entrega 
 | --- | --- |
 | Simular compressor, gate, de-esser, GEQ 31 bandas, AFS | a biblioteca **não expõe** esses parâmetros; o que se configurasse no Lab nunca chegaria à mesa |
 | RTA ou "detecção de microfonia" | não há fonte de dados real; qualquer número seria inventado |
-| Aplicação em lote Lab → Real com recuperação | complexidade alta para pouco ganho; os snapshots da própria Ui16 já resolvem "preparar e recarregar" |
+| Aplicação Lab → Real (qualquer forma) | adiada, **não descartada** (D9): a estrutura de parâmetros e cenas já nasce pronta para aplicação item a item com autorização humana |
 | Autenticação com contas e papéis detalhados | uma roda de amigos não precisa; PIN resolve |
 | SQLite e migrations | volume de dados minúsculo |
 | PWA com service worker / offline | o app já é servido pelo notebook na mesma rede |
@@ -251,8 +250,8 @@ Ordem sugerida: **F0** (sábado), **E0 → E1 → E2 → E3** (primeira entrega 
 | Escuta contínua de voz | risco de letra virar comando; só push-to-talk |
 | Formalizar p95 < 300 ms como critério | medir uma vez em E3; transformar em *gate* não vale o custo |
 
-## Próximo passo sugerido
+## Próximo passo
 
-1. Aprovar (ou ajustar) as decisões **D1–D11**.
-2. Fazer o **F0** quando a mesa chegar.
-3. Autorizar a **E0** (pequena, sem mudança visível, e já protege o uso atual).
+1. Revisar e aprovar o escopo da E0 em `04-E0-ESCOPO.md`.
+2. Implementar a E0 no branch `e0-nucleo`, com revisão cruzada antes do merge.
+3. Fazer o **F0** quando a mesa chegar, incluindo o teste de queda de rede **depois** da E0 aprovada.
