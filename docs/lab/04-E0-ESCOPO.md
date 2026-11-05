@@ -290,8 +290,8 @@ Cada commit compila e passa em todos os testes. A revisão cruzada acontece no P
 | --- | --- |
 | Configuração (sem mexer em código) | `mixer.connection.strategy: legacy` volta a reconexão ao comportamento de hoje |
 | Um commit específico | `git revert <commit>`: os commits são independentes na ordem acima |
-| A etapa inteira | a tag `v0.1.0-baseline` é criada **antes** da E0, apontando para `ec7b861`; `git checkout v0.1.0-baseline && npm ci && npm run build` |
-| No notebook | o Claude Desktop aponta para `dist/index.js`; voltar = checkout da tag + `npm run build` + reiniciar o Claude Desktop |
+| A etapa inteira | o branch `baseline-v0.1.0` (publicado) aponta para `ec7b861`, o estado anterior à E0; `git checkout baseline-v0.1.0 && npm ci && npm run build`. A tag `v0.1.0-baseline` existe no clone local; o envio de tags pelo ambiente de automação foi recusado, então o branch cumpre o papel |
+| No notebook | o Claude Desktop aponta para `dist/index.js`; voltar = checkout de `baseline-v0.1.0` + `npm run build` + reiniciar o Claude Desktop |
 
 **Observação:** hoje `C:\Desenvolvimento\mixai` **não é um clone Git**, e sim uma cópia. Antes de usar a E0 no notebook, recomendo trocar por um clone: `git clone https://github.com/dodoxbr/MixAI.git C:\Desenvolvimento\mixai-git`, seguido de apontar o Claude Desktop pra lá. Assim o rollback vira um comando.
 
