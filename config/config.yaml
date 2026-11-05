@@ -27,6 +27,21 @@ lab:
   # Espera antes de gravar (ms), juntando mudanças seguidas
   saveDebounceMs: 300
 
+server:
+  # Servidor único (E2): npm run serve:lab (porta 8790) ou serve:real (porta 8791).
+  # port: 8790          # vazio = padrão do modo
+  # Por padrão só este notebook acessa (127.0.0.1). Para os celulares no Wi-Fi:
+  lan:
+    enabled: false
+    # IP do Wi-Fi do NOTEBOOK (ipconfig > Wi-Fi > Endereço IPv4). Nunca o IP da mesa.
+    host: ""
+  # AUX que os músicos podem ajustar (retorno compartilhado dos fones)
+  musicianAux: 1
+  # Validade da sessão aberta com PIN (horas)
+  sessionHours: 12
+  # PINs: rode "npm run pin -- operador" / "npm run pin -- musico".
+  # Ficam só como hash em config/secrets.yaml (fora do Git).
+
 naming:
   # false = só canais e AUX cadastrados no channels.yaml podem ser alterados
   allowUnmapped: false

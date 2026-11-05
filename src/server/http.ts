@@ -11,8 +11,6 @@ export const WS_CLOSE = {
   UNAUTHORIZED: 4401,
   /** Mensagem fora do protocolo. */
   PROTOCOL: 4400,
-  /** Servidor desligando: reconecte depois. */
-  SHUTDOWN: 4503,
 } as const;
 
 const HTTP_STATUS: Partial<Record<Result['code'], number>> = {
