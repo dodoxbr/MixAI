@@ -1,7 +1,9 @@
 import type { SafetyConfig } from './config.js';
 import { ChannelMap, NameResolutionError, type Resolved } from './channels.js';
 import type { ActionLog } from './log.js';
+import { ParamRegistry } from './params.js';
 import { commandHash, PendingStore } from './pending.js';
+import { StateHub } from './state.js';
 import { CommandQueue } from './queue.js';
 import { paramKey, RevisionTracker, sameValue, type Actor, type ParamKey, type ParamValue } from './revisions.js';
 import { UndoStack, type UndoItem } from './undo.js';
@@ -119,6 +121,10 @@ const ACTOR_TEXT: Record<Actor, string> = {
 export class MixController {
   private readonly queue = new CommandQueue();
   private readonly tracker = new RevisionTracker();
+  /** Registro central de parâmetros (inclui EQ/HPF/bypass, ainda só no laboratório). */
+  readonly registry: ParamRegistry;
+  /** Estado observável: snapshot + eventos com revisões (base para a E2/E3). */
+  readonly state: StateHub;
   private readonly undoStack = new UndoStack();
   private readonly pending: PendingStore;
   private readonly lastKnown = new Map<ParamKey, ParamValue>();
@@ -134,6 +140,8 @@ export class MixController {
     pending?: PendingStore,
   ) {
     this.pending = pending ?? new PendingStore(60_000, clock);
+    this.registry = new ParamRegistry(mixer.capabilities());
+    this.state = new StateHub(mixer, this.tracker, this.registry);
     mixer.onParamChange((key, value, origin) => this.observe(key, value, origin === 'external' ? 'external' : 'resync'));
     mixer.onVerification((reports) => this.onVerification(reports));
   }
@@ -454,6 +462,7 @@ export class MixController {
         this.tracker.bumpAll(this.allKeys(), 'uncertain');
         this.lastKnown.clear();
         this.undoStack.clear();
+        this.state.flush();
         const error = err instanceof Error ? err.message : String(err);
         const message = `RESULTADO INCERTO ao carregar o snapshot "${snapName}" (${error}): confira na mesa. A pilha de desfazer foi zerada.`;
         this.log.add({ action: 'snapshot', ok: false, message, details: { show: showName, snapshot: snapName, outcome: 'indeterminate', error } });
@@ -462,6 +471,7 @@ export class MixController {
       this.tracker.bumpAll(this.allKeys(), 'snapshot');
       this.lastKnown.clear();
       this.undoStack.clear();
+      this.state.flush();
       const sent = outcome === 'sent' ? ' (enviado à mesa)' : '';
       const message = `Snapshot carregado: ${showName} / ${snapName}${sent}. A pilha de desfazer foi zerada.`;
       this.log.add({ action: 'snapshot', ok: true, message, details: { show: showName, snapshot: snapName, outcome } });
@@ -478,6 +488,14 @@ export class MixController {
    *   o parâmetro perde o desfazer, e as seguintes ficam "não enviado". Nunca vira sucesso completo.
    */
   private async applyChanges(changes: Change[]): Promise<ApplyResult> {
+    try {
+      return await this.applyChangesInner(changes);
+    } finally {
+      this.state.flush();
+    }
+  }
+
+  private async applyChangesInner(changes: Change[]): Promise<ApplyResult> {
     const done: DoneChange[] = [];
     for (let i = 0; i < changes.length; i++) {
       const c = changes[i]!;
@@ -588,6 +606,7 @@ export class MixController {
   private observe(key: ParamKey, value: ParamValue, actor: Actor) {
     if (!sameValue(this.lastKnown.get(key), value)) this.tracker.bump(key, actor);
     this.lastKnown.set(key, value);
+    this.state.flush();
   }
 
   private onVerification(reports: VerificationReport[]) {
@@ -611,6 +630,7 @@ export class MixController {
         details: { ...r },
       });
     }
+    this.state.flush();
   }
 
   private plan(
@@ -644,13 +664,7 @@ export class MixController {
   }
 
   private allKeys(): ParamKey[] {
-    const caps = this.mixer.capabilities();
-    const keys: ParamKey[] = [paramKey.master()];
-    for (let ch = 1; ch <= caps.inputs; ch++) {
-      keys.push(paramKey.level(ch, MASTER), paramKey.mute(ch, MASTER));
-      for (let a = 1; a <= caps.aux; a++) keys.push(paramKey.level(ch, auxBus(a)), paramKey.mute(ch, auxBus(a)));
-    }
-    return keys;
+    return this.registry.keys();
   }
 
   private resolve<T>(fn: () => T): { value: T } | { error: Result } {
