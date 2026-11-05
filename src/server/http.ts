@@ -17,6 +17,7 @@ const HTTP_STATUS: Partial<Record<Result['code'], number>> = {
   FORBIDDEN: 403,
   UNAUTHORIZED: 401,
   MODE_MISMATCH: 409,
+  SERVER_CHANGED: 409,
 };
 
 function bearer(req: FastifyRequest): string | undefined {
@@ -91,8 +92,11 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean } = {
     app.post<{ Params: { id: string } }>(`/api/pending/:id/${action}`, async (req, reply) => {
       const p = principalOf(core, req, reply);
       if (!p) return reply;
-      const body = (req.body ?? {}) as { requestId?: unknown };
-      const r = action === 'approve' ? await core.approve(p, body.requestId, req.params.id) : await core.reject(p, body.requestId, req.params.id);
+      const body = (req.body ?? {}) as { requestId?: unknown; serverId?: unknown };
+      const r =
+        action === 'approve'
+          ? await core.approve(p, body.requestId, req.params.id, body.serverId)
+          : await core.reject(p, body.requestId, req.params.id, body.serverId);
       return sendCommand(core, reply, r);
     });
   }
@@ -173,7 +177,7 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
       case 'approve':
       case 'reject': {
         const id = typeof msg.pendingId === 'string' ? msg.pendingId : '';
-        const run = msg.type === 'approve' ? core.approve(p, msg.requestId, id) : core.reject(p, msg.requestId, id);
+        const run = msg.type === 'approve' ? core.approve(p, msg.requestId, id, msg.serverId) : core.reject(p, msg.requestId, id, msg.serverId);
         return void run.then((r) => send({ type: 'result', serverId: core.serverId, ...r }));
       }
       case 'meters': {

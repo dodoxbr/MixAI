@@ -46,6 +46,11 @@ interface PendingRecord {
 
 export interface CommandRequest {
   requestId?: unknown;
+  /**
+   * serverId esperado. Se o servidor for outro (reiniciou), o pedido é recusado com
+   * SERVER_CHANGED SEM executar: uma repetição nunca é executada numa instância nova.
+   */
+  serverId?: unknown;
   targetMode?: unknown;
   command?: unknown;
 }
@@ -149,6 +154,8 @@ export class ServerCore {
     if (!REQUEST_ID_RE.test(requestId)) {
       return { requestId, duplicate: false, result: fail('INVALID', 'requestId obrigatório (1 a 64 caracteres: letras, números, . _ : -).') };
     }
+    const changed = this.serverChanged(req.serverId);
+    if (changed) return { requestId, duplicate: false, result: changed };
     return this.once(p, requestId, () => this.run(p, requestId, req));
   }
 
@@ -188,7 +195,7 @@ export class ServerCore {
     const command = auth.command;
     let result: Result;
     try {
-      result = await dispatch(this.controller, command);
+      result = await dispatch(this.controller, command, undefined, p.role);
     } catch (err) {
       result = fail('INVALID', `Erro inesperado: ${(err as Error).message}`);
     }
@@ -233,19 +240,36 @@ export class ServerCore {
    * Aprovação: SÓ operador autenticado por PIN. O comando aprovado é exatamente o que gerou a
    * pendência; o controlador ainda confere hash, revisões, validade e uso único.
    */
-  async approve(p: Principal, requestId: unknown, pendingId: string): Promise<CommandResponse> {
-    return this.decide(p, requestId, pendingId, true);
+  async approve(p: Principal, requestId: unknown, pendingId: string, serverId?: unknown): Promise<CommandResponse> {
+    return this.decide(p, requestId, pendingId, true, serverId);
   }
 
-  async reject(p: Principal, requestId: unknown, pendingId: string): Promise<CommandResponse> {
-    return this.decide(p, requestId, pendingId, false);
+  async reject(p: Principal, requestId: unknown, pendingId: string, serverId?: unknown): Promise<CommandResponse> {
+    return this.decide(p, requestId, pendingId, false, serverId);
   }
 
-  private async decide(p: Principal, requestIdRaw: unknown, pendingId: string, approve: boolean): Promise<CommandResponse> {
+  /** undefined = mesmo servidor (ou não informado). */
+  private serverChanged(expected: unknown): Result | undefined {
+    if (expected === undefined || expected === this.serverId) return undefined;
+    return fail(
+      'SERVER_CHANGED',
+      'O servidor do MixAI foi reiniciado depois que este pedido foi preparado. Ele foi recusado sem executar; confira o estado atual antes de pedir de novo.',
+    );
+  }
+
+  private async decide(
+    p: Principal,
+    requestIdRaw: unknown,
+    pendingId: string,
+    approve: boolean,
+    serverId?: unknown,
+  ): Promise<CommandResponse> {
     const requestId = typeof requestIdRaw === 'string' ? requestIdRaw : '';
     if (!REQUEST_ID_RE.test(requestId)) {
       return { requestId, duplicate: false, result: fail('INVALID', 'requestId obrigatório.') };
     }
+    const changed = this.serverChanged(serverId);
+    if (changed) return { requestId, duplicate: false, result: changed };
     return this.once(p, requestId, async () => {
       const reply = (result: Result): CommandResponse => ({ requestId, duplicate: false, result: jsonSafe(result) as Result });
       if (p.role !== 'operator') {
@@ -274,7 +298,7 @@ export class ServerCore {
       }
       let result: Result;
       try {
-        result = await dispatch(this.controller, rec.card.command, pendingId);
+        result = await dispatch(this.controller, rec.card.command, pendingId, rec.card.requestedBy.role);
       } catch (err) {
         result = fail('INVALID', `Erro inesperado: ${(err as Error).message}`);
       }

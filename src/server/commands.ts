@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ChannelMap } from '../core/channels.js';
-import type { MixController, Result } from '../core/controller.js';
+import type { MixController, Result, UndoPreview } from '../core/controller.js';
 import { parseKey, type ParamKey } from '../core/revisions.js';
 import type { Role } from './auth.js';
 
@@ -35,8 +35,31 @@ export type CommandType = Command['type'];
 /** Comandos que mudam a mesa (os outros são consultas). */
 export const WRITE_COMMANDS: ReadonlySet<CommandType> = new Set(['set_level', 'set_mute', 'set_master', 'undo', 'load_snapshot', 'reset_lab']);
 
-/** Executa no controlador. `confirmationId` só é passado pelo fluxo de aprovação do servidor. */
-export async function dispatch(c: MixController, cmd: Command, confirmationId?: string): Promise<Result> {
+/**
+ * Quando um desfazer pedido por este perfil precisa de aprovação humana.
+ * - Operador: nunca (ele é o humano).
+ * - Assistente: se a reversão mexe no master ou numa alteração crítica (master, passo grande,
+ *   mute em grupo — o que já tinha precisado de aprovação), ou se desfaria algo feito por uma
+ *   pessoa (operador/músico). Desfazer os próprios ajustes simples continua direto.
+ */
+export function undoApproval(role: Role): ((entries: UndoPreview[]) => string | undefined) | undefined {
+  if (role !== 'agent') return undefined;
+  return (entries) => {
+    if (entries.some((e) => e.critical || e.keys.includes('master.level'))) {
+      return 'reverte uma alteração crítica (master, passo grande ou mute em grupo)';
+    }
+    if (entries.some((e) => e.origin === 'operator' || e.origin === 'musician')) {
+      return 'desfaria uma alteração feita por uma pessoa na tela';
+    }
+    return undefined;
+  };
+}
+
+/**
+ * Executa no controlador. `confirmationId` só é passado pelo fluxo de aprovação do servidor.
+ * `role` = quem PEDIU o comando (fica no desfazer e define a política de desfazer).
+ */
+export async function dispatch(c: MixController, cmd: Command, confirmationId?: string, role?: Role): Promise<Result> {
   switch (cmd.type) {
     case 'status':
       return c.ensureConnected();
@@ -49,13 +72,13 @@ export async function dispatch(c: MixController, cmd: Command, confirmationId?: 
     case 'list_snapshots':
       return c.listSnapshots();
     case 'set_level':
-      return c.setLevel({ channel: cmd.channel, aux: cmd.aux, db: cmd.db, deltaDB: cmd.deltaDB, confirmationId });
+      return c.setLevel({ channel: cmd.channel, aux: cmd.aux, db: cmd.db, deltaDB: cmd.deltaDB, confirmationId, origin: role });
     case 'set_mute':
-      return c.setMute({ channels: cmd.channels, muted: cmd.muted, aux: cmd.aux, confirmationId });
+      return c.setMute({ channels: cmd.channels, muted: cmd.muted, aux: cmd.aux, confirmationId, origin: role });
     case 'set_master':
-      return c.setMaster({ db: cmd.db, deltaDB: cmd.deltaDB, confirmationId });
+      return c.setMaster({ db: cmd.db, deltaDB: cmd.deltaDB, confirmationId, origin: role });
     case 'undo':
-      return c.undo(cmd.steps ?? 1);
+      return c.undo(cmd.steps ?? 1, { confirmationId, approvalReason: role ? undoApproval(role) : undefined });
     case 'load_snapshot':
       return c.loadSnapshot({ show: cmd.show, snapshot: cmd.snapshot, confirmationId });
     case 'reset_lab':
@@ -126,6 +149,8 @@ export function describeCommand(cmd: Command): string {
       return 'volume do master';
     case 'load_snapshot':
       return `carregar snapshot ${cmd.show} / ${cmd.snapshot}`;
+    case 'undo':
+      return `desfazer ${cmd.steps ?? 1} ação(ões)`;
     default:
       return cmd.type;
   }
