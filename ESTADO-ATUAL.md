@@ -1,4 +1,4 @@
-# MixAI — estado atual (05/11/2026, v0.4 / E2)
+# MixAI — estado atual (05/11/2026, v0.5 / E3)
 
 Controle da mesa **Soundcraft Ui16** por IA, para uma banda de samba/pagode amadora que toca em roda.
 O músico pede em português ("mais Fred no fone", "abaixa o surdo") e o Claude ajusta a mesa,
@@ -41,7 +41,7 @@ Retorno: **AUX 1 = Fones** (aliases: fone, retorno, monitor).
 ## 2. Arquitetura
 
 ```
-Usuário (texto)                       Navegadores / celulares (E3)
+Usuário (texto)                       Tela no Yoga / celulares (Angular, E3)
    │                                          │ HTTP + WebSocket (PIN: operador | músico)
 Claude Desktop ──MCP stdio──▶ dist/index.js ──┤ HTTP 127.0.0.1 (token local do assistente)
                                               ▼
@@ -65,7 +65,8 @@ Claude Desktop ──MCP stdio──▶ dist/index.js ──┤ HTTP 127.0.0.1 (
 | Linguagem | TypeScript (Node.js 22+) |
 | Mesa | [`soundcraft-ui-connection`](https://www.npmjs.com/package/soundcraft-ui-connection) 7.1.0 (versão fixada) |
 | IA | `@modelcontextprotocol/sdk` 1.32 (MCP stdio, cliente do servidor) |
-| Servidor | Fastify 5 + `@fastify/websocket` 11 |
+| Servidor | Fastify 5 + `@fastify/websocket` 11 + `@fastify/static` (serve a interface) |
+| Interface | Angular 22 standalone + signals, componentes SVG próprios (E3) |
 | Validação | zod 4 |
 | Config | YAML (`yaml`) |
 | Testes | Vitest |
@@ -89,7 +90,8 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 226 testes (Vitest)
+test/                 232 testes (Vitest) + 10 de integração com navegador (test/e2e)
+web/                  interface Angular (27 testes unitários)
 ```
 
 ---
@@ -135,7 +137,7 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-226 testes passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+232 testes do servidor + 27 da interface + 10 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);

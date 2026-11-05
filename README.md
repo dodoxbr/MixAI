@@ -19,7 +19,8 @@ da mesa; o MCP do Claude Desktop é só um cliente dele. Detalhes: `docs/lab/06-
 cd mixai
 npm install
 npm run build
-npm test        # 226 testes, todos devem passar
+npm test        # 232 testes, todos devem passar
+npm ci --prefix web && npm run build:web   # interface (E3)
 ```
 
 ## Testar sem a mesa: laboratório ou simulador
@@ -78,6 +79,16 @@ npm run serve:real        # mesa física em http://127.0.0.1:8791
   dedicada e confiável (roteador da banda, senha forte, sem convidados), nunca o Wi-Fi do evento.
 - Operações críticas (master, snapshot, passo grande, mute em massa) viram **pendências** que só
   um operador autenticado aprova. O assistente propõe, mas não confirma.
+
+## Interface na tela (E3)
+
+Com o servidor rodando (`npm run serve:lab`), abra **http://127.0.0.1:8790** no Yoga e entre com o
+PIN. O operador vê a **Mesa** (faders do PA ou dos FONES, MUTE, master com aprovação, Desfazer,
+Histórico e os cartões de aprovação); o músico vê só os **Fones** (− / + de 2 dB no AUX 1).
+Celulares: configure `server.lan` e abra `http://<ip-do-wi-fi-do-notebook>:8790`.
+Detalhes, capturas e testes: `docs/lab/07-E3-INTERFACE.md`.
+
+![Mesa no Yoga](docs/lab/img/e3-yoga-mesa-pa.png)
 
 ## Ligar no Claude Desktop
 
@@ -190,7 +201,8 @@ Cada ação (e cada recusa) vai para `logs/acoes-AAAA-MM-DD.jsonl`.
 
 ```
 src/
-  serve.ts            servidor único (E2): HTTP + WebSocket, dono da mesa
+  serve.ts            servidor único (E2): HTTP + WebSocket, dono da mesa; serve a interface
+web/                  interface Angular (E3): Mesa, Fones, PIN, cartões
   server/             núcleo do servidor, rotas, perfis, PIN, medidores simulados
   client/             cliente de referência da sincronização de estado
   index.ts            MCP (stdio) — cliente HTTP do servidor
