@@ -121,9 +121,17 @@ Em `ai:` no `config.yaml`:
 | Resposta com consumo informado | o consumo real |
 | Tempo esgotado, rede caiu, erro 5xx, resposta sem `usage` | a **estimativa inteira** (a API pode ter processado) |
 | Recusa clara sem processamento (400, 401, 403, 404, 413, 429) | nada (a reserva é liberada) |
-| `data/ai-usage.json` ilegível ou com valores inválidos | o arquivo é guardado como `.corrupt-<data>` e a IA fica **bloqueada até o dia virar** (não dá para saber quanto já foi gasto) |
+| Servidor parou no meio de uma chamada | a reserva já estava **gravada** antes da chamada; ao reiniciar, ela é cobrada inteira |
+| `data/ai-usage.json` ilegível ou com valores inválidos | a IA fica **bloqueada até o dia virar** (não dá para saber quanto já foi gasto); ver abaixo |
+| Não deu para gravar o consumo (pasta sem permissão, disco cheio...) | a IA fica **pausada**: nenhuma chamada nova até uma gravação dar certo; a cada pedido o servidor tenta gravar de novo |
 
-> **Limitação:** o teto é uma proteção por **estimativa**, feita com os preços configurados e os tokens informados. **Não é garantia de faturamento.** Preços desatualizados, mudanças de cobrança, chamadas feitas fora do MixAI com a mesma chave ou falhas ao gravar o arquivo fazem o valor real diferir. Para um limite rígido, configure também um **limite de gasto no console da Anthropic** (platform.claude.com), que vale para a chave inteira.
+**Registro ilegível — o bloqueio vale depois de reiniciar (revisão do PR #7):**
+1. O bloqueio é gravado primeiro, em `data/ai-usage.json.blocked` (com a data do dia). Um reinício no mesmo dia lê esse arquivo e continua bloqueado; no dia seguinte ele é ignorado e a IA volta.
+2. Só depois que o bloqueio está gravado, o arquivo ilegível sai do caminho com outro nome, `ai-usage.json.corrupt-<data>`. Ele é guardado byte a byte e **nunca é sobrescrito**: se o nome já existir, ganha um sufixo `-1`, `-2`...
+3. Se nem o bloqueio der para gravar, o arquivo ilegível **fica onde está**, e cada início detecta e bloqueia de novo.
+4. Enquanto a IA está bloqueada ou pausada, o **parser local e os comandos diretos continuam funcionando**; só os pedidos que precisariam da IA recebem o aviso.
+
+> **Limitação:** o teto é uma proteção por **estimativa**, feita com os preços configurados e os tokens informados. **Não é garantia de faturamento.** Preços desatualizados, mudanças de cobrança, e chamadas feitas fora do MixAI com a mesma chave fazem o valor real diferir. Para um limite rígido, configure também um **limite de gasto no console da Anthropic** (platform.claude.com), que vale para a chave inteira.
 - **Consumo:** cada pedido fica no histórico (`ai_request`) com modelo, tokens de entrada e saída, custo estimado e tempo. O total do dia fica em `data/ai-usage.json`.
 - **Contexto:** o histórico de conversa é curto (4 trocas, resumidas) e o estado vai em texto compacto.
 
@@ -160,7 +168,7 @@ Em `ai:` no `config.yaml`:
 
 | Conjunto | Total | Novos na E4 |
 | --- | --- | --- |
-| Servidor e núcleo (`npm test`) | 276 | 44: 16 do parser + 15 do assistente + 6 de concorrência + 7 de orçamento, com a Anthropic simulada |
+| Servidor e núcleo (`npm test`) | 283 | 51: 16 do parser + 15 do assistente + 6 de concorrência + 14 de orçamento e gravação do consumo, com a Anthropic simulada |
 | Interface, unitários (`npm run test:web`) | 36 | 9 |
 | Integração com navegador (`npm run test:e2e`) | 15 | 5, todos verdes em 3 execuções seguidas |
 

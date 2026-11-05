@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
@@ -23,6 +23,10 @@ const reply = (usage: unknown = { input_tokens: 900, output_tokens: 80 }, status
   });
 const settings = (over: Partial<AiSettings> = {}): AiSettings => ({ ...parseConfig({}).ai, enabled: true, ...over });
 const tmpFile = () => join(mkdtempSync(join(tmpdir(), 'mixai-usage-')), 'ai-usage.json');
+const corruptCopies = (file: string) =>
+  readdirSync(join(file, '..'))
+    .filter((f) => f.startsWith('ai-usage.json.corrupt-'))
+    .map((f) => join(file, '..', f));
 
 describe('orçamento da IA: reserva antes da chamada e reconciliação', () => {
   it('a reserva em andamento conta para o teto e é trocada pelo consumo real ao terminar', async () => {
@@ -98,9 +102,10 @@ describe('orçamento da IA: reserva antes da chamada e reconciliação', () => {
     expect(usage.current().costUSD).toBeGreaterThan(0.0002);
   });
 
-  it('arquivo de consumo corrompido: guarda o original e bloqueia a IA no dia (não sabemos o gasto)', async () => {
+  it('arquivo de consumo corrompido: bloqueia a IA no dia e guarda o original intacto', async () => {
     const file = tmpFile();
-    writeFileSync(file, '{"day": "hoje", "costUSD": "muito"');
+    const original = '{"day": "hoje", "costUSD": "muito"';
+    writeFileSync(file, original);
     const usage = new UsageTracker(file);
     let calls = 0;
     const r = await new ClaudeClient(settings(), 'k', usage, async () => {
@@ -110,13 +115,145 @@ describe('orçamento da IA: reserva antes da chamada e reconciliação', () => {
     expect(r).toMatchObject({ ok: false, code: 'AI_BUDGET' });
     expect(r.ok ? '' : r.message).toContain('ilegível');
     expect(calls).toBe(0);
-    expect(readdirSync(join(file, '..')).some((f) => f.includes('.corrupt-'))).toBe(true);
+    const kept = corruptCopies(file);
+    expect(kept).toHaveLength(1);
+    expect(readFileSync(kept[0]!, 'utf8')).toBe(original); // histórico preservado, byte a byte
+    expect(existsSync(`${file}.blocked`)).toBe(true); // o bloqueio está gravado
+  });
+});
+
+describe('bloqueio e falha de gravação valem depois de reiniciar', () => {
+  const DAY = 24 * 3_600_000;
+  const clockAt = (start = Date.parse('2026-11-05T15:00:00Z')) => {
+    const c = { now: start, fn: () => c.now };
+    return c;
+  };
+
+  it('corrupção → reinício no MESMO dia continua bloqueado → no dia seguinte volta, com a cópia intacta', async () => {
+    const file = tmpFile();
+    const original = '{"day":"2026-11-05","requests":2,"costUSD":-1}';
+    writeFileSync(file, original);
+    const c = clockAt();
+    expect(new UsageTracker(file, c.fn).reserve(0.0001, 1)).toMatchObject({ ok: false, reason: 'blocked' });
+
+    // reinício no mesmo dia: o arquivo ilegível já saiu do caminho, mas o bloqueio continua
+    c.now += 3_600_000;
     expect(existsSync(file)).toBe(false);
-    // dia seguinte: volta a funcionar
-    let now = Date.now();
-    const tomorrow = new UsageTracker(file, () => now);
-    now += 24 * 3_600_000;
+    const restarted = new UsageTracker(file, c.fn);
+    expect(restarted.current()).toMatchObject({ blocked: true, costUSD: 0 });
+    let calls = 0;
+    const r = await new ClaudeClient(settings(), 'k', restarted, async () => {
+      calls++;
+      return reply();
+    }).interpret('vago', CTX);
+    expect(r).toMatchObject({ ok: false, code: 'AI_BUDGET' });
+    expect(calls).toBe(0); // a API nunca foi chamada
+    expect(existsSync(file)).toBe(false); // nada gravado no lugar do registro enquanto bloqueado
+
+    // o mesmo processo também libera quando o dia vira
+    c.now += DAY;
+    expect(restarted.reserve(0.0001, 1).ok).toBe(true);
+
+    // e um reinício já no dia seguinte começa liberado
+    const tomorrow = new UsageTracker(file, c.fn);
+    expect(tomorrow.current().blocked).toBe(false);
     expect(tomorrow.reserve(0.0001, 1).ok).toBe(true);
+    const kept = corruptCopies(file);
+    expect(kept).toHaveLength(1);
+    expect(readFileSync(kept[0]!, 'utf8')).toBe(original);
+  });
+
+  it('nem o bloqueio dá para gravar → o arquivo ilegível fica onde está (sem sobrescrever) e o reinício bloqueia de novo', () => {
+    const file = tmpFile();
+    const original = 'isto não é json';
+    writeFileSync(file, original);
+    mkdirSync(`${file}.blocked`); // marcador impossível de gravar (é uma pasta)
+    mkdirSync(`${file}.blocked/x`);
+    const c = clockAt();
+    expect(new UsageTracker(file, c.fn).reserve(0.0001, 1)).toMatchObject({ ok: false, reason: 'blocked' });
+    expect(readFileSync(file, 'utf8')).toBe(original);
+    expect(corruptCopies(file)).toHaveLength(0);
+    expect(new UsageTracker(file, c.fn).reserve(0.0001, 1)).toMatchObject({ ok: false, reason: 'blocked' });
+    expect(readFileSync(file, 'utf8')).toBe(original);
+  });
+
+  it('cópia anterior com o mesmo nome nunca é sobrescrita', () => {
+    const file = tmpFile();
+    const c = clockAt();
+    const stamp = new Date(c.now).toISOString().replace(/[:.]/g, '-');
+    writeFileSync(`${file}.corrupt-${stamp}`, 'cópia antiga');
+    writeFileSync(file, 'nova corrupção');
+    new UsageTracker(file, c.fn);
+    expect(readFileSync(`${file}.corrupt-${stamp}`, 'utf8')).toBe('cópia antiga');
+    expect(readFileSync(`${file}.corrupt-${stamp}-1`, 'utf8')).toBe('nova corrupção');
+  });
+
+  it('falha de gravação ANTES da chamada: a API não é chamada; volta quando a gravação volta', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mixai-usage-'));
+    writeFileSync(join(dir, 'data'), 'arquivo no lugar da pasta'); // gravar em data/ falha
+    const file = join(dir, 'data', 'ai-usage.json');
+    const usage = new UsageTracker(file);
+    let calls = 0;
+    const client = new ClaudeClient(settings(), 'k', usage, async () => {
+      calls++;
+      return reply();
+    });
+    const r = await client.interpret('vago', CTX);
+    expect(r).toMatchObject({ ok: false, code: 'AI_BUDGET' });
+    expect(r.ok ? '' : r.message).toContain('gravar');
+    expect(calls).toBe(0);
+    expect(usage.current()).toMatchObject({ reservedUSD: 0, paused: true });
+
+    rmSync(join(dir, 'data')); // gravação volta a funcionar
+    expect((await client.interpret('vago', CTX)).ok).toBe(true);
+    expect(calls).toBe(1);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ requests: 1, inputTokens: 900, reservedUSD: 0 });
+    expect(usage.current().paused).toBe(false);
+  });
+
+  it('falha ao gravar o consumo DEPOIS da chamada: IA pausada até gravar; nada do consumo se perde', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mixai-usage-'));
+    const file = join(dir, 'data', 'ai-usage.json');
+    const usage = new UsageTracker(file);
+    let calls = 0;
+    const client = new ClaudeClient(settings(), 'k', usage, async () => {
+      calls++;
+      // a pasta some no meio da chamada: a gravação do consumo real vai falhar
+      renameSync(join(dir, 'data'), join(dir, 'data-fora'));
+      writeFileSync(join(dir, 'data'), 'bloqueia');
+      return reply();
+    });
+    expect((await client.interpret('vago', CTX)).ok).toBe(true);
+    expect(usage.current()).toMatchObject({ paused: true, requests: 1 });
+
+    const blocked = new ClaudeClient(settings(), 'k', usage, async () => {
+      calls++;
+      return reply();
+    });
+    const r = await blocked.interpret('vago', CTX);
+    expect(r).toMatchObject({ ok: false, code: 'AI_BUDGET' });
+    expect(calls).toBe(1); // pausada: nenhuma chamada nova
+
+    rmSync(join(dir, 'data'));
+    renameSync(join(dir, 'data-fora'), join(dir, 'data'));
+    expect((await blocked.interpret('vago', CTX)).ok).toBe(true);
+    expect(calls).toBe(2);
+    // o consumo que ficou só em memória foi gravado junto: 2 pedidos
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ requests: 2, inputTokens: 1800, reservedUSD: 0 });
+  });
+
+  it('servidor caiu no meio da chamada: ao reiniciar, a reserva gravada é cobrada', () => {
+    const file = tmpFile();
+    const c = clockAt();
+    const before = new UsageTracker(file, c.fn);
+    const res = before.reserve(0.3, 0.5);
+    expect(res.ok).toBe(true);
+    expect(JSON.parse(readFileSync(file, 'utf8')).reservedUSD).toBeCloseTo(0.3, 9);
+    // "reinício" sem settle: a reserva conta como gasta
+    const after = new UsageTracker(file, c.fn);
+    expect(after.current()).toMatchObject({ reservedUSD: 0 });
+    expect(after.current().costUSD).toBeCloseTo(0.3, 9);
+    expect(after.reserve(0.3, 0.5)).toMatchObject({ ok: false, reason: 'budget' });
   });
 
   it('consumo de hoje gravado é respeitado depois de reiniciar (inclusive valores negativos ou ausentes = corrompido)', () => {
@@ -136,6 +273,46 @@ describe('orçamento da IA no servidor: duas sessões ao mesmo tempo perto do te
   afterEach(async () => {
     for (const c of clients.splice(0)) c.close();
     for (const t of running.splice(0)) await t.server.close();
+  });
+
+  it('registro corrompido antes de iniciar: parser local segue funcionando; IA bloqueada também depois de reiniciar', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mixai-srv-'));
+    writeFileSync(join(dir, 'ai-usage.json'), '{"day": quebrado');
+    let calls = 0;
+    const boot = async () => {
+      const t = await startTestServer({
+        dir,
+        channels: band(),
+        ai: { enabled: true },
+        aiKey: 'k',
+        aiFetch: async () => {
+          calls++;
+          return reply();
+        },
+      });
+      running.push(t);
+      const c = await wsClient(t.base, await t.login(OPERATOR_PIN));
+      clients.push(c);
+      await c.next((m) => m.type === 'snapshot');
+      let n = 0;
+      const ask = async (text: string) => {
+        const requestId = `q${++n}`;
+        c.send({ type: 'assistant', requestId, text });
+        return (await c.next((m) => m.type === 'assistant_reply' && m.requestId === requestId)).reply;
+      };
+      return { t, ask };
+    };
+    for (let round = 0; round < 2; round++) {
+      const { t, ask } = await boot();
+      expect((await ask('sobe o surdo no PA')).kind).toBe('proposals'); // parser local
+      const vague = await ask('tá embolado o som');
+      expect(vague.code).toBe('AI_BUDGET');
+      expect(vague).toMatchObject({ kind: 'error', source: 'ai' });
+      expect(vague.text).toContain('ilegível');
+      await t.server.close(); // "reinicia" no mesmo dia
+      running.splice(running.indexOf(t), 1);
+    }
+    expect(calls).toBe(0);
   });
 
   it('só uma chamada sai; a outra recebe AI_BUDGET; depois da reconciliação, cabe de novo', async () => {
