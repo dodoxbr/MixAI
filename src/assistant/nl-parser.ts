@@ -12,14 +12,19 @@ export interface ParseContext {
   names: ChannelMap;
   role: Role;
   steps: StepSizes;
+  /**
+   * Músico com acesso ao PA (server.musicianAccess = pa_without_master). Aí ele tem DOIS
+   * destinos e o parser pergunta "PA ou FONES?" como faz com o operador.
+   */
+  musicianPA?: boolean;
 }
 
 /**
  * Parser LOCAL de pedidos em português (sem internet, sem IA, sem tokens).
  * Regras:
  * - só reconhece canais pelos nomes e apelidos do channels.yaml (nunca inventa);
- * - não presume PA nem FONES: sem destino claro, pergunta (para o músico, o único destino
- *   possível é FONES, e o cartão mostra isso);
+ * - não presume PA nem FONES: sem destino claro, pergunta (para o músico em fones_only, o
+ *   único destino possível é FONES, e o cartão mostra isso; com acesso ao PA, pergunta);
  * - nome que serve para mais de um canal ("voz") → pergunta qual;
  * - o que não entender devolve `unknown` (aí pode ir para o Claude, se estiver ligado).
  */
@@ -121,7 +126,7 @@ export function parseRequest(raw: string, ctx: ParseContext): ParseOutcome {
     return clarify('No PA ou nos fones? Escolha um de cada vez.', destinationOptions(raw));
   } else if (saysFones) dest = 'fones';
   else if (saysPa) dest = 'pa';
-  else if (ctx.role === 'musician') dest = 'fones'; // o único destino possível para o músico
+  else if (ctx.role === 'musician' && !ctx.musicianPA) dest = 'fones'; // o único destino possível para este músico
   else return clarify('No PA (som do público) ou nos FONES (retorno de todos)?', destinationOptions(raw));
 
   // ---------- intenções ----------

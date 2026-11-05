@@ -4,6 +4,23 @@ import { newId, StateSync, type Hello, type MeterFrame, type Named, type Pending
 
 export type Connection = 'idle' | 'connecting' | 'online' | 'offline';
 
+/**
+ * Resultado de uma mensagem do assistente:
+ * - ok: chegou a resposta;
+ * - offline: NÃO foi enviada (sem conexão) — nada aconteceu no servidor;
+ * - lost: foi enviada, mas a conexão caiu (ou o tempo acabou) antes da resposta.
+ * Em nenhum caso a mensagem é reenviada sozinha.
+ */
+export type AssistantOutcome = { ok: true; msg: Record<string, unknown> } | { ok: false; why: 'offline' | 'lost' };
+
+/** Textos da volta ao PIN, conforme o motivo informado pelo servidor. */
+export const SESSION_TEXT = {
+  expired: 'Sua sessão venceu (vale 12 horas). Entre de novo com o PIN. Nada foi alterado.',
+  logout: 'Sua sessão foi encerrada (alguém tocou em Sair com esta sessão). Entre de novo com o PIN.',
+  restarted: 'O servidor do MixAI foi reiniciado e as sessões abertas foram encerradas. Entre de novo com o PIN. Pedidos que estavam em andamento não foram repetidos.',
+  unknown: 'O servidor não reconheceu mais esta sessão. Entre de novo com o PIN.',
+} as const;
+
 export interface Toast {
   id: number;
   kind: 'ok' | 'info' | 'error';
@@ -45,6 +62,8 @@ export class LiveService {
   /** Respostas do assistente (assistant_reply / proposal_result), pelo requestId. */
   private waitingRaw = new Map<string, (m: Record<string, unknown> | null) => void>();
   private retry = 0;
+  /** Motivo enviado pelo servidor antes de fechar com 4401 (expired, logout, unknown_session). */
+  private authReason: string | undefined;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private toastSeq = 0;
   /** Para testes: substitui o construtor do WebSocket. */
@@ -78,17 +97,19 @@ export class LiveService {
    * Mensagem do assistente com resposta própria (texto livre, aplicar proposta, "melhorou?").
    * Resolve null se a conexão cair ou não houver resposta no tempo: a tela nunca fica travada.
    */
-  assistant(msg: Record<string, unknown> & { type: string }, timeoutMs = 25_000): Promise<Record<string, unknown> | null> {
+  assistant(msg: Record<string, unknown> & { type: string }, timeoutMs = 25_000): Promise<AssistantOutcome> {
     const requestId = newId('a');
-    if (!this.raw({ ...msg, requestId, serverId: this.hello()?.serverId })) return Promise.resolve(null);
+    if (this.connection() !== 'online' || !this.raw({ ...msg, requestId, serverId: this.hello()?.serverId })) {
+      return Promise.resolve({ ok: false, why: 'offline' });
+    }
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.waitingRaw.delete(requestId);
-        resolve(null);
+        resolve({ ok: false, why: 'lost' });
       }, timeoutMs);
       this.waitingRaw.set(requestId, (m) => {
         clearTimeout(timer);
-        resolve(m);
+        resolve(m ? { ok: true, msg: m } : { ok: false, why: 'lost' });
       });
     });
   }
@@ -123,6 +144,7 @@ export class LiveService {
       return this.scheduleReconnect();
     }
     this.ws = ws;
+    this.authReason = undefined;
     ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: this.session.token() }));
     ws.onmessage = (e) => {
       try {
@@ -141,12 +163,25 @@ export class LiveService {
       if (e.code === 4401) {
         this.connection.set('idle');
         this.reset();
-        this.session.expire('Sua sessão terminou (expirou, saiu em outro lugar ou o servidor reiniciou). Entre de novo com o PIN.');
+        void this.explainRejected(this.authReason);
         return;
       }
       this.connection.set('offline');
       this.scheduleReconnect();
     };
+  }
+
+  /**
+   * Sessão recusada: volta ao PIN explicando o motivo. Sem motivo específico, compara a
+   * instância do servidor: mudou → o servidor foi reiniciado.
+   */
+  private async explainRejected(reason: string | undefined) {
+    if (reason === 'expired') return this.session.expire(SESSION_TEXT.expired);
+    if (reason === 'logout') return this.session.expire(SESSION_TEXT.logout);
+    const known = this.session.serverId;
+    const now = await this.session.hello();
+    const restarted = !!known && !!now && now.serverId !== known;
+    this.session.expire(restarted ? SESSION_TEXT.restarted : SESSION_TEXT.unknown);
   }
 
   private close() {
@@ -204,6 +239,7 @@ export class LiveService {
         const h = m as unknown as Hello;
         if (this.hello() && this.hello()!.serverId !== h.serverId) this.pending.set([]);
         this.hello.set(h);
+        this.session.rememberServer(h.serverId);
         this.connection.set('online');
         this.retry = 0;
         this.sync.handle(m);
@@ -252,6 +288,12 @@ export class LiveService {
       case 'fader_result': {
         const r = m['result'] as Result;
         if (!r.ok) this.toast('error', r.message);
+        return;
+      }
+      case 'error': {
+        // UNAUTHORIZED chega antes do fechamento 4401: guarda o motivo para a tela de PIN.
+        if (m['code'] === 'UNAUTHORIZED') this.authReason = typeof m['reason'] === 'string' ? m['reason'] : undefined;
+        else if (typeof m['message'] === 'string') this.toast('error', m['message']);
         return;
       }
       case 'meters':

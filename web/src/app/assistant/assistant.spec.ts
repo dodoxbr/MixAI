@@ -187,4 +187,65 @@ describe('assistente na tela', () => {
     const input = el.querySelector('.mx-assistant-input')!;
     expect(warning.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it('sem conexão: o botão fica desabilitado COM o motivo escrito, e o texto não se perde', async () => {
+    const { ws, el, fixture } = await boot();
+    ws.close(1006);
+    fixture.detectChanges();
+    const input = el.querySelector('.mx-assistant-input input') as HTMLInputElement;
+    const button = el.querySelector('.mx-assistant-input button[type=submit]') as HTMLButtonElement;
+    expect(input.disabled).toBe(false); // dá para escrever
+    expect(button.disabled).toBe(true);
+    expect(el.querySelector('[data-testid=assist-hint]')!.textContent).toContain('Sem conexão');
+    input.value = 'sobe o surdo no PA';
+    input.dispatchEvent(new Event('input'));
+    (el.querySelector('.mx-assistant-input form') as HTMLFormElement).dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    expect(input.value).toBe('sobe o surdo no PA'); // continua no campo
+    expect(FakeSocket.all.flatMap((s) => s.sent).filter((m) => m['type'] === 'assistant')).toHaveLength(0);
+  });
+
+  it('enviar com o campo vazio explica o que fazer (não fica em silêncio)', async () => {
+    const { el, fixture } = await boot();
+    (el.querySelector('.mx-assistant-input button[type=submit]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid=assist-hint]')!.textContent).toContain('Escreva');
+  });
+
+  it('esperando resposta: botão desabilitado com motivo; conexão cai → erro visível e o pedido NÃO é repetido', async () => {
+    const { ws, el, say, settle } = await boot();
+    await say('tá embolado');
+    expect((el.querySelector('.mx-assistant-input button[type=submit]') as HTMLButtonElement).disabled).toBe(true);
+    expect(el.querySelector('[data-testid=assist-hint]')!.textContent).toContain('Esperando a resposta');
+    ws.close(1006);
+    await settle();
+    expect(el.querySelector('.tone-error')!.textContent).toContain('não será repetido');
+    const sentAgain = FakeSocket.all.filter((s) => s !== ws).flatMap((s) => s.sent).filter((m) => m['type'] === 'assistant');
+    expect(sentAgain).toHaveLength(0);
+  });
+
+  it('resposta vazia ou fora do formato ainda aparece na conversa', async () => {
+    const { ws, el, say, settle } = await boot();
+    const req = await say('sobe o surdo no PA');
+    ws.receive({ type: 'assistant_reply', requestId: req['requestId'] });
+    await settle();
+    expect(el.querySelector('.tone-error')!.textContent).toContain('formato');
+    const req2 = await say('qualquer coisa');
+    ws.receive({ type: 'assistant_reply', requestId: req2['requestId'], reply: { kind: 'answer', source: 'local' } });
+    await settle();
+    expect([...el.querySelectorAll('.assist-item')].at(-1)!.textContent!.trim().length).toBeGreaterThan(0);
+  });
+
+  it('nova sessão: a conversa antiga (e os cartões) somem', async () => {
+    const { ws, el, say, settle, fixture } = await boot();
+    const req = await say('sobe o surdo no PA');
+    ws.receive({ type: 'assistant_reply', requestId: req['requestId'], reply: { kind: 'proposals', source: 'local', proposals: [CARD] } });
+    await settle();
+    expect(el.querySelector('.proposal')).not.toBeNull();
+    const session = TestBed.inject(SessionService);
+    session.token.set('outro');
+    fixture.detectChanges();
+    await settle();
+    expect(el.querySelector('.proposal')).toBeNull();
+  });
 });

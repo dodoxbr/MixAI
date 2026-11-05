@@ -194,7 +194,7 @@ describe('interface E3 (LAB, navegador real)', () => {
     await expect.poll(() => stripValue(page, 0).textContent()).toContain('−6.0 dB');
   });
 
-  it('servidor reiniciado: a tela volta ao PIN avisando que a sessão terminou', async () => {
+  it('servidor reiniciado: a tela volta ao PIN avisando que o servidor reiniciou', async () => {
     const l1 = await startLab();
     const page = await open(l1, OPERATOR_PIN);
     const port = l1.server.port;
@@ -203,7 +203,7 @@ describe('interface E3 (LAB, navegador real)', () => {
     expect(Date.now() - t0).toBeLessThan(5000); // desliga na hora, mesmo com o navegador conectado
     await lab({ dir: l1.dir, port });
     await page.locator('.login-notice').waitFor({ timeout: 10_000 });
-    await expect(page.locator('.login-notice').textContent()).resolves.toContain('sessão terminou');
+    await expect(page.locator('.login-notice').textContent()).resolves.toContain('servidor do MixAI foi reiniciado');
   });
 
   it('responsivo: Yoga mostra os 11 canais sem rolar; celular sem rolagem horizontal da página e alvos ≥ 48 px', async () => {

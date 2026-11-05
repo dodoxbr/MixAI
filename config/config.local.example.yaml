@@ -1,0 +1,26 @@
+# Configuração LOCAL desta máquina (exemplo).
+#
+# Copie para config/config.local.yaml (esse arquivo fica FORA do Git) e deixe só o que
+# for diferente do config/config.yaml. Só os campos escritos aqui mudam; o resto continua
+# vindo do config/config.yaml, então um "git pull" nunca dá conflito.
+#
+# Precedência (o de baixo vence): config.yaml < config.local.yaml < variáveis de ambiente
+# (MIXAI_MODE, MIXAI_IP, MIXAI_PORT, MIXAI_LAN_HOST...) < argumentos (--lab, --real...).
+#
+# NUNCA coloque segredos aqui: PINs são gravados por "npm run pin" em config/secrets.yaml
+# e a chave da API vai em config/secrets.yaml (anthropicApiKey) ou em ANTHROPIC_API_KEY.
+
+server:
+  # Celulares pelo Wi-Fi do notebook (Yoga). Use o IPv4 do Wi-Fi (ipconfig) — de preferência
+  # reservado no roteador, para não mudar. Nunca o IP da mesa.
+  lan:
+    enabled: true
+    host: "192.168.0.20"
+  # O que os músicos podem fazer pelo celular:
+  #   fones_only        = só os fones (padrão)
+  #   pa_without_master = fones + canais do PA em passos de até 3 dB (acima: aprovação do
+  #                       operador); nunca o master, cenas ou aprovações
+  # musicianAccess: fones_only
+
+# mixer:
+#   ip: 10.10.1.1     # IP da mesa na rede do notebook (mesa real)

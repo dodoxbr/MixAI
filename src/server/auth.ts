@@ -25,6 +25,9 @@ interface Session {
   expiresAt: number;
 }
 
+/** Por que uma sessão deixou de valer: venceu (12 h) ou saiu (Sair). */
+export type RevokeReason = 'expired' | 'logout';
+
 interface Throttle {
   failures: number;
   lockedUntil: number;
@@ -61,7 +64,7 @@ export class Auth {
   private throttles = new Map<string, Throttle>();
   private globalFailures: number[] = [];
   private globalLockedUntil = 0;
-  private revokeListeners = new Set<(principalId: string) => void>();
+  private revokeListeners = new Set<(principalId: string, reason: RevokeReason) => void>();
   private readonly agentHash: Buffer;
   private readonly clock: () => number;
   private readonly ttl: number;
@@ -153,7 +156,7 @@ export class Auth {
       if (s.principal.id !== principal.id) continue;
       if (now <= s.expiresAt) return true;
       this.sessions.delete(key);
-      this.emitRevoke(principal.id);
+      this.emitRevoke(principal.id, 'expired');
       return false;
     }
     return false;
@@ -165,20 +168,20 @@ export class Auth {
     const s = this.sessions.get(key);
     if (!s) return false;
     this.sessions.delete(key);
-    this.emitRevoke(s.principal.id);
+    this.emitRevoke(s.principal.id, 'logout');
     return true;
   }
 
   /** Avisa quando uma sessão é encerrada (logout) ou vence. */
-  onRevoke(listener: (principalId: string) => void): () => void {
+  onRevoke(listener: (principalId: string, reason: RevokeReason) => void): () => void {
     this.revokeListeners.add(listener);
     return () => this.revokeListeners.delete(listener);
   }
 
-  private emitRevoke(id: string) {
+  private emitRevoke(id: string, reason: RevokeReason) {
     for (const l of this.revokeListeners) {
       try {
-        l(id);
+        l(id, reason);
       } catch {
         /* ignora */
       }

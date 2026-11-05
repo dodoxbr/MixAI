@@ -91,8 +91,8 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 283 testes (Vitest) + 15 de integração com navegador (test/e2e)
-web/                  interface Angular (36 testes unitários)
+test/                 311 testes (Vitest) + 27 de integração com navegador (test/e2e)
+web/                  interface Angular (43 testes unitários)
 ```
 
 ---
@@ -138,7 +138,7 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-283 testes do servidor + 36 da interface + 15 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+311 testes do servidor + 43 da interface + 27 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
@@ -150,6 +150,10 @@ a pilha de desfazer (até 50 ações).
   MCP sem servidor, reinício invalida sessões, um só controlador, rede do Yoga, segredos;
   correções da revisão: escrita nunca repetida após reinício (INDETERMINATE), desfazer crítico com
   aprovação, WebSocket revogado no logout/vencimento, trava de dono entre instalações e processos);
+- **Ajustes do Yoga (`docs/lab/09-AJUSTES-YOGA.md`):** chat do operador sempre visível (aprovações,
+  histórico, tela estreita), motivos de sessão encerrada, política do músico `fones_only` (padrão) /
+  `pa_without_master` (PA em passos de até 3 dB, nunca master), `config/config.local.yaml` fora do
+  Git, `npm run pin` sem terminal interativo;
 - **E0:** reconexão segura (supervisor com gerações e descarte de instância), fila única,
   desfazer causal por revisão, pendências vinculadas ao estado, operações compostas parciais,
   estados distintos, isolamento mock × real, parser e nomes restritos;

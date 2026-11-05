@@ -17,6 +17,8 @@ interface LogEntry {
   action: string;
   ok: boolean;
   message: string;
+  /** "by" = perfil + sessão de quem fez (o PIN do músico é compartilhado: não é uma pessoa). */
+  details?: { by?: string };
 }
 
 const UNKNOWN: StateValue = { status: 'unknown' };
@@ -87,7 +89,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
         }
       }
       @if (live.pending().length || showHistory() || assistant.open()) {
-        <aside class="side">
+        <aside class="side" [class.has-assistant]="assistant.open()">
           <mx-pending-cards
             [cards]="live.pending()"
             [canDecide]="true"
@@ -103,7 +105,12 @@ const UNKNOWN: StateValue = { status: 'unknown' };
               <h2>Histórico</h2>
               <ol>
                 @for (e of history(); track $index) {
-                  <li [class.is-error]="!e.ok"><time>{{ e.time.slice(11, 19) }}</time> {{ e.message }}</li>
+                  <li [class.is-error]="!e.ok">
+                    <time>{{ e.time.slice(11, 19) }}</time> {{ e.message }}
+                    @if (e.details?.by; as by) {
+                      <small class="history-by">— {{ by }}</small>
+                    }
+                  </li>
                 } @empty {
                   <li>Nada ainda.</li>
                 }

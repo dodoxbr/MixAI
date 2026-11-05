@@ -3,6 +3,7 @@ import type { ChannelMap } from '../core/channels.js';
 import type { Expectation, MixController, Result, UndoPreview } from '../core/controller.js';
 import { parseKey, type ParamKey } from '../core/revisions.js';
 import type { Role } from './auth.js';
+import { musicianHasPA, type AccessPolicy } from './policy.js';
 
 const target = z.union([z.string().min(1).max(60), z.number().int().min(1).max(64)]);
 const db = z.number().min(-100).max(10);
@@ -59,7 +60,15 @@ export function undoApproval(role: Role): ((entries: UndoPreview[]) => string | 
  * Executa no controlador. `confirmationId` só é passado pelo fluxo de aprovação do servidor.
  * `role` = quem PEDIU o comando (fica no desfazer e define a política de desfazer).
  */
-export async function dispatch(c: MixController, cmd: Command, confirmationId?: string, role?: Role, expect?: Expectation): Promise<Result> {
+export async function dispatch(
+  c: MixController,
+  cmd: Command,
+  confirmationId?: string,
+  role?: Role,
+  expect?: Expectation,
+  extra: { actor?: string; maxStepDB?: number; stepRule?: string } = {},
+): Promise<Result> {
+  const { actor, maxStepDB, stepRule } = extra;
   switch (cmd.type) {
     case 'status':
       return c.ensureConnected();
@@ -72,15 +81,15 @@ export async function dispatch(c: MixController, cmd: Command, confirmationId?: 
     case 'list_snapshots':
       return c.listSnapshots();
     case 'set_level':
-      return c.setLevel({ channel: cmd.channel, aux: cmd.aux, db: cmd.db, deltaDB: cmd.deltaDB, confirmationId, origin: role, expect });
+      return c.setLevel({ channel: cmd.channel, aux: cmd.aux, db: cmd.db, deltaDB: cmd.deltaDB, confirmationId, origin: role, actor, maxStepDB, stepRule, expect });
     case 'set_mute':
-      return c.setMute({ channels: cmd.channels, muted: cmd.muted, aux: cmd.aux, confirmationId, origin: role, expect });
+      return c.setMute({ channels: cmd.channels, muted: cmd.muted, aux: cmd.aux, confirmationId, origin: role, actor, expect });
     case 'set_master':
-      return c.setMaster({ db: cmd.db, deltaDB: cmd.deltaDB, confirmationId, origin: role, expect });
+      return c.setMaster({ db: cmd.db, deltaDB: cmd.deltaDB, confirmationId, origin: role, actor, expect });
     case 'undo':
-      return c.undo(cmd.steps ?? 1, { confirmationId, approvalReason: role ? undoApproval(role) : undefined, expect });
+      return c.undo(cmd.steps ?? 1, { confirmationId, approvalReason: role ? undoApproval(role) : undefined, expect, actor });
     case 'load_snapshot':
-      return c.loadSnapshot({ show: cmd.show, snapshot: cmd.snapshot, confirmationId });
+      return c.loadSnapshot({ show: cmd.show, snapshot: cmd.snapshot, confirmationId, actor });
     case 'reset_lab':
       return c.resetLab();
   }
@@ -93,12 +102,20 @@ const MUSICIAN_ALLOWED: ReadonlySet<CommandType> = new Set(['status', 'list_name
 /**
  * Autorização no servidor (o frontend nunca decide). Pode reescrever o comando
  * (ex.: consulta do músico vai para o AUX dele). Devolve o comando autorizado ou a recusa.
+ *
+ * Músico (server.musicianAccess):
+ * - fones_only: só o AUX dos músicos (fones);
+ * - pa_without_master: fones + canais individuais do PA (volume e mute de UM canal por vez).
+ *   O limite de passo do PA (3 dB) é aplicado no controlador (stepLimitFor), inclusive para
+ *   valores absolutos; acima dele vira aprovação do operador.
+ * Sempre negado ao músico: master, cenas/snapshots, desfazer, histórico, reset, aprovações
+ * (estas nem são comando) e qualquer parâmetro físico (não existem no esquema).
  */
 export function authorizeCommand(
   role: Role,
   cmd: Command,
   names: ChannelMap,
-  musicianAux: number,
+  policy: AccessPolicy,
 ): { ok: true; command: Command } | ({ ok: false } & Denial) {
   if (role === 'operator') return { ok: true, command: cmd };
   if (role === 'agent') {
@@ -106,15 +123,26 @@ export function authorizeCommand(
     return { ok: true, command: cmd };
   }
   // músico
-  const fones = names.aux.list().find((a) => a.number === musicianAux)?.name ?? `AUX ${musicianAux}`;
-  const onlyFones = `Músico só pode ajustar o retorno compartilhado dos fones (${fones}). PA e master são do operador.`;
-  if (!MUSICIAN_ALLOWED.has(cmd.type)) return deny(onlyFones);
+  const aux = policy.musicianAux;
+  const pa = musicianHasPA(policy);
+  const fones = names.aux.list().find((a) => a.number === aux)?.name ?? `AUX ${aux}`;
+  const denial = pa
+    ? `Músico ajusta os fones (${fones}) e canais do PA, um de cada vez. Master, cenas e aprovações são do operador.`
+    : `Músico só pode ajustar o retorno compartilhado dos fones (${fones}). PA e master são do operador.`;
+  if (cmd.type === 'set_master') return deny(`O MASTER é só do operador. ${denial}`);
+  if (cmd.type === 'load_snapshot') return deny(`Carregar cenas/snapshots é só do operador. ${denial}`);
+  if (!MUSICIAN_ALLOWED.has(cmd.type)) return deny(denial);
   if (cmd.type === 'mix_state') {
-    if (cmd.aux === undefined) return { ok: true, command: { ...cmd, aux: musicianAux } };
-    return resolvesTo(names, cmd.aux, musicianAux) ? { ok: true, command: cmd } : deny(onlyFones);
+    if (cmd.aux === undefined) return pa ? { ok: true, command: cmd } : { ok: true, command: { ...cmd, aux } };
+    return resolvesTo(names, cmd.aux, aux) ? { ok: true, command: cmd } : deny(denial);
   }
   if (cmd.type === 'set_level' || cmd.type === 'set_mute') {
-    if (cmd.aux === undefined || !resolvesTo(names, cmd.aux, musicianAux)) return deny(onlyFones);
+    if (cmd.aux === undefined) {
+      if (!pa) return deny(denial);
+      if (cmd.type === 'set_mute' && cmd.channels.length !== 1) return deny('No PA, o músico muta ou abre UM canal por vez.');
+      return { ok: true, command: cmd };
+    }
+    if (!resolvesTo(names, cmd.aux, aux)) return deny(denial);
   }
   return { ok: true, command: cmd };
 }
@@ -129,12 +157,17 @@ function resolvesTo(names: ChannelMap, query: string | number, aux: number): boo
 
 const deny = (message: string): { ok: false } & Denial => ({ ok: false, code: 'FORBIDDEN', message });
 
-/** Parâmetros que cada perfil pode ver no estado. */
-export function visibleKey(role: Role, musicianAux: number): (key: ParamKey) => boolean {
+/**
+ * Parâmetros que cada perfil pode ver no estado. Músico: só volume/mute dos canais nos fones e,
+ * em pa_without_master, também no PA. Nunca o master nem EQ/HPF (parâmetros físicos).
+ */
+export function visibleKey(role: Role, policy: AccessPolicy): (key: ParamKey) => boolean {
   if (role !== 'musician') return () => true;
+  const pa = musicianHasPA(policy);
   return (key) => {
     const p = parseKey(key);
-    return p.kind === 'channel' && p.aux === musicianAux;
+    if (p.kind !== 'channel') return false;
+    return p.aux === policy.musicianAux || (pa && p.aux === undefined);
   };
 }
 

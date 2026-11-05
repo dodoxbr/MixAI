@@ -67,6 +67,14 @@ const ConfigSchema = z.object({
         .prefault({}),
       /** AUX que os músicos podem ajustar (o retorno compartilhado dos fones). */
       musicianAux: z.number().int().min(1).default(1),
+      /**
+       * O que o perfil músico pode fazer:
+       * - fones_only (padrão): só os fones;
+       * - pa_without_master: fones + canais do PA (passos pequenos, mute de um canal), nunca o master.
+       */
+      musicianAccess: z.enum(['fones_only', 'pa_without_master']).default('fones_only'),
+      /** Maior mudança de um canal do PA que o músico faz sem aprovação (dB, até 3). */
+      musicianPaStepDB: z.number().positive().max(3).default(3),
       /** Validade de uma sessão aberta com PIN (horas). */
       sessionHours: z.number().positive().max(48).default(12),
     })
@@ -143,6 +151,42 @@ function readYaml(path: string): unknown {
   }
 }
 
+/** Campos que NUNCA podem ir no config.local.yaml (segredos ficam em secrets.yaml ou no ambiente). */
+const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+/**
+ * Mescla a configuração local sobre a do repositório: objetos são mesclados campo a campo;
+ * valores simples e listas SUBSTITUEM. Só o que está declarado no arquivo local muda.
+ */
+export function mergeConfig(base: unknown, local: unknown): unknown {
+  if (!isPlainObject(local)) return base;
+  const out: Record<string, unknown> = isPlainObject(base) ? { ...base } : {};
+  for (const [k, v] of Object.entries(local)) {
+    out[k] = isPlainObject(v) && isPlainObject(out[k]) ? mergeConfig(out[k], v) : v;
+  }
+  return out;
+}
+
+/** Recusa segredos no config.local.yaml (o arquivo não é tratado como secreto). */
+function assertNoSecrets(value: unknown, file: string, path: string[] = []): void {
+  if (!isPlainObject(value)) return;
+  for (const [k, v] of Object.entries(value)) {
+    if (SECRET_KEYS.test(k)) {
+      throw new Error(
+        `${file}: o campo "${[...path, k].join('.')}" é um segredo e não pode ficar aqui. PINs: "npm run pin"; chave da API: config/secrets.yaml ou ANTHROPIC_API_KEY.`,
+      );
+    }
+    assertNoSecrets(v, file, [...path, k]);
+  }
+}
+
+/** Nome do arquivo de configuração local (fora do Git), na mesma pasta do config.yaml. */
+export const LOCAL_CONFIG_FILE = 'config.local.yaml';
+
 /** Segredos locais (config/secrets.yaml, fora do Git): só HASHES de PIN, nunca o PIN. */
 const SecretsSchema = z.object({
   operatorPinHash: z.string().optional(),
@@ -169,15 +213,34 @@ export interface LoadedConfig {
   dataDir?: string;
   /** Hashes de PIN (config/secrets.yaml ou variáveis de ambiente). */
   secrets?: Secrets;
+  /** Caminho do config.local.yaml, se existir e tiver sido aplicado. */
+  localConfigFile?: string;
 }
 
-/** Carrega config.yaml e channels.yaml, aplicando as variáveis de ambiente e as flags --lab / --mock / --real. */
+/**
+ * Carrega config.yaml (+ config.local.yaml) e channels.yaml, aplicando as variáveis de ambiente
+ * e as flags --lab / --mock / --real.
+ *
+ * Precedência (o de baixo vence): config.yaml < config.local.yaml < variáveis de ambiente <
+ * argumentos de inicialização. O config.local.yaml é da máquina (fora do Git): IP do Wi-Fi,
+ * porta, política dos músicos... nunca segredos.
+ */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv): LoadedConfig {
   const configDir = env.MIXAI_CONFIG_DIR ? resolve(env.MIXAI_CONFIG_DIR) : join(PROJECT_ROOT, 'config');
-  const config = parseConfig(readYaml(join(configDir, 'config.yaml')));
+  const localPath = join(configDir, LOCAL_CONFIG_FILE);
+  const local = readYaml(localPath);
+  if (local !== null && local !== undefined && !isPlainObject(local)) throw new Error(`${localPath}: esperado um mapa YAML (campo: valor).`);
+  assertNoSecrets(local, localPath);
+  let config: AppConfig;
+  try {
+    config = parseConfig(mergeConfig(readYaml(join(configDir, 'config.yaml')), local));
+  } catch (err) {
+    const where = existsSync(localPath) ? ` (confira também ${localPath})` : '';
+    throw new Error(`Configuração inválida${where}: ${(err as Error).message}`);
+  }
   const channels = parseChannels(readYaml(join(configDir, 'channels.yaml')));
 
-  // Precedência: config.yaml < MIXAI_MODE < --lab < --mock < --real
+  // Precedência: config.yaml < config.local.yaml < MIXAI_MODE < --lab < --mock < --real
   if (env.MIXAI_MODE === 'mock' || env.MIXAI_MODE === 'lab' || env.MIXAI_MODE === 'real') config.mixer.mode = env.MIXAI_MODE;
   if (argv.includes('--lab')) config.mixer.mode = 'lab';
   if (argv.includes('--mock')) config.mixer.mode = 'mock';
@@ -196,5 +259,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
   if (logDir && !isAbsolute(logDir)) logDir = join(PROJECT_ROOT, logDir);
   let labFile = env.MIXAI_LAB_FILE || config.lab.stateFile;
   if (!isAbsolute(labFile)) labFile = join(PROJECT_ROOT, labFile);
-  return { config, channels, configDir, logDir, labFile, dataDir, secrets };
+  return { config, channels, configDir, logDir, labFile, dataDir, secrets, localConfigFile: existsSync(localPath) ? localPath : undefined };
 }

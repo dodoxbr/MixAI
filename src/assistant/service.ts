@@ -5,6 +5,7 @@ import type { ActionLog } from '../core/log.js';
 import { paramKey } from '../core/revisions.js';
 import { auxBus, MASTER } from '../mixer/types.js';
 import type { Principal } from '../server/auth.js';
+import { musicianHasPA } from '../server/policy.js';
 import type { ServerCore } from '../server/core.js';
 import type { ClarifyOption, ParseOutcome } from './intent.js';
 import { parseRequest, type StepSizes } from './nl-parser.js';
@@ -53,14 +54,13 @@ export class AssistantService {
     private opts: {
       steps: StepSizes;
       ttlMs: number;
-      musicianAux: number;
       channels: NamedEntry[];
       ai?: ClaudeClient;
       log: ActionLog;
       clock?: () => number;
     },
   ) {
-    this.builder = new ProposalBuilder(core.controller, opts.musicianAux, opts.ttlMs, opts.clock);
+    this.builder = new ProposalBuilder(core.controller, core.policy, opts.ttlMs, opts.clock);
   }
 
   aiAvailable(): boolean {
@@ -78,7 +78,7 @@ export class AssistantService {
     if (text.length > MAX_TEXT) return error('INVALID', `Pedido longo demais (máximo ${MAX_TEXT} caracteres).`);
     this.prune();
 
-    const local = parseRequest(text, { names: this.core.controller.names, role: p.role, steps: this.opts.steps });
+    const local = parseRequest(text, { names: this.core.controller.names, role: p.role, steps: this.opts.steps, musicianPA: musicianHasPA(this.core.policy) });
     if (local.kind !== 'unknown') return this.render(p, local, 'local');
 
     const ai = this.opts.ai;
@@ -208,10 +208,16 @@ export class AssistantService {
     return { kind: 'proposals', source, proposals: cards, text: notes.length ? notes.join(' ') : undefined, ai };
   }
 
-  /** Contexto mínimo para a IA: canais, destinos permitidos e valores atuais. */
+  /**
+   * Contexto mínimo para a IA: canais, destinos PERMITIDOS a este perfil e só os valores que
+   * ele pode ver (músico nunca recebe o master; no fones_only, nem o PA).
+   */
   private context(p: Principal): AiContext {
     const c = this.core.controller;
-    const aux = this.opts.musicianAux;
+    const policy = this.core.policy;
+    const aux = policy.musicianAux;
+    const musician = p.role === 'musician';
+    const showPA = !musician || musicianHasPA(policy);
     const keys = this.opts.channels.flatMap((ch) => [
       paramKey.level(ch.number, MASTER),
       paramKey.mute(ch.number, MASTER),
@@ -226,12 +232,17 @@ export class AssistantService {
     };
     const lines = this.opts.channels.map((ch) => {
       const fones = `Fones ${val(paramKey.level(ch.number, auxBus(aux)))} ${val(paramKey.mute(ch.number, auxBus(aux)))}`;
-      return p.role === 'musician'
-        ? `${ch.number} ${ch.name}: ${fones}`
-        : `${ch.number} ${ch.name}: PA ${val(paramKey.level(ch.number, MASTER))} ${val(paramKey.mute(ch.number, MASTER))} | ${fones}`;
+      return showPA ? `${ch.number} ${ch.name}: PA ${val(paramKey.level(ch.number, MASTER))} ${val(paramKey.mute(ch.number, MASTER))} | ${fones}` : `${ch.number} ${ch.name}: ${fones}`;
     });
-    if (p.role === 'operator') lines.push(`Master: ${val(paramKey.master())}`);
-    return { role: p.role === 'musician' ? 'musician' : 'operator', channels: this.opts.channels, state: lines.join('\n'), steps: this.opts.steps };
+    if (!musician) lines.push(`Master: ${val(paramKey.master())}`);
+    return {
+      role: musician ? 'musician' : 'operator',
+      musicianPA: musician && musicianHasPA(policy),
+      musicianPaStepDB: policy.musicianPaStepDB,
+      channels: this.opts.channels,
+      state: lines.join('\n'),
+      steps: this.opts.steps,
+    };
   }
 
   /** Histórico curto por pessoa (só o necessário para "e o violão também?"). */

@@ -143,11 +143,33 @@ describe('aplicação', () => {
     vi.useRealTimers();
   });
 
-  it('sessão vencida (4401): volta para o PIN com aviso', async () => {
+  it('sessão vencida (4401 com motivo): volta para o PIN explicando que venceu', async () => {
     const { el, ws, fixture } = await boot('operator');
+    ws!.receive({ type: 'error', code: 'UNAUTHORIZED', reason: 'expired', message: 'Sessão vencida.' });
     ws!.close(4401);
+    await Promise.resolve();
     fixture.detectChanges();
     expect(el.querySelector('mx-login')).not.toBeNull();
-    expect(el.querySelector('.login-notice')!.textContent).toContain('sessão terminou');
+    expect(el.querySelector('.login-notice')!.textContent).toContain('venceu');
+  });
+
+  it('servidor reiniciado (sessão desconhecida, outra instância): volta para o PIN dizendo que reiniciou', async () => {
+    const { el, ws, fixture } = await boot('operator');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ serverId: 'srv-novo', mode: 'lab' }), { status: 200 })));
+    ws!.receive({ type: 'error', code: 'UNAUTHORIZED', reason: 'unknown_session', message: 'Sessão inválida.' });
+    ws!.close(4401);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(el.querySelector('.login-notice')!.textContent).toContain('reiniciado');
+  });
+
+  it('sessão encerrada por Sair em outra tela: aviso próprio', async () => {
+    const { el, ws, fixture } = await boot('operator');
+    ws!.receive({ type: 'error', code: 'UNAUTHORIZED', reason: 'logout', message: 'Sessão encerrada.' });
+    ws!.close(4401);
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(el.querySelector('.login-notice')!.textContent).toContain('encerrada');
   });
 });
