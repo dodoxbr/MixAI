@@ -48,3 +48,31 @@ describe('nomes de retornos', () => {
     expect(() => map.auxBus('aux 7')).toThrow(/não existe/);
   });
 });
+
+describe('nomes restritos ao channels.yaml (allowUnmapped: false)', () => {
+  const strict = new ChannelMap(fixtureChannels(), { inputs: 12, aux: 6 }, { allowUnmapped: false });
+
+  it('recusa canal e AUX não configurados, mesmo pelo número', () => {
+    expect(() => strict.channel('canal 12')).toThrow(/não está configurado/);
+    expect(() => strict.auxBus('aux 6')).toThrow(/não está configurado/);
+    try {
+      strict.auxBus('aux 6');
+    } catch (e) {
+      expect((e as NameResolutionError).code).toBe('NOT_CONFIGURED');
+    }
+  });
+
+  it('aceita os configurados, pelo nome ou pelo número', () => {
+    expect(strict.channel('canal 1').name).toBe('Voz 1');
+    expect(strict.channel('cavaco').number).toBe(4);
+    expect(strict.auxBus('aux 2').name).toBe('Retorno Cavaco');
+  });
+
+  it('número fora da mesa continua INVALID', () => {
+    try {
+      strict.channel('canal 13');
+    } catch (e) {
+      expect((e as NameResolutionError).code).toBe('INVALID');
+    }
+  });
+});
