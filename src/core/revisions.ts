@@ -23,8 +23,9 @@ export type ParamValue = number | boolean;
 /**
  * Quem gerou a revisão. `uncertain` = escrita do MixAI cujo resultado não pode ser confirmado
  * (queda de conexão perto do envio, ou erro inesperado durante o envio).
+ * `reset` = o laboratório voltou ao estado inicial.
  */
-export type Actor = 'mixai' | 'external' | 'resync' | 'snapshot' | 'uncertain';
+export type Actor = 'mixai' | 'external' | 'resync' | 'snapshot' | 'uncertain' | 'reset';
 
 export const paramKey = {
   level(channel: number, bus: Bus): ParamKey {

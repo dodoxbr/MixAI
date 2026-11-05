@@ -5,6 +5,7 @@ import {
   type LinkState,
   type MixerAdapter,
   type MixerCapabilities,
+  type ParamBatchOrigin,
   type ParamChangeOrigin,
   type ReadResult,
   type ShowList,
@@ -31,6 +32,7 @@ export abstract class SimulatedMixer implements MixerAdapter {
   private changeListeners = new Set<ChangeListener>();
   private verificationListeners = new Set<(r: VerificationReport[]) => void>();
   private linkListeners = new Set<(s: LinkState) => void>();
+  private batchListeners = new Set<(changes: Array<[ParamKey, ParamValue]>, origin: ParamBatchOrigin) => void>();
 
   constructor(
     protected caps: MixerCapabilities = UI16_CAPS,
@@ -85,6 +87,10 @@ export abstract class SimulatedMixer implements MixerAdapter {
     this.linkListeners.add(listener);
     return () => this.linkListeners.delete(listener);
   }
+  onParamBatch(listener: (changes: Array<[ParamKey, ParamValue]>, origin: ParamBatchOrigin) => void) {
+    this.batchListeners.add(listener);
+    return () => this.batchListeners.delete(listener);
+  }
 
   channelName(_channel: number): string | undefined {
     return undefined;
@@ -120,6 +126,11 @@ export abstract class SimulatedMixer implements MixerAdapter {
 
   protected emitChange(key: ParamKey, value: ParamValue, origin: ParamChangeOrigin) {
     for (const l of this.changeListeners) l(key, value, origin);
+  }
+
+  protected emitBatch(changes: Array<[ParamKey, ParamValue]>, origin: ParamBatchOrigin) {
+    if (!changes.length) return;
+    for (const l of this.batchListeners) l(changes, origin);
   }
 
   protected emitVerification(reports: VerificationReport[]) {

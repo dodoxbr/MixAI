@@ -47,6 +47,9 @@ export interface VerificationReport {
 
 export type ParamChangeOrigin = 'external' | 'resync';
 
+/** Origem de uma mudança EM LOTE vinda do próprio adaptador (hoje: reset do laboratório). */
+export type ParamBatchOrigin = 'reset';
+
 /** Escrita recusada porque a ligação não está em READY. Nada foi enviado. */
 export class LinkUnavailableError extends Error {
   constructor(readonly link: LinkState) {
@@ -77,6 +80,12 @@ export interface MixerAdapter {
   onVerification(listener: (reports: VerificationReport[]) => void): () => void;
   /** Mudanças no estado da ligação (READY, LOST, ...). */
   onLinkChange(listener: (state: LinkState) => void): () => void;
+  /**
+   * Várias mudanças de uma vez, feitas pelo próprio adaptador (ex.: reset do laboratório).
+   * Chegam num único aviso para o controlador gerar UM evento com todas as revisões.
+   * A mesa real não usa (opcional).
+   */
+  onParamBatch?(listener: (changes: Array<[ParamKey, ParamValue]>, origin: ParamBatchOrigin) => void): () => void;
 
   /** Nome escrito no canal da própria mesa, se conhecido. */
   channelName(channel: number): string | undefined;

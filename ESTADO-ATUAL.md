@@ -83,7 +83,7 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 158 testes (Vitest)
+test/                 170 testes (Vitest)
 ```
 
 ---
@@ -129,13 +129,13 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-158 testes passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+170 testes passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
 - **E1:** laboratório persistente (gravação atômica, backup, recuperação), registro central de
   parâmetros (inclui EQ/HPF/bypass só no laboratório), estado observável com eventos e
-  sincronização, isolamento laboratório × mesa real, estrutura de cenas;
+  sincronização, transmissão JSON (-∞ como "-inf"), reset integrado às revisões, isolamento laboratório × mesa real, estrutura de cenas;
 - **E0:** reconexão segura (supervisor com gerações e descarte de instância), fila única,
   desfazer causal por revisão, pendências vinculadas ao estado, operações compostas parciais,
   estados distintos, isolamento mock × real, parser e nomes restritos;

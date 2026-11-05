@@ -65,11 +65,27 @@ export class LabMixer extends SimulatedMixer {
     }
   }
 
-  /** Volta tudo ao estado inicial do laboratório (e grava). */
-  resetToDefaults() {
-    this.values = this.store.defaults();
+  /**
+   * Volta tudo ao estado inicial do laboratório (e grava).
+   *
+   * Use `MixController.resetLab()`: ele serializa o reset na fila de comandos e devolve um
+   * resultado. Mesmo chamado direto, o reset avisa o controlador num ÚNICO lote
+   * (onParamBatch, origem `reset`), que gera as revisões, invalida o desfazer e as
+   * confirmações pendentes e emite um só evento: nenhum cliente fica com valores antigos.
+   *
+   * @returns os parâmetros que mudaram.
+   */
+  resetToDefaults(): ParamKey[] {
+    const defaults = this.store.defaults();
+    const changes: Array<[ParamKey, ParamValue]> = [];
+    for (const [key, value] of defaults) {
+      if (this.values.get(key) !== value) changes.push([key, value]);
+    }
+    this.values = defaults;
     this.current = {};
     this.markDirty();
+    this.emitBatch(changes, 'reset');
+    return changes.map(([k]) => k);
   }
 
   protected override afterWrite(_key: ParamKey, _value: ParamValue) {

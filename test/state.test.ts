@@ -4,7 +4,7 @@ import {
   applyStateEvent,
   decodeValue,
   encodeValue,
-  snapshotToJSON,
+  snapshotToWire,
   type MixerStateSnapshot,
   type StateEvent,
 } from '../src/core/state.js';
@@ -36,7 +36,7 @@ describe('estado observável (StateHub)', () => {
     expect(s.params[VOZ1]!.value).toEqual({ status: 'known', value: -10 });
     expect(s.params['ch.2.main.level']!.value).toEqual({ status: 'known', value: -Infinity });
     expect(s.params['ch.3.main.level']!.value).toEqual({ status: 'unknown' });
-    const json = snapshotToJSON(s) as { params: Record<string, { value: { value?: unknown } }> };
+    const json = snapshotToWire(s) as unknown as { params: Record<string, { value: { value?: unknown } }> };
     expect(json.params['ch.2.main.level']!.value.value).toBe('-inf');
 
     mixer.simulateDrop();

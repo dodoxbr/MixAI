@@ -111,6 +111,7 @@ const ACTOR_TEXT: Record<Actor, string> = {
   resync: 'na reconexão (a mesa mostrou outro valor ou não confirmou)',
   snapshot: 'por um snapshot',
   uncertain: 'e o resultado ficou incerto (queda de conexão ou erro durante o envio); por segurança não desfaço',
+  reset: 'pelo reset do laboratório',
 };
 
 /**
@@ -144,6 +145,7 @@ export class MixController {
     this.state = new StateHub(mixer, this.tracker, this.registry);
     mixer.onParamChange((key, value, origin) => this.observe(key, value, origin === 'external' ? 'external' : 'resync'));
     mixer.onVerification((reports) => this.onVerification(reports));
+    mixer.onParamBatch?.((changes, origin) => this.onBatch(changes, origin));
   }
 
   // ---------- leitura ----------
@@ -427,6 +429,28 @@ export class MixController {
     });
   }
 
+  /**
+   * Volta o LABORATÓRIO ao estado inicial, pela fila de comandos. Não existe na mesa real nem
+   * no simulador de testes, e ainda não é exposto como tool (fica para a interface da E3).
+   */
+  async resetLab(): Promise<Result> {
+    return this.queue.run(async () => {
+      const lab = this.mixer as { mode: string; resetToDefaults?: () => ParamKey[] };
+      if (this.mixer.mode !== 'lab' || typeof lab.resetToDefaults !== 'function') {
+        return { ok: false, code: 'INVALID', message: 'O reset só existe no modo laboratório.' };
+      }
+      const gate = this.writeGate();
+      if (gate) return gate;
+      const changed = lab.resetToDefaults();
+      return {
+        ok: true,
+        code: 'OK',
+        message: `Laboratório voltou ao estado inicial: ${changed.length} parâmetro(s) alterado(s). Desfazer zerado.`,
+        data: { changed: changed.length },
+      };
+    });
+  }
+
   async listSnapshots(): Promise<Result> {
     const gate = this.readGate();
     if (gate) return gate;
@@ -606,6 +630,20 @@ export class MixController {
   private observe(key: ParamKey, value: ParamValue, actor: Actor) {
     if (!sameValue(this.lastKnown.get(key), value)) this.tracker.bump(key, actor);
     this.lastKnown.set(key, value);
+    this.state.flush();
+  }
+
+  /**
+   * Lote vindo do próprio adaptador (reset do laboratório): uma revisão por parâmetro alterado,
+   * desfazer e confirmações pendentes invalidados, e UM único evento para os clientes.
+   */
+  private onBatch(changes: Array<[ParamKey, ParamValue]>, origin: 'reset') {
+    for (const [key, value] of changes) {
+      this.tracker.bump(key, origin);
+      this.lastKnown.set(key, value);
+    }
+    this.undoStack.clear();
+    this.log.add({ action: 'lab_reset', ok: true, message: `Laboratório voltou ao estado inicial (${changes.length} parâmetro(s) alterado(s)). Desfazer zerado.` });
     this.state.flush();
   }
 

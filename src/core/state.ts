@@ -1,5 +1,5 @@
 import type { ParamRegistry } from './params.js';
-import type { Actor, ParamKey, ParamValue, RevisionTracker } from './revisions.js';
+import { asParamKey, type Actor, type ParamKey, type ParamValue, type RevisionTracker } from './revisions.js';
 import type { LinkState, MixerAdapter } from '../mixer/types.js';
 
 /**
@@ -166,15 +166,83 @@ export function applyStateEvent(mirror: MixerStateSnapshot, ev: StateEvent): App
   return 'applied';
 }
 
-/** Snapshot em JSON puro (para rede/arquivo): -∞ → "-inf". */
-export function snapshotToJSON(s: MixerStateSnapshot): unknown {
+// ---------------------------------------------------------------------------
+// Formato de transmissão (JSON) para snapshots E eventos.
+// JSON.stringify(-Infinity) vira null, o que confundiria -∞ com "desconhecido".
+// Por isso nada sai do servidor sem passar por aqui: -∞ vira "-inf", e cada valor leva
+// o seu status explícito ("known" | "unknown" | "unavailable").
+// ---------------------------------------------------------------------------
+
+export type WireStateValue =
+  | { status: 'known'; value: number | boolean | '-inf' }
+  | { status: 'unknown' }
+  | { status: 'unavailable' };
+
+export interface WireParamState {
+  value: WireStateValue;
+  revision: number;
+  actor?: Actor;
+}
+
+export interface WireSnapshot extends Omit<MixerStateSnapshot, 'params'> {
+  params: Record<string, WireParamState>;
+}
+
+export type WireEvent =
+  | { type: 'params'; fromRevision: number; revision: number; changes: Array<{ key: string; value: WireStateValue; revision: number; actor?: Actor }> }
+  | { type: 'link'; revision: number; link: LinkState; available: boolean };
+
+export function encodeStateValue(v: StateValue): WireStateValue {
+  return v.status === 'known' ? { status: 'known', value: encodeValue(v.value) } : { status: v.status };
+}
+
+/** Lança erro se o valor recebido não for válido (nunca devolve um valor "adivinhado"). */
+export function decodeStateValue(w: unknown): StateValue {
+  const o = w as { status?: unknown; value?: unknown } | null;
+  if (o && o.status === 'unknown') return { status: 'unknown' };
+  if (o && o.status === 'unavailable') return { status: 'unavailable' };
+  if (o && o.status === 'known') {
+    const value = decodeValue(o.value);
+    if (value === undefined) throw new Error(`valor conhecido inválido na transmissão: ${JSON.stringify(o.value)}`);
+    return { status: 'known', value };
+  }
+  throw new Error(`status inválido na transmissão: ${JSON.stringify(w)}`);
+}
+
+export function snapshotToWire(s: MixerStateSnapshot): WireSnapshot {
   return {
     ...s,
-    params: Object.fromEntries(
-      Object.entries(s.params).map(([k, p]) => [
-        k,
-        { ...p, value: p.value.status === 'known' ? { status: 'known', value: encodeValue(p.value.value) } : p.value },
-      ]),
-    ),
+    params: Object.fromEntries(Object.entries(s.params).map(([k, p]) => [k, { ...p, value: encodeStateValue(p.value) }])),
   };
 }
+
+export function snapshotFromWire(w: WireSnapshot): MixerStateSnapshot {
+  return {
+    ...w,
+    params: Object.fromEntries(Object.entries(w.params).map(([k, p]) => [k, { ...p, value: decodeStateValue(p.value) }])),
+  };
+}
+
+export function eventToWire(ev: StateEvent): WireEvent {
+  if (ev.type === 'link') return { ...ev };
+  return { ...ev, changes: ev.changes.map((c) => ({ ...c, value: encodeStateValue(c.value) })) };
+}
+
+export function eventFromWire(w: WireEvent): StateEvent {
+  if (w.type === 'link') return { ...w };
+  if (w.type !== 'params') throw new Error(`tipo de evento inválido: ${JSON.stringify((w as { type?: unknown }).type)}`);
+  return {
+    ...w,
+    changes: w.changes.map((c) => {
+      const key = asParamKey(c.key);
+      if (!key) throw new Error(`chave inválida na transmissão: ${c.key}`);
+      return { ...c, key, value: decodeStateValue(c.value) };
+    }),
+  };
+}
+
+/** Texto JSON pronto para enviar (snapshot ou evento). */
+export const serializeSnapshot = (s: MixerStateSnapshot) => JSON.stringify(snapshotToWire(s));
+export const serializeEvent = (ev: StateEvent) => JSON.stringify(eventToWire(ev));
+export const parseSnapshot = (text: string) => snapshotFromWire(JSON.parse(text) as WireSnapshot);
+export const parseEvent = (text: string) => eventFromWire(JSON.parse(text) as WireEvent);

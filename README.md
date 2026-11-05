@@ -17,7 +17,7 @@ mesa simulada e console de teste.
 cd mixai
 npm install
 npm run build
-npm test        # 158 testes, todos devem passar
+npm test        # 170 testes, todos devem passar
 ```
 
 ## Testar sem a mesa: laboratório ou simulador

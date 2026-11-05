@@ -42,7 +42,7 @@ Correções da E0 preservadas: a fila, as travas, o desfazer causal, as confirma
 
 ## Testes
 
-158 testes (119 na linha de base), 3 execuções seguidas sem falhas intermitentes. Novos arquivos:
+170 testes (119 na linha de base; 158 na primeira entrega da E1 + 12 dos ajustes da revisão), 3 execuções seguidas sem falhas intermitentes. Novos arquivos:
 
 - `params.test.ts`: tamanho do registro, limites conferidos contra as **constantes exportadas pela biblioteca instalada**, capacidades, validação, chaves;
 - `state.test.ts`: codificação, snapshot com os 4 estados, revisões e atores, eventos encadeados, **sincronização** (cópia local + eventos = snapshot novo, numa sequência com escrita, mute em lote, mudança externa, desfazer, confirmação, ressincronização, verificação, erro inesperado e snapshot), buraco/evento repetido, ligação indisponível, assinante com erro;
@@ -50,3 +50,31 @@ Correções da E0 preservadas: a fila, as travas, o desfazer causal, as confirma
 - `isolation.test.ts` (ampliado): `mock` e `lab` sem carregar a mesa real nem a biblioteca, sem WebSocket e sem TCP, inclusive com IP configurado; precedência `--lab`/`MIXAI_LAB_FILE`;
 - `scene.test.ts`: cena válida/inválida, diff, e as 11 tools MCP no laboratório com persistência;
 - `supervisor.test.ts` (acréscimo): estado observável com a mesa real (socket falso) durante queda e volta.
+- `wire-reset.test.ts` (ajustes da revisão): round-trip JSON de valores, snapshots e eventos; cliente remoto que só recebe texto JSON reproduz o servidor; valores corrompidos recusados; reset com evento único, revisões, desfazer e confirmações invalidados, persistência e fila; ressincronização em lote.
+
+## Ajustes da revisão (antes do merge)
+
+### Ajuste 1: transmissão consistente de snapshots e eventos
+
+`JSON.stringify(-Infinity)` vira `null`, o que confundiria "fader todo para baixo" com "valor desconhecido". Agora existe **um único formato de transmissão** (`src/core/state.ts`) para snapshots **e** eventos:
+
+| Valor interno | Em JSON |
+| --- | --- |
+| conhecido, -∞ | `{"status":"known","value":"-inf"}` |
+| conhecido, número/booleano | `{"status":"known","value":-10}` |
+| desconhecido (mesa acessível, valor não chegou) | `{"status":"unknown"}` |
+| indisponível (sem leitura da mesa) | `{"status":"unavailable"}` |
+
+- Funções: `serializeSnapshot`/`parseSnapshot`, `serializeEvent`/`parseEvent` (e as versões `*ToWire`/`*FromWire` para quem já trabalha com objetos). O antigo `snapshotToJSON` foi substituído.
+- Na leitura nada é adivinhado: status desconhecido, valor conhecido ausente/`null` ou chave de parâmetro inválida **lançam erro**; o cliente deve pedir um snapshot novo.
+- Teste de ponta a ponta: um cliente que só recebe texto JSON (snapshot + eventos, inclusive -∞, unknown, mudança externa, mute em lote, queda e volta) termina igual a um snapshot novo do servidor.
+
+### Ajuste 2: reset do laboratório integrado às revisões e eventos
+
+- `LabMixer.resetToDefaults()` agora avisa o controlador por um evento de **lote** do adaptador (`onParamBatch`, origem `reset`; opcional no contrato, só as mesas simuladas emitem).
+- O controlador, ao receber o lote: incrementa a revisão de cada parâmetro alterado com o ator novo `reset`, atualiza o último valor conhecido, **zera o desfazer** (nada do que estava na pilha faz sentido depois do reset), registra `lab_reset` no histórico e emite **um único evento** `params` com todas as mudanças.
+- Confirmações pendentes ficam obsoletas pelas revisões (`CONFIRMATION_STALE`), como em qualquer outra mudança.
+- Caminho recomendado: `MixController.resetLab()`, que passa pela fila única de comandos (não intercala com outra escrita), respeita as travas de escrita e devolve o número de parâmetros alterados. Fora do modo `lab` devolve `INVALID`. **Não há tool MCP de reset** (as 11 tools continuam as mesmas).
+- Mesmo chamado direto no `LabMixer`, o reset mantém revisões, eventos e clientes sincronizados (teste dedicado). Reset sem nenhuma diferença não gera evento.
+
+E0 intacta: nenhum arquivo da conexão real (`ConnectionSupervisor`, adaptador real) mudou nestes ajustes; os testes da E0 passam sem alteração.
