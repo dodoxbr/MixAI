@@ -14,8 +14,9 @@ import { LabMixer } from '../src/mixer/lab.js';
 import { MASTER } from '../src/mixer/types.js';
 
 const reg = new ParamRegistry({ model: 'ui16', inputs: 12, aux: 6 });
+const UI16 = { model: 'ui16', inputs: 12, aux: 6 };
 
-describe('estrutura de cenas (sem interface nesta etapa)', () => {
+describe('estrutura de cenas (formato v2)', () => {
   it('cena gerada a partir do laboratório é válida e preserva -∞ e EQ', () => {
     const values = new Map<ParamKey, ParamValue>([
       [paramKey.level(1, MASTER), -8],
@@ -23,26 +24,27 @@ describe('estrutura de cenas (sem interface nesta etapa)', () => {
       [paramKey.eqBand(4, 2, 'gain'), -3],
       [paramKey.hpf(1, 'freq'), 120],
     ]);
-    const scene = buildScene({ id: 'ensaio', name: 'Ensaio', deviceProfile: 'ui16', values, createdAt: new Date(0) });
-    expect(scene).toMatchObject({ schemaVersion: 1, kind: 'mixai-scene', validationStatus: 'UNVERIFIED' });
-    expect(scene.values['ch.2.main.level']).toBe('-inf');
-    const v = validateScene(JSON.parse(JSON.stringify(scene)), reg, 'ui16');
+    const scene = buildScene({ id: 'ensaio-1', name: 'Ensaio', device: UI16, values, registry: reg, now: new Date(0) });
+    expect(scene).toMatchObject({ schemaVersion: 2, kind: 'mixai-scene', validationStatus: 'UNVERIFIED' });
+    expect(scene.params['ch.2.main.level']).toEqual({ value: '-inf', status: 'unknown' });
+    expect(scene.params['ch.4.eq.b2.gain']).toEqual({ value: -3, status: 'incompatible' }); // EQ: só laboratório
+    const v = validateScene(JSON.parse(JSON.stringify(scene)), reg, UI16);
     expect(v.ok).toBe(true);
     expect(v.values.get(paramKey.level(2, MASTER))).toBe(-Infinity);
   });
 
   it('validação recusa tipo, faixa e perfil errados, e lista chaves desconhecidas', () => {
-    const bad = {
-      ...buildScene({ id: 'x', name: 'X', deviceProfile: 'ui24', values: new Map() }),
-      values: { 'ch.1.eq.b1.gain': 50, 'ch.1.main.mute': 1, 'ch.40.main.level': 0 },
-    };
-    const v = validateScene(bad, reg, 'ui16');
+    const base = buildScene({ id: 'cena-x1', name: 'X', device: UI16, values: new Map(), registry: reg });
+    const bad = { ...base, params: { 'ch.1.eq.b1.gain': { value: 50 }, 'ch.1.main.mute': { value: 1 }, 'ch.40.main.level': { value: 0 } } };
+    const v = validateScene(bad, reg, UI16);
     expect(v.ok).toBe(false);
-    expect(v.errors.join(' ')).toMatch(/perfil de mesa diferente/);
     expect(v.errors.join(' ')).toMatch(/máximo/);
-    expect(v.errors.join(' ')).toMatch(/verdadeiro\/falso/);
     expect(v.unknownKeys).toEqual(['ch.40.main.level']);
-    expect(validateScene({ kind: 'outra-coisa' }, reg, 'ui16').ok).toBe(false);
+    const typed = validateScene({ ...base, params: { 'ch.1.main.mute': { value: 1 } } }, reg, UI16);
+    expect(typed.errors.join(' ')).toMatch(/verdadeiro\/falso/);
+    const other = validateScene({ ...base, deviceProfile: { model: 'ui24', inputs: 24, aux: 10 } }, reg, UI16);
+    expect(other).toMatchObject({ ok: false, code: 'DEVICE_MISMATCH' });
+    expect(validateScene({ kind: 'outra-coisa' }, reg, UI16).ok).toBe(false);
   });
 
   it('diff genérico: igual, diferente, desconhecido no estado atual e se é aplicável na mesa', () => {

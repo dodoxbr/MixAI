@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { deviceProfileOf } from '../core/scene.js';
+import { SceneStore } from '../core/scene-store.js';
+import { ScenesService } from './scenes.js';
 import type { FastifyInstance } from 'fastify';
 import { createApp, type App } from '../core/app.js';
 import { PROJECT_ROOT, serverPort, type LoadedConfig } from '../core/config.js';
@@ -73,6 +76,13 @@ export async function startServer(
       new UsageTracker(join(dataDir, 'ai-usage.json'), opts.clock),
       opts.aiFetch ?? fetch,
       opts.clock,
+    );
+    // Cenas do MixAI (E5): data/scenes/ (fora do Git). Comparar/carregar só no LABORATÓRIO.
+    core.scenes = new ScenesService(
+      app.controller,
+      new SceneStore(join(dataDir, 'scenes'), app.controller.registry, deviceProfileOf(app.mixer.capabilities()), opts.clock),
+      app.log,
+      { mode, policy: () => core.policy, clock: opts.clock },
     );
     core.assistant = new AssistantService(core, {
       steps: config.assistant,

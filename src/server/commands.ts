@@ -28,13 +28,28 @@ export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('undo'), steps: z.number().int().min(1).max(10).optional() }).strict(),
   z.object({ type: z.literal('load_snapshot'), show: z.string().min(1).max(100), snapshot: z.string().min(1).max(100) }).strict(),
   z.object({ type: z.literal('reset_lab') }).strict(),
+  // ---------- cenas do MixAI (E5): só operador; carregar só no LAB e com aprovação ----------
+  z.object({ type: z.literal('scene_list') }).strict(),
+  z.object({ type: z.literal('scene_get'), id: z.string().min(1).max(64) }).strict(),
+  z.object({ type: z.literal('scene_save'), name: z.string().max(200), description: z.string().max(2000).optional() }).strict(),
+  z.object({ type: z.literal('scene_duplicate'), id: z.string().min(1).max(64), name: z.string().max(200).optional() }).strict(),
+  z.object({ type: z.literal('scene_update'), id: z.string().min(1).max(64), name: z.string().max(200).optional(), description: z.string().max(2000).optional() }).strict(),
+  z.object({ type: z.literal('scene_delete'), id: z.string().min(1).max(64), expectedName: z.string().max(200) }).strict(),
+  z.object({ type: z.literal('scene_export'), id: z.string().min(1).max(64) }).strict(),
+  z.object({ type: z.literal('scene_import'), json: z.string().min(1).max(256 * 1024) }).strict(),
+  z.object({ type: z.literal('scene_compare'), id: z.string().min(1).max(64) }).strict(),
+  z.object({ type: z.literal('scene_load'), id: z.string().min(1).max(64), previewId: z.string().min(1).max(64) }).strict(),
 ]);
 
 export type Command = z.infer<typeof CommandSchema>;
 export type CommandType = Command['type'];
 
 /** Comandos que mudam a mesa (os outros são consultas). */
-export const WRITE_COMMANDS: ReadonlySet<CommandType> = new Set(['set_level', 'set_mute', 'set_master', 'undo', 'load_snapshot', 'reset_lab']);
+export const WRITE_COMMANDS: ReadonlySet<CommandType> = new Set(['set_level', 'set_mute', 'set_master', 'undo', 'load_snapshot', 'reset_lab', 'scene_load']);
+
+export function isSceneCommand(cmd: Command): cmd is Extract<Command, { type: `scene_${string}` }> {
+  return cmd.type.startsWith('scene_');
+}
 
 /**
  * Quando um desfazer pedido por este perfil precisa de aprovação humana.
@@ -92,6 +107,9 @@ export async function dispatch(
       return c.loadSnapshot({ show: cmd.show, snapshot: cmd.snapshot, confirmationId, actor });
     case 'reset_lab':
       return c.resetLab();
+    default:
+      // Cenas são executadas pelo ScenesService (ServerCore), nunca por aqui.
+      return { ok: false, code: 'INVALID', message: `Comando ${cmd.type} não é executado diretamente no controlador.` };
   }
 }
 
@@ -118,6 +136,15 @@ export function authorizeCommand(
   policy: AccessPolicy,
 ): { ok: true; command: Command } | ({ ok: false } & Denial) {
   if (role === 'operator') return { ok: true, command: cmd };
+  if (isSceneCommand(cmd)) {
+    // Cenas do MixAI: criar, administrar, importar/exportar, carregar e aprovar são só do
+    // operador, pela tela. Nem o músico (em nenhum modo) nem o assistente (MCP) nesta etapa.
+    return deny(
+      role === 'agent'
+        ? 'O assistente não gerencia, carrega nem aprova cenas do MixAI nesta etapa. Só o operador, pela tela.'
+        : 'Cenas do MixAI são só do operador. O músico não cria nem carrega cenas.',
+    );
+  }
   if (role === 'agent') {
     if (cmd.type === 'reset_lab') return deny('O reset do laboratório é só para o operador, pela tela.');
     return { ok: true, command: cmd };
@@ -184,6 +211,8 @@ export function describeCommand(cmd: Command): string {
       return `carregar snapshot ${cmd.show} / ${cmd.snapshot}`;
     case 'undo':
       return `desfazer ${cmd.steps ?? 1} ação(ões)`;
+    case 'scene_load':
+      return 'carregar cena do MixAI (laboratório)';
     default:
       return cmd.type;
   }

@@ -48,8 +48,8 @@ function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) 
 export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string } = {}): Promise<FastifyInstance> {
   // forceCloseConnections: ao desligar, encerra TODAS as conexões na hora. Sem isso, conexões
   // abertas pelo navegador sem requisição (pré-conexão) seguram o desligamento por até 60 s.
-  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 64 * 1024, forceCloseConnections: true });
-  await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
+  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 512 * 1024, forceCloseConnections: true });
+  await app.register(websocket, { options: { maxPayload: 512 * 1024 } });
 
   // Cabeçalhos de segurança da interface: só carrega código e conexões do próprio servidor.
   app.addHook('onSend', async (req, reply, payload) => {

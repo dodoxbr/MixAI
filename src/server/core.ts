@@ -5,7 +5,8 @@ import type { ParamKey } from '../core/revisions.js';
 import { eventToWire, snapshotToWire, type StateEvent, type WireEvent, type WireSnapshot } from '../core/state.js';
 import type { MixerAdapter } from '../mixer/types.js';
 import type { Auth, Principal, Role } from './auth.js';
-import { authorizeCommand, CommandSchema, describeCommand, dispatch, visibleKey, type Command } from './commands.js';
+import { authorizeCommand, CommandSchema, describeCommand, dispatch, isSceneCommand, visibleKey, type Command } from './commands.js';
+import type { ScenesService } from './scenes.js';
 import { actorOf, DEFAULT_POLICY, MUSICIAN_PA_STEP_MAX_DB, musicianHasPA, stepLimitFor, type AccessPolicy, type MusicianAccess } from './policy.js';
 import type { MeterSource } from './meters.js';
 import type { AssistantService } from '../assistant/service.js';
@@ -79,6 +80,8 @@ export class ServerCore {
   private sweepTimer: NodeJS.Timeout | undefined;
   /** Assistente de texto (E4). Montado em start.ts. */
   assistant: AssistantService | undefined;
+  /** Cenas do MixAI (E5). */
+  scenes: ScenesService | undefined;
   private faders = new Map<string, { running: boolean; next?: { channel: string | number; aux: string | number | undefined; db: number; final: boolean } }>();
 
   constructor(
@@ -138,6 +141,7 @@ export class ServerCore {
       auth: this.auth.configured(),
       meters: { available: !!this.options.meters && this.mode !== 'real', simulated: true },
       assistant: { available: !!this.assistant, ai: !!this.assistant?.aiAvailable() },
+      scenes: { available: !!this.scenes, canLoad: !!this.scenes?.labOnly },
     };
   }
 
@@ -222,6 +226,15 @@ export class ServerCore {
     }
     const command = auth.command;
     let result: Result;
+    if (isSceneCommand(command)) {
+      try {
+        result = this.scenes ? await this.scenes.handle(p, command) : fail('NOT_CONFIGURED', 'Cenas indisponíveis neste servidor.');
+      } catch (err) {
+        result = fail('INVALID', `Erro inesperado nas cenas: ${(err as Error).message}`);
+      }
+      if (result.needsConfirmation && result.pendingId) result = this.registerPending(p, command, result);
+      return reply(result);
+    }
     try {
       // Músico no PA: limite de passo próprio (3 dB); acima vira aprovação do operador.
       const limit = stepLimitFor(p.role, command, this.policy);
@@ -407,10 +420,16 @@ export class ServerCore {
       let result: Result;
       try {
         const requester = rec.card.requestedBy;
-        result = await dispatch(this.controller, rec.card.command, pendingId, requester.role, undefined, {
-          actor: `${requester.label}; aprovado por ${actorOf(p)}`,
-          ...stepLimitFor(requester.role, rec.card.command, this.policy),
-        });
+        const cmd = rec.card.command;
+        result =
+          cmd.type === 'scene_load'
+            ? this.scenes
+              ? await this.scenes.applyApproved(requester, cmd, pendingId, p)
+              : fail('NOT_CONFIGURED', 'Cenas indisponíveis neste servidor.')
+            : await dispatch(this.controller, cmd, pendingId, requester.role, undefined, {
+                actor: `${requester.label}; aprovado por ${actorOf(p)}`,
+                ...stepLimitFor(requester.role, cmd, this.policy),
+              });
       } catch (err) {
         result = fail('INVALID', `Erro inesperado: ${(err as Error).message}`);
       }
