@@ -89,7 +89,7 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 201 testes (Vitest)
+test/                 226 testes (Vitest)
 ```
 
 ---
@@ -135,7 +135,7 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-201 testes passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+226 testes passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
@@ -144,7 +144,9 @@ a pilha de desfazer (até 50 ações).
   sincronização, transmissão JSON (-∞ como "-inf"), reset integrado às revisões, isolamento laboratório × mesa real, estrutura de cenas;
 - **E2:** servidor único (dois clientes WS, reconexão, ressincronização por evento perdido,
   `requestId` sem duplicar, perfis operador/músico, aprovação só por operador, LAB ≠ REAL,
-  MCP sem servidor, reinício invalida sessões, um só controlador, rede do Yoga, segredos);
+  MCP sem servidor, reinício invalida sessões, um só controlador, rede do Yoga, segredos;
+  correções da revisão: escrita nunca repetida após reinício (INDETERMINATE), desfazer crítico com
+  aprovação, WebSocket revogado no logout/vencimento, trava de dono entre instalações e processos);
 - **E0:** reconexão segura (supervisor com gerações e descarte de instância), fila única,
   desfazer causal por revisão, pendências vinculadas ao estado, operações compostas parciais,
   estados distintos, isolamento mock × real, parser e nomes restritos;

@@ -19,7 +19,7 @@ da mesa; o MCP do Claude Desktop é só um cliente dele. Detalhes: `docs/lab/06-
 cd mixai
 npm install
 npm run build
-npm test        # 201 testes, todos devem passar
+npm test        # 226 testes, todos devem passar
 ```
 
 ## Testar sem a mesa: laboratório ou simulador
@@ -71,8 +71,11 @@ npm run serve:real        # mesa física em http://127.0.0.1:8791
 ```
 
 - Só um processo controla a mesa: um segundo servidor (ou o console) é recusado.
-- Por padrão só o próprio notebook acessa. Para os celulares no Wi-Fi, configure `server.lan`
-  com o IP do **Wi-Fi do notebook** (não o da mesa) — passo a passo em `docs/lab/06-E2-SERVIDOR.md`.
+- Por padrão só o próprio notebook acessa (`127.0.0.1`). Para os celulares no Wi-Fi, configure
+  `server.lan` com o IP do **Wi-Fi do notebook** (não o da mesa) — passo a passo em `docs/lab/06-E2-SERVIDOR.md`.
+- **Atenção:** pela rede o acesso é HTTP/WebSocket **sem criptografia**: PIN e tokens podem ser
+  capturados por quem estiver no mesmo Wi-Fi. No modo REAL pela rede, use só uma rede privada
+  dedicada e confiável (roteador da banda, senha forte, sem convidados), nunca o Wi-Fi do evento.
 - Operações críticas (master, snapshot, passo grande, mute em massa) viram **pendências** que só
   um operador autenticado aprova. O assistente propõe, mas não confirma.
 
@@ -214,6 +217,8 @@ test/                 testes (Vitest)
 - **"Não consegui conectar"**: confira o IP da mesa e se o notebook está na mesma rede.
 - **Claude Desktop não mostra as tools**: confira o caminho absoluto do `dist/index.js`
   e se rodou `npm run build`.
+- **"INDETERMINATE"**: a resposta se perdeu (queda ou reinício do servidor) e a alteração **pode** ter
+  sido aplicada. Não repita: confira o estado da mix primeiro.
 - **"SERVER_UNAVAILABLE"**: o servidor não está rodando. Abra um terminal e rode
   `npm run serve:lab` (ou `serve:real`).
 - **"Outro processo do MixAI ... já controla isto"**: já existe um servidor (ou console) aberto.
