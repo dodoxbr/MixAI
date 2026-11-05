@@ -8,7 +8,12 @@ const info = (msg: string) => process.stderr.write(`[mixai] ${msg}\n`);
 
 async function main() {
   const { loaded, mixer, controller } = await createApp();
-  info(`modo: ${loaded.config.mixer.mode === 'mock' ? 'mesa simulada' : `mesa real em ${loaded.config.mixer.ip}`}`);
+  const mode = loaded.config.mixer.mode;
+  info(
+    `modo: ${mode === 'mock' ? 'mesa simulada (memória)' : mode === 'lab' ? `LABORATÓRIO (${loaded.labFile})` : `mesa real em ${loaded.config.mixer.ip}`}`,
+  );
+  // Laboratório: grava o que estiver pendente em qualquer saída (inclusive quando o Claude Desktop fecha).
+  process.on('exit', () => mixer.flush?.());
 
   // Conecta já na partida, mas não derruba o servidor se a mesa estiver fora:
   // a tool mixer_status tenta de novo.
@@ -20,7 +25,8 @@ async function main() {
   }
 
   const server = createMcpServer(controller);
-  await server.connect(new StdioServerTransport());
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
 
   const shutdown = async () => {
     await mixer.disconnect().catch(() => undefined);
@@ -28,6 +34,7 @@ async function main() {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+  transport.onclose = () => void shutdown();
 }
 
 main().catch((err) => {

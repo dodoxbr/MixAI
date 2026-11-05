@@ -2,8 +2,10 @@
 # Variáveis de ambiente têm prioridade: MIXAI_MODE, MIXAI_IP, MIXAI_CONFIG_DIR, MIXAI_LOG_DIR
 
 mixer:
-  # mock = mesa simulada (para testar sem a mesa) | real = Soundcraft Ui16
-  mode: mock
+  # lab  = laboratório persistente (sem conexão com a mesa; guarda o estado em data/)
+  # mock = simulador em memória (testes; perde tudo ao fechar)
+  # real = Soundcraft Ui16 física
+  mode: lab
   # IP da mesa. 10.10.1.1 é o padrão do Wi-Fi da própria Ui; confira na tela de rede da mesa.
   ip: 10.10.1.1
   model: ui16
@@ -18,6 +20,12 @@ mixer:
     indeterminateWindowMs: 3000
     reconnectBaseMs: 1000
     reconnectMaxDelayMs: 10000
+
+lab:
+  # Arquivo de estado do laboratório (JSON versionado, com backup .bak). Relativo à pasta do projeto.
+  stateFile: data/lab-state.json
+  # Espera antes de gravar (ms), juntando mudanças seguidas
+  saveDebounceMs: 300
 
 naming:
   # false = só canais e AUX cadastrados no channels.yaml podem ser alterados
