@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, inject, viewChild } from '@angular/core';
 import { AssistantUiService, type CardState } from '../core/assistant.service';
 
 const STATE_TEXT: Record<CardState, string> = {
@@ -26,7 +26,7 @@ const STATE_TEXT: Record<CardState, string> = {
       <span class="spacer"></span>
       <button type="button" class="btn btn-ghost btn-small" (click)="assistant.open.set(false)" aria-label="Recolher o assistente">Recolher</button>
     </header>
-    <ol class="assist-log" aria-live="polite">
+    <ol class="assist-log" aria-live="polite" #log>
       @for (item of assistant.items(); track item.id) {
         <li class="assist-item" [class.from-user]="item.from === 'user'" [class.tone-error]="item.tone === 'error'" [class.tone-ok]="item.tone === 'ok'">
           @if (item.text) {
@@ -39,7 +39,12 @@ const STATE_TEXT: Record<CardState, string> = {
           }
           @for (card of item.cards ?? []; track card.id) {
             <article class="proposal" [class.is-done]="assistant.state(card.id) !== 'open' && assistant.state(card.id) !== 'applying'">
-              <h3>{{ card.title }}</h3>
+              <h3>
+                @if (card.source === 'ai') {
+                  <span class="assist-src" title="Sugestão do Claude (IA)">IA</span>
+                }
+                {{ card.title }}
+              </h3>
               <dl>
                 <dt>Canal</dt>
                 <dd>{{ card.channel }}</dd>
@@ -96,6 +101,18 @@ const STATE_TEXT: Record<CardState, string> = {
 })
 export class AssistantPanelComponent {
   readonly assistant = inject(AssistantUiService);
+  private readonly log = viewChild<ElementRef<HTMLElement>>('log');
+
+  constructor() {
+    // Sempre mostra a mensagem mais recente (cartão, pergunta ou "Melhorou?").
+    afterRenderEffect(() => {
+      this.assistant.items();
+      this.assistant.cardState();
+      this.assistant.thinking();
+      const el = this.log()?.nativeElement;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+  }
   stateText(s: CardState): string {
     return STATE_TEXT[s];
   }

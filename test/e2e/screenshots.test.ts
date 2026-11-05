@@ -52,3 +52,54 @@ it('capturas da interface (Yoga e celular)', async () => {
     await l.server.close();
   }
 }, 90_000);
+
+/** Capturas da E4 (assistente). A IA é SIMULADA: nenhuma chamada real à API. */
+it('capturas do assistente (Yoga e celular)', async () => {
+  const out = join(PROJECT_ROOT, 'docs', 'lab', 'img');
+  const fake = (input: unknown) =>
+    new Response(JSON.stringify({ model: 'claude-haiku-5-5', content: [{ type: 'tool_use', id: 't', name: 'propor_ajuste', input }], usage: { input_tokens: 850, output_tokens: 70 } }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  const l = await startLab({
+    channels: bandChannels(),
+    safety: { maxStepDB: 40 },
+    ai: { enabled: true },
+    aiKey: 'sk-ant-simulada',
+    aiFetch: async () => fake({ acao: 'propor', propostas: [{ tipo: 'volume', canal: 1, destino: 'PA', delta_db: 2, motivo: 'O cavaco está sumindo atrás do surdo; subo 2 dB no PA.' }] }),
+  });
+  const browser = await launch();
+  try {
+    const op = await l.login(OPERATOR_PIN);
+    for (const [ch, db] of [[1, -6], [2, -9], [3, -4], [4, -5], [5, -7], [6, -3], [7, -12], [8, -14], [9, -8], [10, -16]] as const) {
+      await l.command(op, { type: 'set_level', channel: ch, db });
+    }
+    const yoga = await enter(browser, l.base, OPERATOR_PIN, YOGA);
+    const ask = async (page: import('playwright').Page, text: string) => {
+      await page.getByPlaceholder('O que você deseja ajustar?').fill(text);
+      await page.getByRole('button', { name: 'Enviar' }).click();
+    };
+    await ask(yoga.page, 'diminui 3 dB da voz Fernando no PA');
+    await yoga.page.locator('.proposal').waitFor();
+    await yoga.page.locator('.proposal').last().getByRole('button', { name: 'Aplicar' }).click();
+    await yoga.page.locator('.assist-feedback').waitFor();
+    await ask(yoga.page, 'não tô ouvindo o cavaco, tá embolado');
+    await yoga.page.locator('.proposal .assist-src').waitFor();
+    await yoga.page.waitForTimeout(500);
+    await yoga.page.screenshot({ path: join(out, 'e4-yoga-assistente.png') });
+
+    const mus = await enter(browser, l.base, MUSICIAN_PIN, PHONE);
+    await ask(mus.page, 'aumenta um pouco o surdo');
+    await mus.page.locator('.proposal').waitFor();
+    await mus.page.waitForTimeout(300);
+    await mus.page.screenshot({ path: join(out, 'e4-celular-assistente.png') });
+
+    await ask(mus.page, 'sobe a voz');
+    await mus.page.locator('.assist-options').waitFor();
+    await mus.page.waitForTimeout(300);
+    await mus.page.screenshot({ path: join(out, 'e4-celular-pergunta.png') });
+  } finally {
+    await browser.close();
+    await l.server.close();
+  }
+}, 90_000);
