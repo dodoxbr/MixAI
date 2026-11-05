@@ -22,6 +22,23 @@ const ConfigSchema = z.object({
       ip: z.string().default('10.10.1.1'),
       model: z.enum(['ui12', 'ui16', 'ui24']).default('ui16'),
       connectTimeoutMs: z.number().int().positive().default(8000),
+      connection: z
+        .object({
+          /** Tempo máximo esperando o estado completo da mesa depois de conectar. */
+          syncTimeoutMs: z.number().int().positive().default(5000),
+          /** Escritas enviadas até este tempo antes de uma queda são verificadas na ressincronização. */
+          indeterminateWindowMs: z.number().int().positive().default(3000),
+          reconnectBaseMs: z.number().int().positive().default(1000),
+          reconnectMaxDelayMs: z.number().int().positive().default(10000),
+        })
+        .strict()
+        .prefault({}),
+    })
+    .prefault({}),
+  naming: z
+    .object({
+      /** false = só canais/AUX do channels.yaml podem ser alterados. */
+      allowUnmapped: z.boolean().default(false),
     })
     .prefault({}),
   safety: SafetySchema.prefault({}),

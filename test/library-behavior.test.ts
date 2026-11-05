@@ -48,6 +48,22 @@ describe('biblioteca sozinha (caracterização do risco)', () => {
     expect(fake.sockets.length).toBe(1);
   }, 8000);
 
+  it('disconnect() chamado DENTRO do evento de queda NÃO cancela a reconexão automática', async () => {
+    const fake = createFakeUi();
+    const ui = new SoundcraftUI({ targetIP: 'teste', webSocketCtor: fake.Ctor as never });
+    ui.status$.subscribe((ev) => {
+      if (ev.type === 'CLOSE') void ui.disconnect().catch(() => undefined); // mesmo tick da queda
+    });
+    await ui.connect();
+    fake.sockets[0]!.drop();
+    await sleep(2600);
+    // A biblioteca ainda abriu um socket novo: por isso o supervisor chama disconnect de novo
+    // na próxima volta do loop e vigia a instância descartada.
+    expect(fake.sockets.length).toBe(2);
+    void ui.disconnect().catch(() => undefined);
+    await sleep(10);
+  }, 8000);
+
   it('o estado local reflete a própria escrita na hora (não serve de prova de execução)', async () => {
     const fake = createFakeUi();
     const ui = new SoundcraftUI({ targetIP: 'teste', webSocketCtor: fake.Ctor as never });

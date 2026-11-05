@@ -7,7 +7,7 @@ import { createMcpServer } from './mcp/server.js';
 const info = (msg: string) => process.stderr.write(`[mixai] ${msg}\n`);
 
 async function main() {
-  const { loaded, mixer, controller } = createApp();
+  const { loaded, mixer, controller } = await createApp();
   info(`modo: ${loaded.config.mixer.mode === 'mock' ? 'mesa simulada' : `mesa real em ${loaded.config.mixer.ip}`}`);
 
   // Conecta já na partida, mas não derruba o servidor se a mesa estiver fora:
