@@ -172,6 +172,8 @@ Ordem sugerida: **F0** (sábado), **E0 → E1 → E2 → E3** (primeira entrega 
 
 ## E5 — Cenas do Lab
 
+> **Implementada** no branch `e5-lab-scenes`: detalhes, decisões e testes em `10-E5-CENAS.md`.
+
 - **Objetivo:** salvar e comparar configurações no formato do MixAI.
 - **Funcionalidades:** salvar, duplicar, renomear e carregar cena (LAB); exportar e importar JSON com validação zod e `schemaVersion`; diff cena × estado atual.
 - **Preparado para o futuro (D9):** a cena guarda `ParamId → valor` com o perfil do equipamento (`deviceProfile`) e o status de validação. Assim, quando autorizado, será possível listar itens compatíveis, incompatíveis e desconhecidos e aplicar **um item por vez** com autorização humana. A aplicação em si **não** faz parte desta etapa.
