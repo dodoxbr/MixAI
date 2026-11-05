@@ -17,7 +17,7 @@ import type { PendingCard } from '../core/protocol';
           <span class="card-time">{{ secondsLeft(card) }} s</span>
         </header>
         <h3>{{ card.title }}</h3>
-        <p class="card-summary">{{ card.summary }}</p>
+        <p class="card-summary">{{ pretty(card.summary) }}</p>
         <p class="card-who">Pedido por: {{ card.requestedBy.label }}</p>
         @if (canDecide()) {
           <div class="card-actions">
@@ -47,6 +47,11 @@ export class PendingCardsComponent {
 
   secondsLeft(card: PendingCard): number {
     return Math.max(0, Math.round((Date.parse(card.expiresAt) - this.now()) / 1000));
+  }
+
+  /** "de -6 dB" → "de −6 dB" (sinal de menos tipográfico, como no resto da tela). */
+  pretty(text: string): string {
+    return text.replace(/(^|[\s(])-(\d|∞)/g, '$1−$2');
   }
 
   kind(card: PendingCard): string {

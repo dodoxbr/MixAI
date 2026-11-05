@@ -279,6 +279,8 @@ mx-root {
   border: 1px solid var(--line);
   scroll-snap-align: start;
   min-height: 0;
+  /* o texto do canal acompanha a largura do canal (cartões abertos estreitam a fileira) */
+  container-type: inline-size;
 }
 .mx-strip.is-master {
   flex: 0 0 120px;
@@ -291,10 +293,12 @@ mx-root {
   display: grid;
   place-items: center;
   font-weight: 700;
-  font-size: 1rem;
+  font-size: clamp(0.78rem, 15cqi, 1.05rem);
   line-height: 1.15;
   text-align: center;
-  overflow-wrap: anywhere;
+  /* quebra só entre palavras: o nome da banda nunca é cortado nem hifenizado */
+  overflow-wrap: normal;
+  hyphens: none;
 }
 .is-master .strip-name {
   color: var(--brass-hi);
@@ -314,8 +318,9 @@ mx-root {
 }
 .strip-value {
   text-align: center;
-  font-size: 1.05rem;
+  font-size: clamp(0.8rem, 15cqi, 1.1rem);
   font-weight: 700;
+  white-space: nowrap;
 }
 .strip-value.is-unknown {
   color: var(--muted);
