@@ -23,6 +23,8 @@ export interface TestServerOptions {
   dir?: string;
   port?: number;
   logDir?: string | null;
+  /** Nomes dos canais (padrão: a fixture dos testes). */
+  channels?: ReturnType<typeof fixtureChannels>;
 }
 
 /** Relógio real com deslocamento: dá para "pular" o tempo sem travar a rede. */
@@ -41,7 +43,7 @@ export async function startTestServer(opts: TestServerOptions = {}) {
       logs: { dir: null },
       safety: { maxActionsPerSecond: 100, ...opts.safety },
     }),
-    channels: fixtureChannels(),
+    channels: opts.channels ?? fixtureChannels(),
     configDir: dir,
     logDir: opts.logDir ?? null,
     labFile: join(dir, 'lab-state.json'),

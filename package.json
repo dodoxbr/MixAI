@@ -1,7 +1,7 @@
 {
   "name": "mixai",
-  "version": "0.4.0",
-  "description": "Controle da Soundcraft Ui16 por IA (servidor único + MCP)",
+  "version": "0.5.0",
+  "description": "Controle da Soundcraft Ui16 por IA (servidor \u00fanico + MCP)",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -17,7 +17,11 @@
     "serve:lab": "node dist/serve.js --lab",
     "serve:mock": "node dist/serve.js --mock",
     "serve:real": "node dist/serve.js --real",
-    "pin": "node dist/pin.js"
+    "pin": "node dist/pin.js",
+    "build:web": "npm --prefix web run build",
+    "test:web": "npm --prefix web test",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "screenshots": "vitest run --config vitest.e2e.config.ts test/e2e/screenshots.test.ts"
   },
   "author": "",
   "license": "MIT",
@@ -34,6 +38,7 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",
+    "playwright": "^1.63.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
