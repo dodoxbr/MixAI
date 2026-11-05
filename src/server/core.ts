@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { MixController, Result } from '../core/controller.js';
+import type { Expectation, MixController, Result } from '../core/controller.js';
 import { jsonSafe, type ActionLog } from '../core/log.js';
 import type { ParamKey } from '../core/revisions.js';
 import { eventToWire, snapshotToWire, type StateEvent, type WireEvent, type WireSnapshot } from '../core/state.js';
@@ -7,9 +7,10 @@ import type { MixerAdapter } from '../mixer/types.js';
 import type { Auth, Principal, Role } from './auth.js';
 import { authorizeCommand, CommandSchema, describeCommand, dispatch, visibleKey, type Command } from './commands.js';
 import type { MeterSource } from './meters.js';
+import type { AssistantService } from '../assistant/service.js';
 
 export const PROTOCOL_VERSION = 1;
-export const SERVER_VERSION = '0.5.0';
+export const SERVER_VERSION = '0.6.0';
 
 export type Mode = 'mock' | 'lab' | 'real';
 
@@ -75,6 +76,8 @@ export class ServerCore {
   private requests = new Map<string, { at: number; response: Promise<CommandResponse> }>();
   private noticeListeners = new Set<(n: Notice, audience: { roles: Role[]; principalId?: string }) => void>();
   private sweepTimer: NodeJS.Timeout | undefined;
+  /** Assistente de texto (E4). Montado em start.ts. */
+  assistant: AssistantService | undefined;
   private faders = new Map<string, { running: boolean; next?: { channel: string | number; aux: string | number | undefined; db: number; final: boolean } }>();
 
   constructor(
@@ -115,6 +118,7 @@ export class ServerCore {
       musicianAux: this.options.musicianAux,
       auth: this.auth.configured(),
       meters: { available: !!this.options.meters && this.mode !== 'real', simulated: true },
+      assistant: { available: !!this.assistant, ai: !!this.assistant?.aiAvailable() },
     };
   }
 
@@ -150,14 +154,14 @@ export class ServerCore {
    * Executa um comando com proteção contra repetição: o mesmo requestId do mesmo usuário
    * devolve a MESMA resposta, sem executar de novo (inclusive se chegar enquanto o primeiro roda).
    */
-  async execute(p: Principal, req: CommandRequest): Promise<CommandResponse> {
+  async execute(p: Principal, req: CommandRequest, internal: { expect?: Expectation } = {}): Promise<CommandResponse> {
     const requestId = typeof req.requestId === 'string' ? req.requestId : '';
     if (!REQUEST_ID_RE.test(requestId)) {
       return { requestId, duplicate: false, result: fail('INVALID', 'requestId obrigatório (1 a 64 caracteres: letras, números, . _ : -).') };
     }
     const changed = this.serverChanged(req.serverId);
     if (changed) return { requestId, duplicate: false, result: changed };
-    return this.once(p, requestId, () => this.run(p, requestId, req));
+    return this.once(p, requestId, () => this.run(p, requestId, req, internal.expect));
   }
 
   private async once(p: Principal, requestId: string, fn: () => Promise<CommandResponse>): Promise<CommandResponse> {
@@ -170,7 +174,11 @@ export class ServerCore {
     return response;
   }
 
-  private async run(p: Principal, requestId: string, req: CommandRequest): Promise<CommandResponse> {
+  /**
+   * `expect` (precondição de estado) só chega por parâmetro interno do servidor (assistente),
+   * nunca pelo corpo da requisição do cliente. É conferida dentro da fila do controlador.
+   */
+  private async run(p: Principal, requestId: string, req: CommandRequest, expect?: Expectation): Promise<CommandResponse> {
     const reply = (result: Result): CommandResponse => ({ requestId, duplicate: false, result: jsonSafe(result) as Result });
     if (req.targetMode !== undefined && req.targetMode !== this.mode) {
       const message = `Este servidor está em modo ${this.mode.toUpperCase()} e recusa comandos para o modo ${String(req.targetMode).toUpperCase()}. O modo é fixo na inicialização.`;
@@ -196,7 +204,7 @@ export class ServerCore {
     const command = auth.command;
     let result: Result;
     try {
-      result = await dispatch(this.controller, command, undefined, p.role);
+      result = await dispatch(this.controller, command, undefined, p.role, expect);
     } catch (err) {
       result = fail('INVALID', `Erro inesperado: ${(err as Error).message}`);
     }

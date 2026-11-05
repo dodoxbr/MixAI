@@ -19,7 +19,7 @@ da mesa; o MCP do Claude Desktop é só um cliente dele. Detalhes: `docs/lab/06-
 cd mixai
 npm install
 npm run build
-npm test        # 232 testes, todos devem passar
+npm test        # 283 testes, todos devem passar
 npm ci --prefix web && npm run build:web   # interface (E3)
 ```
 
@@ -89,6 +89,18 @@ Celulares: configure `server.lan` e abra `http://<ip-do-wi-fi-do-notebook>:8790`
 Detalhes, capturas e testes: `docs/lab/07-E3-INTERFACE.md`.
 
 ![Mesa no Yoga](docs/lab/img/e3-yoga-mesa-pa.png)
+
+## Assistente de texto (E4)
+
+Na Mesa e na tela de Fones há um campo **"O que você deseja ajustar?"**. Exemplos: "aumenta um
+pouco o surdo no PA", "sobe o cavaco nos fones", "muta o pandeiro no PA", "desfaz". Tudo vira um
+**cartão de proposta** (canal, destino, agora → fica) e só muda ao tocar em **Aplicar**. Sem
+destino claro, ele pergunta "PA ou FONES?". Funciona sem internet.
+
+Opcional: com uma chave da API da Anthropic no servidor (`config/secrets.yaml` →
+`anthropicApiKey`, ou `ANTHROPIC_API_KEY`) e `ai.enabled: true`, pedidos vagos ("tá embolado")
+vão para o Claude, com teto de gasto diário. Detalhes, modelos e custos:
+`docs/lab/08-E4-ASSISTENTE.md`.
 
 ## Ligar no Claude Desktop
 

@@ -39,6 +39,7 @@ export interface Hello {
   musicianAux: number;
   role?: Role;
   meters: { available: boolean; simulated: boolean };
+  assistant?: { available: boolean; ai: boolean };
 }
 
 export interface Result {
@@ -188,4 +189,40 @@ export function newId(prefix = ''): string {
   const b = new Uint8Array(12);
   crypto.getRandomValues(b);
   return prefix + Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Assistente (E4)
+// ---------------------------------------------------------------------------
+
+export interface ProposalCard {
+  id: string;
+  source: 'local' | 'ai' | 'feedback';
+  title: string;
+  channel: string;
+  destination: 'PA' | 'FONES' | 'MASTER' | 'DESFAZER';
+  current: string;
+  change: string;
+  result: string;
+  reason?: string;
+  needsApproval: boolean;
+  expiresAt: string;
+}
+
+export interface AssistantReply {
+  kind: 'proposals' | 'clarify' | 'answer' | 'error';
+  source: 'local' | 'ai' | 'feedback';
+  text?: string;
+  proposals?: ProposalCard[];
+  question?: string;
+  options?: Array<{ label: string; text: string }>;
+  code?: string;
+  ai?: { model: string; inputTokens: number; outputTokens: number; costUSD: number; ms: number };
+}
+
+export interface ApplyReply {
+  status: 'applied' | 'awaiting_approval' | 'recalculated' | 'expired' | 'not_found' | 'nothing' | 'failed';
+  message: string;
+  proposal?: ProposalCard;
+  askFeedback?: boolean;
 }

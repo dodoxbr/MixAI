@@ -8,6 +8,9 @@ import { StatusBarComponent } from '../ui/status-bar.component';
 import { StripComponent } from '../ui/strip.component';
 import { ToastsComponent } from '../ui/toasts.component';
 import { FonesListComponent } from './fones-list.component';
+import { AssistantInputComponent } from '../assistant/assistant-input.component';
+import { AssistantPanelComponent } from '../assistant/assistant-panel.component';
+import { AssistantUiService } from '../core/assistant.service';
 
 interface LogEntry {
   time: string;
@@ -22,7 +25,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 @Component({
   selector: 'mx-mesa',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent],
+  imports: [StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent],
   host: { class: 'mx-view mx-mesa' },
   template: `
     <mx-status-bar />
@@ -37,6 +40,8 @@ const UNKNOWN: StateValue = { status: 'unknown' };
         <span class="sim-legend">Medidores SIMULADOS (laboratório) — não é o som real</span>
       }
       <span class="spacer"></span>
+      <mx-assistant-input />
+      <button type="button" class="btn" [class.on]="assistant.open()" (click)="assistant.open.set(!assistant.open())" [attr.aria-expanded]="assistant.open()">Assistente</button>
       <button type="button" class="btn" [disabled]="!live.writable() || actions.isBusy('undo')" (click)="undo()">Desfazer</button>
       <button type="button" class="btn" [class.on]="showHistory()" (click)="toggleHistory()">Histórico</button>
     </div>
@@ -81,7 +86,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
           </div>
         }
       }
-      @if (live.pending().length || showHistory()) {
+      @if (live.pending().length || showHistory() || assistant.open()) {
         <aside class="side">
           <mx-pending-cards
             [cards]="live.pending()"
@@ -90,6 +95,9 @@ const UNKNOWN: StateValue = { status: 'unknown' };
             (approve)="actions.decide($event, true)"
             (reject)="actions.decide($event, false)"
           />
+          @if (assistant.open()) {
+            <mx-assistant-panel />
+          }
           @if (showHistory()) {
             <section class="history" aria-label="Histórico">
               <h2>Histórico</h2>
@@ -111,6 +119,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 export class MesaComponent {
   readonly live = inject(LiveService);
   readonly actions = inject(ActionsService);
+  readonly assistant = inject(AssistantUiService);
 
   readonly bus = signal<'pa' | 'fones'>('pa');
   readonly showHistory = signal(false);

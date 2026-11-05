@@ -16,6 +16,7 @@ import { keys } from '../core/protocol';
     <div class="shared-warning big" role="note">
       <strong>{{ auxName() }}</strong>: é um só retorno para todos. <strong>Isto muda o fone de TODOS.</strong>
     </div>
+    <ng-content />
     <ul class="fones-rows">
       @for (row of rows(); track row.number) {
         <li class="fones-row" [class.is-muted]="row.muted">

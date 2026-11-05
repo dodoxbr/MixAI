@@ -24,6 +24,17 @@ function stripPrefixes(text: string, prefixes: string[]): string {
   return words.join('');
 }
 
+/** "Voz do Fernando!" -> ["voz", "do", "fernando"] (sem acento, minúsculas). */
+export function words(text: string): string[] {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9.,+-]+/)
+    .map((w) => w.replace(/^[.,]+|[.,]+$/g, ''))
+    .filter(Boolean);
+}
+
 export interface Resolved {
   number: number;
   name: string;
@@ -56,6 +67,21 @@ class Directory {
         if (k && !this.byKey.has(k)) this.byKey.set(k, e);
       }
     }
+  }
+
+  /**
+   * Nomes e apelidos cadastrados, como frases normalizadas (minúsculas, sem acento, palavras
+   * separadas por um espaço). Usado pelo assistente para achar canais dentro de uma frase.
+   */
+  terms(): Array<{ phrase: string; number: number; name: string }> {
+    const out: Array<{ phrase: string; number: number; name: string }> = [];
+    for (const e of this.entries) {
+      for (const t of [e.name, ...e.aliases]) {
+        const phrase = words(t).join(' ');
+        if (phrase && !out.some((o) => o.phrase === phrase && o.number === e.number)) out.push({ phrase, number: e.number, name: e.name });
+      }
+    }
+    return out;
   }
 
   nameOf(number: number): string {

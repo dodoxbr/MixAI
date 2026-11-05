@@ -42,6 +42,8 @@ export class LiveService {
   private ws: WebSocket | undefined;
   private sync = new StateSync(() => this.raw({ type: 'resync' }));
   private waiting = new Map<string, (r: Result) => void>();
+  /** Respostas do assistente (assistant_reply / proposal_result), pelo requestId. */
+  private waitingRaw = new Map<string, (m: Record<string, unknown> | null) => void>();
   private retry = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private toastSeq = 0;
@@ -70,6 +72,30 @@ export class LiveService {
 
   reject(pendingId: string): Promise<Result> {
     return this.request({ type: 'reject', pendingId });
+  }
+
+  /**
+   * Mensagem do assistente com resposta própria (texto livre, aplicar proposta, "melhorou?").
+   * Resolve null se a conexão cair ou não houver resposta no tempo: a tela nunca fica travada.
+   */
+  assistant(msg: Record<string, unknown> & { type: string }, timeoutMs = 25_000): Promise<Record<string, unknown> | null> {
+    const requestId = newId('a');
+    if (!this.raw({ ...msg, requestId, serverId: this.hello()?.serverId })) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.waitingRaw.delete(requestId);
+        resolve(null);
+      }, timeoutMs);
+      this.waitingRaw.set(requestId, (m) => {
+        clearTimeout(timer);
+        resolve(m);
+      });
+    });
+  }
+
+  /** Cancela uma proposta (sem resposta). */
+  send(msg: Record<string, unknown>): void {
+    this.raw(msg);
   }
 
   /** Arraste de fader: o servidor junta os valores; o estado volta pelos eventos. */
@@ -110,6 +136,8 @@ export class LiveService {
       this.ws = undefined;
       for (const resolve of this.waiting.values()) resolve(lost());
       this.waiting.clear();
+      for (const resolve of this.waitingRaw.values()) resolve(null);
+      this.waitingRaw.clear();
       if (e.code === 4401) {
         this.connection.set('idle');
         this.reset();
@@ -211,6 +239,14 @@ export class LiveService {
         const done = this.waiting.get(id);
         this.waiting.delete(id);
         done?.(m['result'] as Result);
+        return;
+      }
+      case 'assistant_reply':
+      case 'proposal_result': {
+        const id = m['requestId'] as string;
+        const done = this.waitingRaw.get(id);
+        this.waitingRaw.delete(id);
+        done?.(m);
         return;
       }
       case 'fader_result': {

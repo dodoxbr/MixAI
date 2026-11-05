@@ -42,6 +42,8 @@ export type ResultCode =
   | 'SERVER_UNAVAILABLE'
   /** O servidor reiniciou: o pedido foi recusado sem executar. */
   | 'SERVER_CHANGED'
+  /** Precondição de estado falhou (o parâmetro mudou na fila): nada foi alterado. */
+  | 'STATE_CHANGED'
   /** A resposta se perdeu: a operação PODE ter sido aplicada. Confira o estado antes de repetir. */
   | 'INDETERMINATE';
 
@@ -53,6 +55,16 @@ export interface Result {
   pendingId?: string;
   message: string;
   data?: Record<string, unknown>;
+}
+
+/**
+ * Precondição de estado, conferida DENTRO da fila única, no mesmo passo da escrita: se
+ * qualquer revisão (ou a entrada do topo do desfazer) não for a esperada, nada é alterado e o
+ * resultado é STATE_CHANGED. Uso interno do servidor (propostas do assistente); não vem do cliente.
+ */
+export interface Expectation {
+  revisions?: Array<[ParamKey, number]>;
+  undoId?: number;
 }
 
 export interface LevelRequest {
@@ -67,6 +79,7 @@ export interface LevelRequest {
   confirmationId?: string;
   /** Quem pediu (perfil do servidor). Fica gravado no desfazer. */
   origin?: string;
+  expect?: Expectation;
 }
 
 export interface MuteRequest {
@@ -76,6 +89,7 @@ export interface MuteRequest {
   confirm?: boolean;
   confirmationId?: string;
   origin?: string;
+  expect?: Expectation;
 }
 
 /** O que o desfazer vai reverter (para decidir se precisa de aprovação humana). */
@@ -88,6 +102,7 @@ export interface UndoPreview {
 
 export interface UndoOptions {
   confirmationId?: string;
+  expect?: Expectation;
   /**
    * Devolve um motivo quando este desfazer precisa de aprovação humana (ex.: pedido pelo
    * assistente e mexe no master). undefined = pode seguir direto.
@@ -316,6 +331,8 @@ export class MixController {
     return this.queue.run(async () => {
       const gate = this.writeGate();
       if (gate) return gate;
+      const changed = this.checkExpectation(req.expect);
+      if (changed) return changed;
       const cur = this.mixer.read(key);
       if (!cur.known) return this.unknownState(label);
       const current = cur.value as number;
@@ -368,6 +385,8 @@ export class MixController {
     return this.queue.run(async () => {
       const gate = this.writeGate();
       if (gate) return gate;
+      const changed = this.checkExpectation(req.expect);
+      if (changed) return changed;
       const names = resolved.map((r) => r.name).join(', ');
       const changes: Change[] = [];
       for (const r of resolved) {
@@ -401,11 +420,13 @@ export class MixController {
     });
   }
 
-  async setMaster(req: { db?: number; deltaDB?: number; confirm?: boolean; confirmationId?: string; origin?: string }): Promise<Result> {
+  async setMaster(req: { db?: number; deltaDB?: number; confirm?: boolean; confirmationId?: string; origin?: string; expect?: Expectation }): Promise<Result> {
     const key = paramKey.master();
     return this.queue.run(async () => {
       const gate = this.writeGate();
       if (gate) return gate;
+      const changed = this.checkExpectation(req.expect);
+      if (changed) return changed;
       const cur = this.mixer.read(key);
       if (!cur.known) return this.unknownState('o master');
       const current = cur.value as number;
@@ -435,6 +456,8 @@ export class MixController {
     return this.queue.run(async () => {
       const gate = this.writeGate();
       if (gate) return gate;
+      const changed = this.checkExpectation(opts.expect);
+      if (changed) return changed;
       if (!this.undoStack.size()) return { ok: true, code: 'OK', message: 'Não há nada para desfazer.' };
 
       const n = Math.max(1, Math.min(steps, this.undoStack.size()));
@@ -844,6 +867,36 @@ export class MixController {
     const check = this.pending.consume(confirmationId, hash, (k) => this.tracker.revisionOf(k), guard);
     if (!check.ok) return this.refuse('confirmation', check.code, check.message, { confirmationId });
     return undefined;
+  }
+
+  /** Precondição de estado (ver Expectation). Só chamada DENTRO de queue.run. */
+  private checkExpectation(expect: Expectation | undefined): Result | undefined {
+    if (!expect) return undefined;
+    const moved = (expect.revisions ?? []).filter(([k, rev]) => this.tracker.revisionOf(k) !== rev).map(([k]) => k);
+    const undoMoved = expect.undoId !== undefined && this.undoStack.peek(1)[0]?.id !== expect.undoId;
+    if (!moved.length && !undoMoved) return undefined;
+    const message = 'O estado mudou antes de aplicar (outro comando passou na frente). Nada foi alterado; a proposta precisa ser recalculada.';
+    this.log.add({ action: 'state_changed', ok: false, message, details: { keys: moved, undo: undoMoved } });
+    return { ok: false, code: 'STATE_CHANGED', message, data: { keys: moved, undo: undoMoved } };
+  }
+
+  /** O que o próximo desfazer reverteria (para o cartão de proposta do assistente). */
+  peekUndo(): { id: number; description: string; keys: ParamKey[] } | undefined {
+    const e = this.undoStack.peek(1)[0];
+    return e && e.id !== undefined ? { id: e.id, description: e.description, keys: e.items.map((it) => it.key) } : undefined;
+  }
+
+  /** Limites de volume (para o assistente calcular o valor resultante igual ao controlador). */
+  limits() {
+    return {
+      maxChannelLevelDB: this.safety.maxChannelLevelDB,
+      maxAuxSendDB: this.safety.maxAuxSendDB,
+      maxMasterLevelDB: this.safety.maxMasterLevelDB,
+      maxStepDB: this.safety.maxStepDB,
+      relativeFloorDB: this.safety.relativeFloorDB,
+      masterRequiresConfirmation: this.safety.masterRequiresConfirmation,
+      bulkMuteConfirmAbove: this.safety.bulkMuteConfirmAbove,
+    };
   }
 
   // ---------- pendências (usadas pelo servidor da E2) ----------
