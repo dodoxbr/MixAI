@@ -78,6 +78,8 @@ Ordem sugerida: **F0** (sábado), **E0 → E1 → E2 → E3** (primeira entrega 
 
 ## E1 — Estado observável e `LabMixer`
 
+> **Implementada** no branch `e1-lab-state`: detalhes, decisões e riscos em `05-E1-IMPLEMENTACAO.md`.
+
 - **Objetivo:** ter uma única fonte de estado com eventos, persistente no Lab.
 - **Funcionalidades:**
   - **Registro de parâmetros:** `ParamId`, `ParamSpec` (unidade, faixa, capacidade). **Desde já inclui EQ de 4 bandas** (`ch.N.eq.bK.freq|q|gain`), **HPF** (`ch.N.eq.hpf.freq|slope`) e **bypass** (`ch.N.eq.bypass`), com unidades e limites tirados da biblioteca 7.1.0 (freq 20–22050 Hz, Q 0,05–15, ganho ±20 dB, HPF 20–1000 Hz, slope 12/24/36). Esses parâmetros nascem com `capability: 'simulated_only'` e só são usados pela E7.

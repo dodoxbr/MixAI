@@ -1,4 +1,4 @@
-# MixAI — estado atual (05/11/2026, v0.2 / E0)
+# MixAI — estado atual (05/11/2026, v0.3 / E1)
 
 Controle da mesa **Soundcraft Ui16** por IA, para uma banda de samba/pagode amadora que toca em roda.
 O músico pede em português ("mais Fred no fone", "abaixa o surdo") e o Claude ajusta a mesa,
@@ -83,7 +83,7 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 119 testes (Vitest)
+test/                 158 testes (Vitest)
 ```
 
 ---
@@ -129,10 +129,13 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-119 testes passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+158 testes passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
+- **E1:** laboratório persistente (gravação atômica, backup, recuperação), registro central de
+  parâmetros (inclui EQ/HPF/bypass só no laboratório), estado observável com eventos e
+  sincronização, isolamento laboratório × mesa real, estrutura de cenas;
 - **E0:** reconexão segura (supervisor com gerações e descarte de instância), fila única,
   desfazer causal por revisão, pendências vinculadas ao estado, operações compostas parciais,
   estados distintos, isolamento mock × real, parser e nomes restritos;
