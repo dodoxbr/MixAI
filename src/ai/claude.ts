@@ -41,6 +41,8 @@ export interface AiUsage {
   outputTokens: number;
   costUSD: number;
   ms: number;
+  /** true = custo é a estimativa reservada (a API não informou o consumo real). */
+  estimated?: boolean;
 }
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -83,17 +85,20 @@ export class ClaudeClient {
       ...history.slice(-2 * s.historyTurns).map((t) => ({ role: t.role, content: t.content })),
       { role: 'user' as const, content: `<pedido_do_usuario>\n${text}\n</pedido_do_usuario>` },
     ];
-    // Estimativa conservadora (≈ 3 caracteres por token) para não passar do teto diário.
+    // Estimativa conservadora (≈ 3 caracteres por token) do custo MÁXIMO desta chamada.
     const promptChars = system.length + JSON.stringify(TOOL_INPUT_SCHEMA).length + messages.reduce((n, m) => n + m.content.length, 0);
     const maxCost = ((promptChars / 3) * s.priceInputPerMTok + s.maxOutputTokens * s.priceOutputPerMTok) / 1e6;
-    if (!this.usage.canSpend(maxCost, s.dailyBudgetUSD)) {
-      return { ok: false, code: 'AI_BUDGET', message: `O limite diário de gasto com IA (US$ ${s.dailyBudgetUSD.toFixed(2)}) foi atingido. Comandos diretos continuam funcionando.` };
-    }
+    // Reserva ANTES de chamar: reservas em andamento contam para o teto.
+    const reservation = this.usage.reserve(maxCost, s.dailyBudgetUSD);
+    if (!reservation.ok) return { ok: false, code: 'AI_BUDGET', message: reservation.message };
     if (!this.usage.takeSlot(s.maxRequestsPerMinute)) {
+      this.usage.release(reservation.id);
       return { ok: false, code: 'AI_RATE_LIMIT', message: 'Muitos pedidos à IA neste minuto. Espere um pouco ou use um comando direto.' };
     }
-
+    const rid = reservation.id;
     const started = this.clock();
+    const charged = (): AiUsage => ({ model: s.model, inputTokens: 0, outputTokens: 0, costUSD: this.usage.chargeReserved(rid), ms: this.clock() - started, estimated: true });
+
     let res: Response;
     try {
       res = await this.fetchImpl(API_URL, {
@@ -110,15 +115,30 @@ export class ClaudeClient {
         signal: AbortSignal.timeout(s.timeoutMs),
       });
     } catch (err) {
+      // Pode ter sido processada (e cobrada) sem a resposta chegar: cobra a estimativa inteira.
+      const usage = charged();
       const timeout = (err as Error).name === 'TimeoutError';
-      return { ok: false, code: timeout ? 'AI_TIMEOUT' : 'AI_UNAVAILABLE', message: timeout ? `A IA não respondeu em ${Math.round(s.timeoutMs / 1000)} s. ${UNAVAILABLE}` : UNAVAILABLE };
+      return { ok: false, code: timeout ? 'AI_TIMEOUT' : 'AI_UNAVAILABLE', message: timeout ? `A IA não respondeu em ${Math.round(s.timeoutMs / 1000)} s. ${UNAVAILABLE}` : UNAVAILABLE, usage };
+    }
+    if (!res.ok) {
+      // Recusas claras (sem processamento) liberam a reserva; o resto é cobrado por estimativa.
+      if ([400, 401, 403, 404, 413, 429].includes(res.status)) this.usage.release(rid);
+      const usage = [400, 401, 403, 404, 413, 429].includes(res.status) ? undefined : charged();
+      const why = res.status === 401 || res.status === 403 ? ' (chave da API recusada: confira a configuração no servidor)' : '';
+      return { ok: false, code: 'AI_UNAVAILABLE', message: `${UNAVAILABLE}${why}`, usage };
     }
     const body = (await res.json().catch(() => undefined)) as ApiResponse | undefined;
-    if (!res.ok || !body) {
-      const why = res.status === 401 || res.status === 403 ? ' (chave da API recusada: confira a configuração no servidor)' : '';
-      return { ok: false, code: 'AI_UNAVAILABLE', message: `${UNAVAILABLE}${why}` };
+    const input = body?.usage?.input_tokens;
+    const output = body?.usage?.output_tokens;
+    let usage: AiUsage;
+    if (typeof input === 'number' && typeof output === 'number' && input >= 0 && output >= 0) {
+      const costUSD = (input * s.priceInputPerMTok + output * s.priceOutputPerMTok) / 1e6;
+      this.usage.settle(rid, input, output, costUSD); // reconcilia com o consumo real
+      usage = { model: body?.model ?? s.model, inputTokens: input, outputTokens: output, costUSD, ms: this.clock() - started };
+    } else {
+      usage = charged(); // sem consumo informado: fica a estimativa
     }
-    const usage = this.account(body, started);
+    if (!body) return { ok: false, code: 'AI_UNAVAILABLE', message: UNAVAILABLE, usage };
     const call = body.content?.find((c) => c.type === 'tool_use' && c.name === 'propor_ajuste');
     const parsed = AiOutputSchema.safeParse(call?.input);
     if (!call || !parsed.success) {
@@ -129,14 +149,6 @@ export class ClaudeClient {
       return { ok: false, code: 'AI_INVALID', message: `A resposta da IA foi recusada (${outcome.why}). Nada foi alterado.`, usage };
     }
     return { ok: true, outcome: outcome.outcome, usage };
-  }
-
-  private account(body: ApiResponse, started: number): AiUsage {
-    const input = body.usage?.input_tokens ?? 0;
-    const output = body.usage?.output_tokens ?? 0;
-    const costUSD = (input * this.settings.priceInputPerMTok + output * this.settings.priceOutputPerMTok) / 1e6;
-    this.usage.record(input, output, costUSD);
-    return { model: body.model ?? this.settings.model, inputTokens: input, outputTokens: output, costUSD, ms: this.clock() - started };
   }
 }
 
