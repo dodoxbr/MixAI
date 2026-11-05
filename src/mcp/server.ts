@@ -40,7 +40,7 @@ const levelFields = {
 };
 
 /** Cria o servidor MCP com as tools do MixAI. */
-export function createMcpServer(controller: MixController, version = '0.2.0'): McpServer {
+export function createMcpServer(controller: MixController, version = '0.3.0'): McpServer {
   const server = new McpServer({ name: 'mixai', version }, { instructions: SERVER_INSTRUCTIONS });
 
   server.registerTool(

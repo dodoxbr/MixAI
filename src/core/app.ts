@@ -3,6 +3,7 @@ import { loadConfig, type LoadedConfig } from './config.js';
 import { MixController } from './controller.js';
 import { ActionLog } from './log.js';
 import { paramKey, type ParamKey } from './revisions.js';
+import { LabMixer } from '../mixer/lab.js';
 import { MockMixer } from '../mixer/mock.js';
 import { auxBus, MASTER, type MixerAdapter, type MixerCapabilities } from '../mixer/types.js';
 
@@ -35,13 +36,14 @@ export function keysFor(names: ChannelMap): { required: ParamKey[]; watched: Par
 }
 
 /**
- * Monta mesa (real ou simulada) + controlador. O modo é decidido UMA vez, aqui.
- * No modo mock o código da mesa real nem é carregado (import dinâmico).
+ * Monta mesa (real, laboratório ou simulada) + controlador. O modo é decidido UMA vez, aqui.
+ * Nos modos lab e mock o código da mesa real nem é carregado (import dinâmico).
  */
 export async function createApp(loaded: LoadedConfig = loadConfig()): Promise<App> {
   const { config } = loaded;
   const caps = MODEL_CAPS[config.mixer.model];
   const names = new ChannelMap(loaded.channels, caps, { allowUnmapped: config.naming.allowUnmapped });
+  const log = new ActionLog(loaded.logDir);
   let mixer: MixerAdapter;
   if (config.mixer.mode === 'real') {
     const { RealMixer } = await import('../mixer/real.js');
@@ -59,9 +61,25 @@ export async function createApp(loaded: LoadedConfig = loadConfig()): Promise<Ap
       reconnectBaseMs: c.reconnectBaseMs,
       reconnectMaxDelayMs: c.reconnectMaxDelayMs,
     });
+  } else if (config.mixer.mode === 'lab') {
+    mixer = new LabMixer({
+      file: loaded.labFile,
+      caps,
+      saveDebounceMs: config.lab.saveDebounceMs,
+      onSaveError: (err) => log.add({ action: 'lab_save', ok: false, message: `Falha ao gravar o laboratório: ${err.message}` }),
+    });
   } else {
     mixer = new MockMixer(caps);
   }
-  const controller = new MixController(mixer, config.safety, names, new ActionLog(loaded.logDir));
+  const controller = new MixController(mixer, config.safety, names, log);
+  if (mixer instanceof LabMixer) {
+    const { source, warnings } = mixer.loadResult;
+    log.add({
+      action: 'lab_load',
+      ok: !warnings.length || source === 'main',
+      message: `Laboratório carregado (${source === 'main' ? 'arquivo' : source === 'backup' ? 'BACKUP' : 'estado padrão'}): ${loaded.labFile}`,
+      details: { source, warnings },
+    });
+  }
   return { loaded, mixer, controller };
 }

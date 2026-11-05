@@ -47,6 +47,9 @@ export interface VerificationReport {
 
 export type ParamChangeOrigin = 'external' | 'resync';
 
+/** Origem de uma mudança EM LOTE vinda do próprio adaptador (hoje: reset do laboratório). */
+export type ParamBatchOrigin = 'reset';
+
 /** Escrita recusada porque a ligação não está em READY. Nada foi enviado. */
 export class LinkUnavailableError extends Error {
   constructor(readonly link: LinkState) {
@@ -59,7 +62,8 @@ export class LinkUnavailableError extends Error {
  * Leituras são síncronas (vêm do estado espelhado); escritas só acontecem em READY.
  */
 export interface MixerAdapter {
-  readonly mode: 'mock' | 'real';
+  /** mock = dublê em memória (testes); lab = laboratório persistente; real = Ui16 física. */
+  readonly mode: 'mock' | 'lab' | 'real';
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   link(): LinkState;
@@ -74,6 +78,14 @@ export interface MixerAdapter {
   onParamChange(listener: (key: ParamKey, value: ParamValue, origin: ParamChangeOrigin) => void): () => void;
   /** Resultado das escritas feitas na janela de uma queda, depois da ressincronização. */
   onVerification(listener: (reports: VerificationReport[]) => void): () => void;
+  /** Mudanças no estado da ligação (READY, LOST, ...). */
+  onLinkChange(listener: (state: LinkState) => void): () => void;
+  /**
+   * Várias mudanças de uma vez, feitas pelo próprio adaptador (ex.: reset do laboratório).
+   * Chegam num único aviso para o controlador gerar UM evento com todas as revisões.
+   * A mesa real não usa (opcional).
+   */
+  onParamBatch?(listener: (changes: Array<[ParamKey, ParamValue]>, origin: ParamBatchOrigin) => void): () => void;
 
   /** Nome escrito no canal da própria mesa, se conhecido. */
   channelName(channel: number): string | undefined;
@@ -82,4 +94,6 @@ export interface MixerAdapter {
   currentSnapshot(): Promise<{ show?: string; snapshot?: string }>;
   /** Lança LinkUnavailableError se não estiver em READY. */
   loadSnapshot(show: string, snapshot: string): Promise<WriteOutcome>;
+  /** Grava imediatamente o estado pendente (só o laboratório persiste). */
+  flush?(): void;
 }

@@ -1,6 +1,6 @@
 {
   "name": "mixai",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Controle da Soundcraft Ui16 por IA (servidor MCP)",
   "main": "dist/index.js",
   "scripts": {
@@ -10,7 +10,9 @@
     "console": "node dist/console.js",
     "console:mock": "node dist/console.js --mock",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.test.json",
-    "start:mock": "node dist/index.js --mock"
+    "start:mock": "node dist/index.js --mock",
+    "console:lab": "node dist/console.js --lab",
+    "start:lab": "node dist/index.js --lab"
   },
   "author": "",
   "license": "MIT",

@@ -506,3 +506,38 @@ describe('instâncias descartadas depois da vigilância de 30 s', () => {
     expect(fake.alive().length).toBe(1);
   }, 8000);
 });
+
+describe('estado observável com a mesa real (E1)', () => {
+  it('queda e volta: indisponível, pedido de novo snapshot e estado igual ao da mesa', async () => {
+    const { applyStateEvent } = await import('../src/core/state.js');
+    const fake = createFakeUi({ initialState: () => stateMessages({ channels: CH, aux: AUX }) });
+    const mixer = new RealMixer({ ip: 'teste', webSocketCtor: fake.Ctor, requiredKeys: REQUIRED, watchedKeys: REQUIRED, ...TIMING });
+    supervisors.push(mixer.supervisor);
+    const names = new ChannelMap(parseChannels({ channels: [{ number: 1, name: 'Voz 1', aliases: [] }], aux: [] }), { inputs: 12, aux: 6 });
+    const controller = new MixController(mixer, parseConfig({}).safety, names, new ActionLog(null));
+    await mixer.connect();
+
+    let mirror = controller.state.snapshot(REQUIRED);
+    expect(mirror.available).toBe(true);
+    expect(mirror.params['ch.1.main.level']!.value).toMatchObject({ status: 'known' });
+    // Parâmetros de EQ existem no modelo, mas a mesa real não os acompanha: aparecem como desconhecidos.
+    expect(controller.state.snapshot([paramKey.eqBand(1, 1, 'gain')]).params['ch.1.eq.b1.gain']!.value).toEqual({ status: 'unknown' });
+
+    const outcomes: string[] = [];
+    controller.state.subscribe((e) => {
+      const o = applyStateEvent(mirror, e);
+      outcomes.push(`${e.type}:${o}`);
+      if (o === 'gap') mirror = controller.state.snapshot(REQUIRED); // o cliente pede outro snapshot
+    });
+    fake.sockets[0]!.drop();
+    expect(mirror.available).toBe(false);
+    expect(mirror.params['ch.1.main.level']!.value).toEqual({ status: 'unavailable' });
+    await waitFor(() => mixer.link() === 'READY', 2000, 'READY de novo');
+    fake.last()!.deliver(stateMessages({ channels: [2], aux: [] }).find((m) => m.startsWith('SETD^i.1.mix'))!.replace(/\^[^^]+$/, '^0.3'));
+    await sleep(5);
+    expect(outcomes).toContain('link:gap');
+    const fresh = controller.state.snapshot(REQUIRED);
+    expect(mirror.params).toEqual(fresh.params);
+    expect(mirror.revision).toBe(fresh.revision);
+  });
+});

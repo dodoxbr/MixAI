@@ -164,6 +164,10 @@ export class RealMixer implements MixerAdapter {
     return this.supervisor.onVerification(listener);
   }
 
+  onLinkChange(listener: (state: import('./types.js').LinkState) => void) {
+    return this.supervisor.onLinkChange(listener);
+  }
+
   channelName(channel: number) {
     return this.supervisor.channelName(channel);
   }

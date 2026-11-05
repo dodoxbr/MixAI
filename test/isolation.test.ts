@@ -1,4 +1,5 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -6,21 +7,43 @@ import { loadConfig, parseChannels, parseConfig } from '../src/core/config.js';
 
 // Registra se o módulo da mesa real foi carregado. O factory do vi.mock só roda quando
 // alguém importa '../src/mixer/real.js'.
-const probe = vi.hoisted(() => ({ realLoaded: 0 }));
+const probe = vi.hoisted(() => ({ realLoaded: 0, libLoaded: 0 }));
 vi.mock('../src/mixer/real.js', async (importOriginal) => {
   probe.realLoaded++;
+  return importOriginal();
+});
+// Idem para a biblioteca da Soundcraft: o laboratório e o mock não podem nem carregá-la.
+vi.mock('soundcraft-ui-connection', async (importOriginal) => {
+  probe.libLoaded++;
   return importOriginal();
 });
 
 const { createApp } = await import('../src/core/app.js');
 
-function loaded(mode: 'mock' | 'real') {
+function loaded(mode: 'mock' | 'lab' | 'real') {
   return {
     config: parseConfig({ mixer: { mode, ip: '10.10.1.1' }, logs: { dir: null } }),
     channels: parseChannels({ channels: [{ number: 1, name: 'Voz', aliases: [] }], aux: [{ number: 1, name: 'Fones', aliases: [] }] }),
     configDir: '.',
     logDir: null,
+    labFile: join(mkdtempSync(join(tmpdir(), 'mixai-iso-')), 'lab-state.json'),
   };
+}
+
+/** Falha o teste se qualquer coisa tentar abrir WebSocket ou socket TCP. */
+function forbidNetwork() {
+  const opened: string[] = [];
+  globalThis.WebSocket = class {
+    constructor(url: string) {
+      opened.push(`ws:${url}`);
+      throw new Error('WebSocket proibido neste modo');
+    }
+  } as never;
+  const tcp = vi.spyOn(Socket.prototype, 'connect').mockImplementation(function (this: Socket) {
+    opened.push('tcp');
+    throw new Error('TCP proibido neste modo');
+  });
+  return { opened, restore: () => tcp.mockRestore() };
 }
 
 const realWebSocket = globalThis.WebSocket;
@@ -29,28 +52,51 @@ afterEach(() => {
 });
 
 describe('isolamento LAB/mock × mesa real', () => {
-  it('modo mock não carrega o código da mesa real nem abre WebSocket', async () => {
-    const opened: string[] = [];
-    globalThis.WebSocket = class {
-      constructor(url: string) {
-        opened.push(url);
-        throw new Error('WebSocket não deveria ser usado no modo mock');
+  for (const mode of ['mock', 'lab'] as const) {
+    it(`modo ${mode} não carrega o código da mesa real nem a biblioteca, e não abre rede`, async () => {
+      const net = forbidNetwork();
+      try {
+        const cfg = loaded(mode);
+        const app = await createApp(cfg);
+        await app.controller.ensureConnected();
+        await app.controller.setLevel({ channel: 1, deltaDB: 2 });
+        await app.controller.setMute({ channels: [1], muted: true });
+        await app.controller.undo();
+        await app.controller.mixState();
+        app.controller.state.snapshot();
+        await app.mixer.disconnect();
+        expect(app.mixer.mode).toBe(mode);
+        expect(probe.realLoaded).toBe(0);
+        expect(probe.libLoaded).toBe(0);
+        expect(net.opened).toEqual([]);
+        if (mode === 'lab') expect(existsSync(cfg.labFile)).toBe(true); // o laboratório persistiu
+      } finally {
+        net.restore();
       }
-    } as never;
-    const app = await createApp(loaded('mock'));
-    await app.controller.ensureConnected();
-    await app.controller.setLevel({ channel: 1, deltaDB: 2 });
-    await app.controller.mixState();
-    expect(app.mixer.mode).toBe('mock');
-    expect(probe.realLoaded).toBe(0);
-    expect(opened).toEqual([]);
-    await app.mixer.disconnect();
+    });
+  }
+
+  it('laboratório com IP da mesa configurado continua sem rede', async () => {
+    const net = forbidNetwork();
+    try {
+      const cfg = loaded('lab');
+      cfg.config.mixer.ip = '10.10.1.1';
+      const app = await createApp(cfg);
+      await app.controller.ensureConnected();
+      await app.controller.setLevel({ channel: 1, deltaDB: 1 });
+      await app.mixer.disconnect();
+      expect(net.opened).toEqual([]);
+      expect(probe.realLoaded).toBe(0);
+    } finally {
+      net.restore();
+    }
   });
 
   it('modo real carrega o módulo (prova de que o teste acima detectaria)', async () => {
     const app = await createApp(loaded('real'));
     expect(app.mixer.mode).toBe('real');
     expect(probe.realLoaded).toBe(1);
+    expect(probe.libLoaded).toBe(1);
     expect(app.mixer.link()).toBe('DISCONNECTED'); // nada é aberto só por montar o app
     await app.mixer.disconnect();
   });
@@ -69,7 +115,19 @@ describe('precedência da configuração', () => {
   }
   const base = (dir: string, extra: Record<string, string> = {}) => ({ MIXAI_CONFIG_DIR: dir, MIXAI_LOG_DIR: '', ...extra });
 
-  it('--real > --mock > MIXAI_MODE > config.yaml', () => {
+  it('--lab e MIXAI_MODE=lab; MIXAI_LAB_FILE define o arquivo', () => {
+    const dir = dirWith('mixer:\n  mode: mock\nlab:\n  stateFile: data/x.json\n');
+    expect(loadConfig(base(dir), ['--lab']).config.mixer.mode).toBe('lab');
+    expect(loadConfig(base(dir, { MIXAI_MODE: 'lab' }), []).config.mixer.mode).toBe('lab');
+    expect(loadConfig(base(dir), []).labFile).toMatch(/data[\\/]x\.json$/);
+    const custom = join(dir, 'meu-lab.json');
+    expect(loadConfig(base(dir, { MIXAI_LAB_FILE: custom }), []).labFile).toBe(custom);
+  });
+
+  it('--real > --mock > --lab > MIXAI_MODE > config.yaml', () => {
+    const lab = dirWith('mixer:\n  mode: lab\n');
+    expect(loadConfig(base(lab), ['--lab', '--mock']).config.mixer.mode).toBe('mock');
+    expect(loadConfig(base(lab, { MIXAI_MODE: 'real' }), ['--lab']).config.mixer.mode).toBe('lab');
     const dir = dirWith('mixer:\n  mode: real\n');
     expect(loadConfig(base(dir), []).config.mixer.mode).toBe('real');
     expect(loadConfig(base(dir, { MIXAI_MODE: 'mock' }), []).config.mixer.mode).toBe('mock');

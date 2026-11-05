@@ -70,7 +70,11 @@ function lineReader() {
 async function main() {
   const { loaded, mixer, controller } = await createApp();
   const rl = lineReader();
-  console.log(`MixAI console — ${loaded.config.mixer.mode === 'mock' ? 'mesa SIMULADA' : `mesa real em ${loaded.config.mixer.ip}`}`);
+  const mode = loaded.config.mixer.mode;
+  console.log(
+    `MixAI console — ${mode === 'mock' ? 'mesa SIMULADA (memória)' : mode === 'lab' ? `LABORATÓRIO (${loaded.labFile})` : `mesa real em ${loaded.config.mixer.ip}`}`,
+  );
+  process.on('exit', () => mixer.flush?.());
   print(await controller.ensureConnected());
   console.log('Digite "ajuda" para ver os comandos.');
 

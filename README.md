@@ -17,14 +17,33 @@ mesa simulada e console de teste.
 cd mixai
 npm install
 npm run build
-npm test        # 119 testes, todos devem passar
+npm test        # 170 testes, todos devem passar
 ```
 
-## Testar sem a mesa (modo simulado)
+## Testar sem a mesa: laboratório ou simulador
+
+São dois modos sem a mesa física, e **nenhum dos dois abre conexão de rede**:
+
+| Modo | Para quê | Guarda o estado? |
+| --- | --- | --- |
+| `lab` (padrão do `config.yaml`) | treinar, preparar e testar no dia a dia | **sim**, em `data/lab-state.json` |
+| `mock` | testes automatizados e experiências rápidas | não (perde tudo ao fechar) |
 
 ```bash
-npm run console:mock
+npm run console:lab     # laboratório (persistente)
+npm run console:mock    # simulador em memória
 ```
+
+**Arquivo do laboratório** (`lab.stateFile`, ou a variável `MIXAI_LAB_FILE`):
+- JSON versionado (`schemaVersion`), gravado de forma **atômica** (temporário + troca);
+- a versão anterior válida fica em `lab-state.json.bak`;
+- se o arquivo estiver corrompido, ele é guardado como `lab-state.json.corrupt-<data>`
+  e o laboratório volta do `.bak` (ou do estado padrão), com aviso no log;
+- arquivo de uma versão **mais nova** do MixAI não é aberto nem alterado.
+
+O laboratório já guarda EQ de 4 bandas, HPF e bypass por canal, mas eles **ainda não têm
+tool nem tela**: entram nas próximas etapas (E7). Os valores iniciais do laboratório são
+neutros do MixAI, **não** os padrões de fábrica da Ui16.
 
 Exemplos no console:
 
@@ -51,7 +70,7 @@ Edite o `claude_desktop_config.json` do Claude Desktop e acrescente o MixAI
     "mixai": {
       "command": "node",
       "args": ["C:\\Users\\SEU_USUARIO\\mixai\\dist\\index.js"],
-      "env": { "MIXAI_MODE": "mock" }
+      "env": { "MIXAI_MODE": "lab" }
     }
   }
 }
@@ -61,8 +80,9 @@ No Mac/Linux o caminho fica tipo `/Users/seu_usuario/mixai/dist/index.js`.
 Reinicie o Claude Desktop e peça, por exemplo: *"como está a mix?"* ou
 *"sobe um pouco a voz 2"*.
 
-Para a mesa real, troque `"MIXAI_MODE": "mock"` por `"real"` (e, se precisar,
-acrescente `"MIXAI_IP": "10.10.1.1"`).
+`"lab"` usa o laboratório persistente: o que você ajustar continua lá quando o Claude Desktop
+for reaberto. Para a mesa real, troque por `"real"` (e, se precisar, acrescente
+`"MIXAI_IP": "10.10.1.1"`).
 
 ## Primeiro teste na mesa real (Fase 0)
 
@@ -150,11 +170,16 @@ src/
   index.ts            servidor MCP (stdio)
   console.ts          console de teste sem IA
   mcp/server.ts       tools e instruções para a IA
-  core/controller.ts  travas, desfazer, log
+  core/controller.ts  travas, fila, desfazer, confirmações, log
+  core/params.ts      registro central de parâmetros (unidade, faixa, capacidade)
+  core/state.ts       estado observável: snapshot, eventos, revisões
+  core/scene.ts       estrutura de cenas e diff (sem tela ainda)
   core/channels.ts    nomes da banda -> números
   core/config.ts      leitura do config.yaml e channels.yaml
-  mixer/real.ts       mesa real (soundcraft-ui-connection)
-  mixer/mock.ts       mesa simulada
+  mixer/real.ts       mesa real (soundcraft-ui-connection) + supervisor de conexão
+  mixer/lab.ts        laboratório persistente (lab-store.ts: arquivo, backup, recuperação)
+  mixer/mock.ts       simulador em memória (testes)
+  mixer/simulated.ts  base comum dos simuladores (sem rede)
 config/               config.yaml e channels.yaml
 test/                 testes (Vitest)
 ```
