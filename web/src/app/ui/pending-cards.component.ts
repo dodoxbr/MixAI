@@ -59,6 +59,7 @@ export class PendingCardsComponent {
     if (t === 'set_master') return 'MASTER';
     if (t === 'load_snapshot') return 'SNAPSHOT';
     if (t === 'undo') return 'DESFAZER';
+    if (t === 'scene_load') return 'CENA DO MIXAI';
     if (t === 'set_mute') return 'MUTE EM GRUPO';
     return 'MUDANÇA GRANDE';
   }

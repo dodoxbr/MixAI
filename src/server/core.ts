@@ -12,7 +12,7 @@ import type { MeterSource } from './meters.js';
 import type { AssistantService } from '../assistant/service.js';
 
 export const PROTOCOL_VERSION = 1;
-export const SERVER_VERSION = '0.6.0';
+export const SERVER_VERSION = '0.7.0';
 
 export type Mode = 'mock' | 'lab' | 'real';
 

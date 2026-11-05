@@ -11,6 +11,8 @@ import { FonesListComponent } from './fones-list.component';
 import { AssistantInputComponent } from '../assistant/assistant-input.component';
 import { AssistantPanelComponent } from '../assistant/assistant-panel.component';
 import { AssistantUiService } from '../core/assistant.service';
+import { ScenesComponent } from '../scenes/scenes.component';
+import { ScenesUiService } from '../scenes/scenes.service';
 
 interface LogEntry {
   time: string;
@@ -27,7 +29,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 @Component({
   selector: 'mx-mesa',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent],
+  imports: [StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
   host: { class: 'mx-view mx-mesa' },
   template: `
     <mx-status-bar />
@@ -46,6 +48,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       <button type="button" class="btn" [class.on]="assistant.open()" (click)="assistant.open.set(!assistant.open())" [attr.aria-expanded]="assistant.open()">Assistente</button>
       <button type="button" class="btn" [disabled]="!live.writable() || actions.isBusy('undo')" (click)="undo()">Desfazer</button>
       <button type="button" class="btn" [class.on]="showHistory()" (click)="toggleHistory()">Histórico</button>
+      <button type="button" class="btn" [class.on]="scenes.open()" (click)="scenes.show()" [attr.aria-expanded]="scenes.open()">Cenas</button>
     </div>
 
     @if (!live.writable()) {
@@ -120,6 +123,9 @@ const UNKNOWN: StateValue = { status: 'unknown' };
         </aside>
       }
     </div>
+    @if (scenes.open()) {
+      <mx-scenes />
+    }
     <mx-toasts />
   `,
 })
@@ -127,6 +133,7 @@ export class MesaComponent {
   readonly live = inject(LiveService);
   readonly actions = inject(ActionsService);
   readonly assistant = inject(AssistantUiService);
+  readonly scenes = inject(ScenesUiService);
 
   readonly bus = signal<'pa' | 'fones'>('pa');
   readonly showHistory = signal(false);

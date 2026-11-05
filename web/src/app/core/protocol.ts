@@ -43,6 +43,8 @@ export interface Hello {
   role?: Role;
   meters: { available: boolean; simulated: boolean };
   assistant?: { available: boolean; ai: boolean };
+  /** Cenas do MixAI (E5): canLoad = laboratório (comparar e carregar). */
+  scenes?: { available: boolean; canLoad: boolean };
 }
 
 export interface Result {

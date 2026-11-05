@@ -1,6 +1,6 @@
 {
   "name": "mixai",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Controle da Soundcraft Ui16 por IA (servidor \u00fanico + MCP)",
   "main": "dist/index.js",
   "scripts": {
