@@ -42,6 +42,34 @@ server:
   # PINs: rode "npm run pin -- operador" / "npm run pin -- musico".
   # Ficam só como hash em config/secrets.yaml (fora do Git).
 
+assistant:
+  # Assistente de texto (E4). Tudo vira proposta com "Aplicar"; nada muda sozinho.
+  # "um pouco" / sem dizer quanto:
+  smallStepDB: 2
+  # "mais":
+  mediumStepDB: 3
+  # "bastante", "muito":
+  largeStepDB: 5
+  # Validade da proposta (segundos)
+  proposalTtlSec: 120
+
+ai:
+  # Claude (API da Anthropic), OPCIONAL. Sem chave, só o parser local (funciona sem internet).
+  # A chave vai em config/secrets.yaml (anthropicApiKey: ...) ou na variável ANTHROPIC_API_KEY.
+  enabled: false
+  model: claude-haiku-5-5
+  maxOutputTokens: 600
+  maxInputChars: 400
+  timeoutMs: 12000
+  # Teto de gasto por dia, em dólares (estimado pelos preços abaixo)
+  dailyBudgetUSD: 0.5
+  maxRequestsPerMinute: 6
+  # Preço por milhão de tokens (US$). Padrão: Claude Haiku 5.5. Confira o preço atual em
+  # https://platform.claude.com/docs/en/about-claude/pricing
+  priceInputPerMTok: 0.1
+  priceOutputPerMTok: 0.5
+  historyTurns: 4
+
 naming:
   # false = só canais e AUX cadastrados no channels.yaml podem ser alterados
   allowUnmapped: false

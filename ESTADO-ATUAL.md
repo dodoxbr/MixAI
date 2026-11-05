@@ -1,4 +1,4 @@
-# MixAI — estado atual (05/11/2026, v0.5 / E3)
+# MixAI — estado atual (05/11/2026, v0.6 / E4)
 
 Controle da mesa **Soundcraft Ui16** por IA, para uma banda de samba/pagode amadora que toca em roda.
 O músico pede em português ("mais Fred no fone", "abaixa o surdo") e o Claude ajusta a mesa,
@@ -67,6 +67,7 @@ Claude Desktop ──MCP stdio──▶ dist/index.js ──┤ HTTP 127.0.0.1 (
 | IA | `@modelcontextprotocol/sdk` 1.32 (MCP stdio, cliente do servidor) |
 | Servidor | Fastify 5 + `@fastify/websocket` 11 + `@fastify/static` (serve a interface) |
 | Interface | Angular 22 standalone + signals, componentes SVG próprios (E3) |
+| Assistente | parser local em português + Claude opcional pela API (Haiku 5.5 por padrão), só propostas (E4) |
 | Validação | zod 4 |
 | Config | YAML (`yaml`) |
 | Testes | Vitest |
@@ -90,8 +91,8 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 232 testes (Vitest) + 10 de integração com navegador (test/e2e)
-web/                  interface Angular (27 testes unitários)
+test/                 263 testes (Vitest) + 15 de integração com navegador (test/e2e)
+web/                  interface Angular (36 testes unitários)
 ```
 
 ---
@@ -137,7 +138,7 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-232 testes do servidor + 27 da interface + 10 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+263 testes do servidor + 36 da interface + 15 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
