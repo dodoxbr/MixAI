@@ -60,6 +60,8 @@ export async function startServer(
     const meters = mode === 'real' ? undefined : new SimulatedMeters(app.mixer, () => names.inputs.configured());
     const core = new ServerCore(app.controller, app.mixer, mode, auth, app.log, {
       musicianAux: config.server.musicianAux,
+      musicianAccess: config.server.musicianAccess,
+      musicianPaStepDB: config.server.musicianPaStepDB,
       clock: opts.clock,
       meters,
     });
@@ -75,7 +77,6 @@ export async function startServer(
     core.assistant = new AssistantService(core, {
       steps: config.assistant,
       ttlMs: config.assistant.proposalTtlSec * 1000,
-      musicianAux: config.server.musicianAux,
       channels: loaded.channels.channels,
       ai,
       log: app.log,

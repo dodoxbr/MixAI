@@ -29,6 +29,8 @@ export interface TestServerOptions {
   aiFetch?: typeof fetch;
   /** Nomes dos canais (padrão: a fixture dos testes). */
   channels?: ReturnType<typeof fixtureChannels>;
+  /** Campos da seção server do config (ex.: musicianAccess). */
+  server?: Record<string, unknown>;
 }
 
 /** Relógio real com deslocamento: dá para "pular" o tempo sem travar a rede. */
@@ -47,6 +49,7 @@ export async function startTestServer(opts: TestServerOptions = {}) {
       logs: { dir: null },
       safety: { maxActionsPerSecond: 100, ...opts.safety },
       ai: opts.ai ?? {},
+      server: opts.server ?? {},
     }),
     channels: opts.channels ?? fixtureChannels(),
     configDir: dir,

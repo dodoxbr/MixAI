@@ -484,6 +484,10 @@ mx-root {
   background: var(--panel);
   border: 1px solid var(--line);
 }
+.history-by {
+  color: var(--muted);
+  white-space: nowrap;
+}
 .history h2 {
   margin: 0 0 8px;
   font-size: 1rem;
@@ -716,6 +720,44 @@ mx-root {
   .fones-row {
     grid-template-columns: 1fr 52px 96px 52px;
   }
+  .fones-row.has-mute {
+    grid-template-columns: minmax(0, 1fr) 58px 46px 72px 46px;
+    gap: 6px;
+    padding: 8px;
+  }
+  .fones-row.has-mute .fones-name {
+    font-size: 1rem;
+  }
+  .fones-row.has-mute .fones-value {
+    font-size: 0.95rem;
+  }
+  .fones-row.has-mute .mute-toggle {
+    font-size: 0.75rem;
+    padding: 0 2px;
+  }
+}
+
+/* ---------- músico: PA e FONES ---------- */
+.musician-tabs {
+  padding-bottom: 0;
+}
+.fones-row.has-mute {
+  grid-template-columns: minmax(0, 1fr) 72px 52px 96px 52px;
+}
+.fones-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mute-toggle {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.mute-toggle.on {
+  background: var(--mute);
+  color: #fff;
+}
+.pa-warning {
+  border-color: #3b82f6;
 }
 
 /* ---------- assistente (E4) ---------- */

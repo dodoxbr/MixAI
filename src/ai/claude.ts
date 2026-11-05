@@ -17,6 +17,10 @@ export interface AiSettings {
 
 export interface AiContext {
   role: 'operator' | 'musician';
+  /** Músico com acesso aos canais do PA (nunca ao master). */
+  musicianPA?: boolean;
+  /** Maior passo do músico no PA sem aprovação do operador. */
+  musicianPaStepDB?: number;
   /** Canais cadastrados: número, nome e apelidos. */
   channels: Array<{ number: number; name: string; aliases: string[] }>;
   /** Valores atuais, em texto curto ("Surdo: PA −10.0 dB aberto | Fones −20.0 dB"). */
@@ -161,9 +165,11 @@ interface ApiResponse {
 function systemPrompt(ctx: AiContext): string {
   const channels = ctx.channels.map((c) => `${c.number}: ${c.name}${c.aliases.length ? ` (apelidos: ${c.aliases.join(', ')})` : ''}`).join('\n');
   const who =
-    ctx.role === 'musician'
-      ? 'Quem pede é um MÚSICO: ele só pode mexer nos FONES (retorno compartilhado). Nunca proponha PA nem master para ele.'
-      : 'Quem pede é o OPERADOR da mesa.';
+    ctx.role !== 'musician'
+      ? 'Quem pede é o OPERADOR da mesa.'
+      : ctx.musicianPA
+        ? `Quem pede é um MÚSICO: ele pode mexer nos FONES e nos canais do PA (um canal por vez, passos de até ${ctx.musicianPaStepDB ?? 3} dB; acima disso o operador precisa aprovar). Nunca proponha o MASTER, cenas ou snapshots para ele.`
+        : 'Quem pede é um MÚSICO: ele só pode mexer nos FONES (retorno compartilhado). Nunca proponha PA nem master para ele.';
   return `Você ajuda a ajustar a mesa de som Soundcraft Ui16 de uma banda de pagode/samba de roda, pelo MixAI.
 Responda SEMPRE e SÓ chamando a ferramenta "propor_ajuste". Você não executa nada: suas propostas viram cartões e uma pessoa decide se aplica.
 

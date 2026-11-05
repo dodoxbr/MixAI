@@ -6,6 +6,7 @@ import { eventToWire, snapshotToWire, type StateEvent, type WireEvent, type Wire
 import type { MixerAdapter } from '../mixer/types.js';
 import type { Auth, Principal, Role } from './auth.js';
 import { authorizeCommand, CommandSchema, describeCommand, dispatch, visibleKey, type Command } from './commands.js';
+import { actorOf, DEFAULT_POLICY, MUSICIAN_PA_STEP_MAX_DB, musicianHasPA, stepLimitFor, type AccessPolicy, type MusicianAccess } from './policy.js';
 import type { MeterSource } from './meters.js';
 import type { AssistantService } from '../assistant/service.js';
 
@@ -86,8 +87,24 @@ export class ServerCore {
     readonly mode: Mode,
     readonly auth: Auth,
     private log: ActionLog,
-    readonly options: { musicianAux: number; clock?: () => number; meters?: MeterSource },
+    readonly options: {
+      musicianAux: number;
+      clock?: () => number;
+      meters?: MeterSource;
+      /** Política do perfil músico (padrão: fones_only). */
+      musicianAccess?: MusicianAccess;
+      musicianPaStepDB?: number;
+    },
   ) {}
+
+  /** Política de acesso em vigor (fixa durante a execução do servidor). */
+  get policy(): AccessPolicy {
+    return {
+      musicianAux: this.options.musicianAux,
+      musicianAccess: this.options.musicianAccess ?? DEFAULT_POLICY.musicianAccess,
+      musicianPaStepDB: Math.min(this.options.musicianPaStepDB ?? DEFAULT_POLICY.musicianPaStepDB, MUSICIAN_PA_STEP_MAX_DB),
+    };
+  }
 
   get meters(): MeterSource | undefined {
     return this.options.meters;
@@ -116,6 +133,8 @@ export class ServerCore {
       model: this.mixer.capabilities().model,
       link: this.mixer.link(),
       musicianAux: this.options.musicianAux,
+      musicianAccess: this.policy.musicianAccess,
+      musicianPaStepDB: this.policy.musicianPaStepDB,
       auth: this.auth.configured(),
       meters: { available: !!this.options.meters && this.mode !== 'real', simulated: true },
       assistant: { available: !!this.assistant, ai: !!this.assistant?.aiAvailable() },
@@ -125,7 +144,7 @@ export class ServerCore {
   // ---------- estado ----------
 
   snapshotFor(role: Role): WireSnapshot {
-    const visible = visibleKey(role, this.options.musicianAux);
+    const visible = visibleKey(role, this.policy);
     const keys = this.controller.registry.keys().filter(visible);
     return snapshotToWire(this.controller.state.snapshot(keys));
   }
@@ -133,7 +152,7 @@ export class ServerCore {
   /** Evento já filtrado para o perfil (a sequência de revisões continua íntegra). */
   eventFor(role: Role, ev: StateEvent): WireEvent {
     if (ev.type === 'params' && role === 'musician') {
-      const visible = visibleKey(role, this.options.musicianAux);
+      const visible = visibleKey(role, this.policy);
       return eventToWire({ ...ev, changes: ev.changes.filter((c) => visible(c.key as ParamKey)) });
     }
     return eventToWire(ev);
@@ -196,7 +215,7 @@ export class ServerCore {
     }
     const parsed = CommandSchema.safeParse(raw);
     if (!parsed.success) return reply(fail('INVALID', `Comando inválido: ${parsed.error.issues.map((i) => i.message).join('; ')}`));
-    const auth = authorizeCommand(p.role, parsed.data, this.controller.names, this.options.musicianAux);
+    const auth = authorizeCommand(p.role, parsed.data, this.controller.names, this.policy);
     if (!auth.ok) {
       this.audit(p, 'forbidden', auth.message, { command: parsed.data.type });
       return reply(fail('FORBIDDEN', auth.message));
@@ -204,11 +223,18 @@ export class ServerCore {
     const command = auth.command;
     let result: Result;
     try {
-      result = await dispatch(this.controller, command, undefined, p.role, expect);
+      // Músico no PA: limite de passo próprio (3 dB); acima vira aprovação do operador.
+      const limit = stepLimitFor(p.role, command, this.policy);
+      result = await dispatch(this.controller, command, undefined, p.role, expect, { actor: actorOf(p), ...limit });
     } catch (err) {
       result = fail('INVALID', `Erro inesperado: ${(err as Error).message}`);
     }
     if (result.needsConfirmation && result.pendingId) result = this.registerPending(p, command, result);
+    if (p.role === 'musician' && command.type === 'mix_state' && result.data) {
+      // A consulta do PA traz o master junto; o músico nunca vê o master.
+      const { master: _m, masterDB: _d, ...rest } = result.data as Record<string, unknown>;
+      result = { ...result, data: rest };
+    }
     return reply(result);
   }
 
@@ -235,7 +261,14 @@ export class ServerCore {
     if (msg.targetMode !== undefined && msg.targetMode !== this.mode) {
       return { result: fail('MODE_MISMATCH', `Este servidor está em modo ${this.mode.toUpperCase()}.`), closed: true };
     }
-    const auth = authorizeCommand(p.role, { type: 'set_level', channel, aux, db }, this.controller.names, this.options.musicianAux);
+    if (p.role === 'musician' && aux === undefined && musicianHasPA(this.policy)) {
+      // Um arraste é UM gesto que pode cruzar dezenas de dB: no PA, o músico só usa passos
+      // discretos (set_level, até musicianPaStepDB). Vale também para mensagens forjadas.
+      const message = `No PA, o músico ajusta em passos de até ${this.policy.musicianPaStepDB} dB (botões − e +), não arrastando o fader.`;
+      this.audit(p, 'forbidden', message, { command: 'fader' });
+      return { result: fail('FORBIDDEN', message), closed: true };
+    }
+    const auth = authorizeCommand(p.role, { type: 'set_level', channel, aux, db }, this.controller.names, this.policy);
     if (!auth.ok) {
       this.audit(p, 'forbidden', auth.message, { command: 'fader' });
       return { result: fail('FORBIDDEN', auth.message), closed: true };
@@ -254,7 +287,7 @@ export class ServerCore {
     let closed = false;
     try {
       while (current) {
-        last = await this.controller.setFader({ ...current, gestureId: id, origin: p.role });
+        last = await this.controller.setFader({ ...current, gestureId: id, origin: p.role, actor: actorOf(p) });
         closed = !!current.final || !last.ok;
         current = st.next;
         st.next = undefined;
@@ -291,7 +324,7 @@ export class ServerCore {
       summary,
       title: describeCommand(command),
       command,
-      requestedBy: { role: p.role, label: p.label },
+      requestedBy: { role: p.role, label: actorOf(p) },
       createdAt: new Date(now).toISOString(),
       expiresAt: new Date(now + expiresInSec * 1000).toISOString(),
     };
@@ -373,7 +406,11 @@ export class ServerCore {
       }
       let result: Result;
       try {
-        result = await dispatch(this.controller, rec.card.command, pendingId, rec.card.requestedBy.role);
+        const requester = rec.card.requestedBy;
+        result = await dispatch(this.controller, rec.card.command, pendingId, requester.role, undefined, {
+          actor: `${requester.label}; aprovado por ${actorOf(p)}`,
+          ...stepLimitFor(requester.role, rec.card.command, this.policy),
+        });
       } catch (err) {
         result = fail('INVALID', `Erro inesperado: ${(err as Error).message}`);
       }
@@ -426,7 +463,7 @@ export class ServerCore {
 
   /** Registro no histórico. Nunca inclui PIN nem token. */
   audit(p: Principal | undefined, action: string, message: string, details: Record<string, unknown> = {}) {
-    this.log.add({ action: `server_${action}`, ok: false, message, details: { ...details, role: p?.role } });
+    this.log.add({ action: `server_${action}`, ok: false, message, details: { ...details, role: p?.role, ...(p ? { by: actorOf(p) } : {}) } });
   }
 }
 

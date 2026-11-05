@@ -1,47 +1,71 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { ActionsService } from '../core/actions.service';
 import { formatDb } from '../core/db';
 import { LiveService } from '../core/live.service';
 import { keys } from '../core/protocol';
 
+/** Passo dos botões − / + (dB). No PA do músico, o servidor limita a 3 dB por comando. */
+const STEP_DB = 2;
+
 /**
- * Fones no celular: lista dos canais com − / + de 2 dB no AUX dos músicos (retorno
- * compartilhado). Sem arraste, para evitar mudança acidental. Aviso fixo: muda o fone de TODOS.
+ * Lista do celular com − / + de 2 dB por canal. Sem arraste, para evitar mudança acidental.
+ * - target "fones" (padrão): AUX dos músicos (retorno compartilhado). Aviso: muda o fone de TODOS.
+ * - target "pa": canais do PA (som do público), com MUTE individual. Só aparece para o músico
+ *   quando o servidor está em pa_without_master. Nunca mostra o MASTER.
  */
 @Component({
   selector: 'mx-fones-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'mx-fones-list' },
+  host: { class: 'mx-fones-list', '[class.is-pa]': "target() === 'pa'" },
   template: `
-    <div class="shared-warning big" role="note">
-      <strong>{{ auxName() }}</strong>: é um só retorno para todos. <strong>Isto muda o fone de TODOS.</strong>
-    </div>
+    @if (target() === 'pa') {
+      <div class="shared-warning big pa-warning" role="note">
+        <span class="dest dest-PA">PA</span> <strong>Som do público.</strong> Passos de {{ step }} dB; mudanças maiores pedem o operador. O MASTER é só do operador.
+      </div>
+    } @else {
+      <div class="shared-warning big" role="note">
+        <span class="dest dest-FONES">FONES</span> <strong>{{ auxName() }}</strong>: é um só retorno para todos. <strong>Isto muda o fone de TODOS.</strong>
+      </div>
+    }
     <ng-content />
-    <ul class="fones-rows">
+    <ul class="fones-rows" [attr.aria-label]="target() === 'pa' ? 'Canais no PA' : 'Canais nos fones'">
       @for (row of rows(); track row.number) {
-        <li class="fones-row" [class.is-muted]="row.muted">
+        <li class="fones-row" [class.is-muted]="row.muted" [class.has-mute]="target() === 'pa'">
           <div class="fones-name">
             <span>{{ row.name }}</span>
             @if (row.muted) {
-              <small class="badge-mute">MUTE no fone</small>
+              <small class="badge-mute">MUTE {{ where() }}</small>
             }
           </div>
+          @if (target() === 'pa') {
+            <button
+              type="button"
+              class="step mute-toggle"
+              [class.on]="row.muted"
+              [attr.aria-label]="(row.muted ? 'Abrir ' : 'Mutar ') + row.name + ' no PA'"
+              [attr.aria-pressed]="row.muted"
+              [disabled]="!live.writable() || row.mute === null || actions.isBusy(key(row.number))"
+              (click)="toggleMute(row.number, row.muted)"
+            >
+              {{ row.muted ? 'ABRIR' : 'MUTE' }}
+            </button>
+          }
           <button
             type="button"
             class="step step-down"
-            [attr.aria-label]="'Diminuir ' + row.name + ' no fone'"
-            [disabled]="!live.writable() || row.db === null || actions.isBusy('fones:' + row.number)"
-            (click)="step(row.number, -2)"
+            [attr.aria-label]="'Diminuir ' + row.name + ' ' + where()"
+            [disabled]="!live.writable() || row.db === null || actions.isBusy(key(row.number))"
+            (click)="change(row.number, -step)"
           >
             −
           </button>
-          <output class="fones-value" [attr.data-testid]="'fones-value-' + row.number">{{ row.text }}</output>
+          <output class="fones-value" [attr.data-testid]="testId() + row.number">{{ row.text }}</output>
           <button
             type="button"
             class="step step-up"
-            [attr.aria-label]="'Aumentar ' + row.name + ' no fone'"
-            [disabled]="!live.writable() || row.db === null || actions.isBusy('fones:' + row.number)"
-            (click)="step(row.number, 2)"
+            [attr.aria-label]="'Aumentar ' + row.name + ' ' + where()"
+            [disabled]="!live.writable() || row.db === null || actions.isBusy(key(row.number))"
+            (click)="change(row.number, step)"
           >
             +
           </button>
@@ -53,22 +77,36 @@ import { keys } from '../core/protocol';
 export class FonesListComponent {
   readonly live = inject(LiveService);
   readonly actions = inject(ActionsService);
+  readonly target = input<'fones' | 'pa'>('fones');
+  readonly step = STEP_DB;
 
   readonly aux = computed(() => this.live.hello()?.musicianAux ?? 1);
   readonly auxName = computed(() => this.live.auxes().find((a) => a.number === this.aux())?.name ?? `AUX ${this.aux()}`);
+  readonly where = computed(() => (this.target() === 'pa' ? 'no PA' : 'no fone'));
+  readonly testId = computed(() => (this.target() === 'pa' ? 'pa-value-' : 'fones-value-'));
   readonly rows = computed(() => {
     const params = this.live.state()?.params ?? {};
-    const aux = this.aux();
+    const aux = this.target() === 'pa' ? undefined : this.aux();
     return this.live.channels().map((ch) => {
       const level = params[keys.level(ch.number, aux)]?.value;
-      const mute = params[keys.mute(ch.number, aux)]?.value;
+      const muteV = params[keys.mute(ch.number, aux)]?.value;
       const db = level?.status === 'known' && typeof level.value === 'number' ? level.value : null;
       const text = level?.status === 'unavailable' ? 'sem leitura' : db === null ? '?' : `${formatDb(db)} dB`;
-      return { number: ch.number, name: ch.name, db, text, muted: mute?.status === 'known' && mute.value === true };
+      const mute = muteV?.status === 'known' && typeof muteV.value === 'boolean' ? muteV.value : null;
+      return { number: ch.number, name: ch.name, db, text, mute, muted: mute === true };
     });
   });
 
-  step(channel: number, delta: number): void {
-    void this.actions.run(`fones:${channel}`, { type: 'set_level', channel, aux: this.aux(), deltaDB: delta });
+  key(channel: number): string {
+    return `${this.target()}:${channel}`;
+  }
+
+  change(channel: number, delta: number): void {
+    const aux = this.target() === 'pa' ? undefined : this.aux();
+    void this.actions.run(this.key(channel), { type: 'set_level', channel, aux, deltaDB: delta });
+  }
+
+  toggleMute(channel: number, muted: boolean): void {
+    void this.actions.run(this.key(channel), { type: 'set_mute', channels: [channel], muted: !muted });
   }
 }

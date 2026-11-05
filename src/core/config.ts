@@ -67,6 +67,14 @@ const ConfigSchema = z.object({
         .prefault({}),
       /** AUX que os músicos podem ajustar (o retorno compartilhado dos fones). */
       musicianAux: z.number().int().min(1).default(1),
+      /**
+       * O que o perfil músico pode fazer:
+       * - fones_only (padrão): só os fones;
+       * - pa_without_master: fones + canais do PA (passos pequenos, mute de um canal), nunca o master.
+       */
+      musicianAccess: z.enum(['fones_only', 'pa_without_master']).default('fones_only'),
+      /** Maior mudança de um canal do PA que o músico faz sem aprovação (dB, até 3). */
+      musicianPaStepDB: z.number().positive().max(3).default(3),
       /** Validade de uma sessão aberta com PIN (horas). */
       sessionHours: z.number().positive().max(48).default(12),
     })

@@ -4,6 +4,7 @@ import { paramKey, type ParamKey } from '../core/revisions.js';
 import { auxBus, MASTER } from '../mixer/types.js';
 import type { Principal } from '../server/auth.js';
 import { authorizeCommand, type Command } from '../server/commands.js';
+import { stepLimitFor, type AccessPolicy } from '../server/policy.js';
 import type { Intent } from './intent.js';
 
 /** Cartão de proposta mostrado na tela (nada foi alterado ainda). */
@@ -55,7 +56,7 @@ const fmtDelta = (d: number) => `${d > 0 ? '+' : '−'}${Math.abs(d)} dB`;
 export class ProposalBuilder {
   constructor(
     private controller: MixController,
-    private musicianAux: number,
+    private policy: AccessPolicy,
     private ttlMs: number,
     private clock: () => number = Date.now,
   ) {}
@@ -67,10 +68,10 @@ export class ProposalBuilder {
     const id = randomBytes(6).toString('hex');
     const expiresAtMs = this.clock() + this.ttlMs;
     const base = { id, source, reason: intent.reason, expiresAt: new Date(expiresAtMs).toISOString() };
-    const aux = (dest: 'pa' | 'fones') => (dest === 'fones' ? this.musicianAux : undefined);
+    const aux = (dest: 'pa' | 'fones') => (dest === 'fones' ? this.policy.musicianAux : undefined);
     const destName = (dest: 'pa' | 'fones') => (dest === 'fones' ? 'FONES' : 'PA');
     const check = (command: Command): BuildResult | undefined => {
-      const auth = authorizeCommand(p.role, command, names, this.musicianAux);
+      const auth = authorizeCommand(p.role, command, names, this.policy);
       return auth.ok ? undefined : { ok: false, code: 'FORBIDDEN', message: auth.message };
     };
     const nameOf = (n: number) => names.inputs.list().find((c) => c.number === n)?.name;
@@ -102,7 +103,8 @@ export class ProposalBuilder {
               current: fmtDb(current),
               change: intent.db !== undefined ? `para ${fmtDb(intent.db)}` : fmtDelta(intent.deltaDB ?? 0),
               result: fmtDb(target) + (clamped ? ' (teto)' : ''),
-              needsApproval: step > lim.maxStepDB,
+              // músico no PA: o limite é o dele (3 dB); acima, o operador aprova
+              needsApproval: step > Math.min(lim.maxStepDB, stepLimitFor(p.role, command, this.policy)?.maxStepDB ?? Infinity) + 1e-9,
             },
             ownerId: p.id,
             intent,

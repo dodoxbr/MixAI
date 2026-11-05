@@ -37,6 +37,9 @@ export interface Hello {
   model: string;
   link: string;
   musicianAux: number;
+  /** Política do músico: fones_only (padrão) ou pa_without_master. */
+  musicianAccess?: 'fones_only' | 'pa_without_master';
+  musicianPaStepDB?: number;
   role?: Role;
   meters: { available: boolean; simulated: boolean };
   assistant?: { available: boolean; ai: boolean };

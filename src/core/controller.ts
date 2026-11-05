@@ -79,6 +79,15 @@ export interface LevelRequest {
   confirmationId?: string;
   /** Quem pediu (perfil do servidor). Fica gravado no desfazer. */
   origin?: string;
+  /** Responsável, para o histórico: perfil + sessão (ex.: "músico · sessão 3fa2c1"). */
+  actor?: string;
+  /**
+   * Limite de passo deste pedido (dB), mais RESTRITO que safety.maxStepDB (nunca maior).
+   * Acima dele vira pendência de aprovação do operador. Ex.: músico no PA (3 dB).
+   */
+  maxStepDB?: number;
+  /** Texto curto do motivo do limite (aparece no cartão de aprovação). */
+  stepRule?: string;
   expect?: Expectation;
 }
 
@@ -89,6 +98,7 @@ export interface MuteRequest {
   confirm?: boolean;
   confirmationId?: string;
   origin?: string;
+  actor?: string;
   expect?: Expectation;
 }
 
@@ -103,6 +113,8 @@ export interface UndoPreview {
 export interface UndoOptions {
   confirmationId?: string;
   expect?: Expectation;
+  /** Responsável, para o histórico (perfil + sessão). */
+  actor?: string;
   /**
    * Devolve um motivo quando este desfazer precisa de aprovação humana (ex.: pedido pelo
    * assistente e mexe no master). undefined = pode seguir direto.
@@ -147,6 +159,7 @@ export interface FaderRequest {
   /** true = soltou o fader: fecha o gesto e grava UM item no desfazer. */
   final?: boolean;
   origin?: string;
+  actor?: string;
 }
 
 interface FaderGesture {
@@ -158,6 +171,7 @@ interface FaderGesture {
   after?: ParamValue;
   revisionAtWrite?: number;
   origin?: string;
+  actor?: string;
   lastAt: number;
 }
 
@@ -341,9 +355,11 @@ export class MixController {
       if (plan.target === roundHalf(current)) {
         return { ok: true, code: 'OK', message: `${label} já está em ${formatDB(current)}. Nada mudou.` };
       }
-      const needs = plan.step > this.safety.maxStepDB;
+      const limit = Math.min(this.safety.maxStepDB, req.maxStepDB ?? Infinity);
+      const needs = plan.step > limit + 1e-9;
       const command = { op: 'level', key, db: req.db, deltaDB: req.deltaDB };
-      const summary = `Mudar ${label} de ${formatDB(current)} para ${formatDB(plan.target)} é uma mudança de ${Math.round(plan.step)} dB, acima do limite de ${this.safety.maxStepDB} dB por comando.`;
+      const rule = limit < this.safety.maxStepDB && req.stepRule ? ` (${req.stepRule})` : '';
+      const summary = `Mudar ${label} de ${formatDB(current)} para ${formatDB(plan.target)} é uma mudança de ${Math.round(plan.step * 2) / 2} dB, acima do limite de ${limit} dB por comando${rule}.`;
       const blocked = this.authorize(needs, req.confirmationId, command, [key], summary);
       if (blocked) return blocked;
 
@@ -360,7 +376,7 @@ export class MixController {
           toDB: plan.target,
           clamped: plan.clamped,
         },
-        { origin: req.origin, critical: needs },
+        { origin: req.origin, critical: needs, actor: req.actor },
       );
     });
   }
@@ -415,12 +431,12 @@ export class MixController {
         description,
         applied,
         { channels: applied.done.map((d) => Number(d.key.split('.')[1])), muted: req.muted },
-        { origin: req.origin, critical: needs },
+        { origin: req.origin, critical: needs, actor: req.actor },
       );
     });
   }
 
-  async setMaster(req: { db?: number; deltaDB?: number; confirm?: boolean; confirmationId?: string; origin?: string; expect?: Expectation }): Promise<Result> {
+  async setMaster(req: { db?: number; deltaDB?: number; confirm?: boolean; confirmationId?: string; origin?: string; actor?: string; expect?: Expectation }): Promise<Result> {
     const key = paramKey.master();
     return this.queue.run(async () => {
       const gate = this.writeGate();
@@ -447,7 +463,7 @@ export class MixController {
         `Master: ${formatDB(current)} → ${formatDB(plan.target)}${note}`,
         applied,
         { fromDB: current, toDB: plan.target },
-        { origin: req.origin, critical: true },
+        { origin: req.origin, critical: true, actor: req.actor },
       );
     });
   }
@@ -535,7 +551,7 @@ export class MixController {
         notSentAll.length || uncertainAll.length ? 'PARTIAL' : skipped.length ? (undone.length ? 'PARTIAL' : 'CONFLICT') : 'OK';
       const ok = code === 'OK';
       const message = parts.join('. ');
-      this.log.add({ action: 'undo', ok, message, details: { undone, skipped, notSent: notSentAll, uncertain: uncertainAll } });
+      this.log.add({ action: 'undo', ok, message, details: { undone, skipped, notSent: notSentAll, uncertain: uncertainAll, ...(opts.actor ? { by: opts.actor } : {}) } });
       return { ok, code, message, data: { undone, skipped, notSent: notSentAll, uncertain: uncertainAll } };
     });
   }
@@ -594,6 +610,7 @@ export class MixController {
           revisionBefore: this.tracker.revisionOf(key),
           actorBefore: this.tracker.actorOf(key),
           origin: req.origin,
+          actor: req.actor,
           lastAt: this.clock(),
         };
         this.gestures.set(req.gestureId, g);
@@ -664,7 +681,7 @@ export class MixController {
         },
       ],
     });
-    this.log.add({ action: 'fader', ok: true, message: description, details: { key: g.key, from: g.before, to: g.after, origin: g.origin } });
+    this.log.add({ action: 'fader', ok: true, message: description, details: { key: g.key, from: g.before, to: g.after, origin: g.origin, ...(g.actor ? { by: g.actor } : {}) } });
   }
 
   async resetLab(): Promise<Result> {
@@ -694,7 +711,7 @@ export class MixController {
     return { ok: true, code: 'OK', message: 'Shows e snapshots salvos na mesa', data: { shows, current } };
   }
 
-  async loadSnapshot(req: { show: string; snapshot: string; confirm?: boolean; confirmationId?: string }): Promise<Result> {
+  async loadSnapshot(req: { show: string; snapshot: string; confirm?: boolean; confirmationId?: string; actor?: string }): Promise<Result> {
     return this.queue.run(async () => {
       const gate = this.writeGate();
       if (gate) return gate;
@@ -725,7 +742,7 @@ export class MixController {
         this.state.flush();
         const error = err instanceof Error ? err.message : String(err);
         const message = `RESULTADO INCERTO ao carregar o snapshot "${snapName}" (${error}): confira na mesa. A pilha de desfazer foi zerada.`;
-        this.log.add({ action: 'snapshot', ok: false, message, details: { show: showName, snapshot: snapName, outcome: 'indeterminate', error } });
+        this.log.add({ action: 'snapshot', ok: false, message, details: { show: showName, snapshot: snapName, outcome: 'indeterminate', error, ...(req.actor ? { by: req.actor } : {}) } });
         return { ok: false, code: 'PARTIAL', message, data: { show: showName, snapshot: snapName, outcome: 'indeterminate' } };
       }
       this.tracker.bumpAll(this.allKeys(), 'snapshot');
@@ -734,7 +751,7 @@ export class MixController {
       this.state.flush();
       const sent = outcome === 'sent' ? ' (enviado à mesa)' : '';
       const message = `Snapshot carregado: ${showName} / ${snapName}${sent}. A pilha de desfazer foi zerada.`;
-      this.log.add({ action: 'snapshot', ok: true, message, details: { show: showName, snapshot: snapName, outcome } });
+      this.log.add({ action: 'snapshot', ok: true, message, details: { show: showName, snapshot: snapName, outcome, ...(req.actor ? { by: req.actor } : {}) } });
       return { ok: true, code: 'OK', message, data: { show: showName, snapshot: snapName, outcome } };
     });
   }
@@ -784,7 +801,7 @@ export class MixController {
     description: string,
     applied: ApplyResult,
     data: Record<string, unknown>,
-    meta: { origin?: string; critical?: boolean } = {},
+    meta: { origin?: string; critical?: boolean; actor?: string } = {},
   ): Result {
     const { done, uncertain, notSent } = applied;
     const complete = !uncertain.length && !notSent.length;
@@ -812,7 +829,7 @@ export class MixController {
     const sent = done.some((d) => d.outcome === 'sent') ? ' (enviado à mesa; a Ui16 não confirma o recebimento)' : '';
     if (complete) {
       const message = `${description}${sent}`;
-      this.log.add({ action, ok: true, message, details: { ...data, changes } });
+      this.log.add({ action, ok: true, message, details: { ...data, changes, ...(meta.actor ? { by: meta.actor } : {}) } });
       return { ok: true, code: 'OK', message, data: { ...data, changes } };
     }
     const link = this.mixer.link();
@@ -828,7 +845,7 @@ export class MixController {
     if (notSent.length) parts.push(`NÃO enviado: ${notSent.map((c) => c.label).join(', ')}.`);
     parts.push(this.mixer.statusText());
     const message = parts.join(' ');
-    this.log.add({ action, ok: false, message, details: { ...data, changes, link } });
+    this.log.add({ action, ok: false, message, details: { ...data, changes, link, ...(meta.actor ? { by: meta.actor } : {}) } });
     return { ok: false, code: 'PARTIAL', message, data: { ...data, changes, link } };
   }
 
