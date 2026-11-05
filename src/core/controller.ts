@@ -34,7 +34,12 @@ export type ResultCode =
   | 'CONFIRMATION_EXPIRED'
   | 'CONFIRMATION_MISMATCH'
   | 'CONFIRMATION_STALE'
-  | 'CONFIRMATION_USED';
+  | 'CONFIRMATION_USED'
+  // servidor (E2)
+  | 'FORBIDDEN'
+  | 'UNAUTHORIZED'
+  | 'MODE_MISMATCH'
+  | 'SERVER_UNAVAILABLE';
 
 export interface Result {
   ok: boolean;

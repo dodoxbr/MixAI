@@ -11,6 +11,7 @@ export interface App {
   loaded: LoadedConfig;
   mixer: MixerAdapter;
   controller: MixController;
+  log: ActionLog;
 }
 
 /** Capacidades conhecidas sem carregar o código da mesa real. */
@@ -81,5 +82,5 @@ export async function createApp(loaded: LoadedConfig = loadConfig()): Promise<Ap
       details: { source, warnings },
     });
   }
-  return { loaded, mixer, controller };
+  return { loaded, mixer, controller, log };
 }

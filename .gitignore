@@ -9,3 +9,5 @@ logs/
 *.pem
 *.key
 data/
+# Hashes de PIN (gerados por npm run pin)
+config/secrets.yaml
