@@ -121,6 +121,31 @@ interface DoneChange extends Change {
   actorBefore?: Actor;
 }
 
+/** Requisição de um gesto de fader (arraste humano na tela). */
+export interface FaderRequest {
+  channel: string | number;
+  aux?: string | number;
+  /** Valor absoluto (≤ -80 = fader todo para baixo). */
+  db: number;
+  /** Identifica o gesto (um arraste, do toque até soltar). */
+  gestureId: string;
+  /** true = soltou o fader: fecha o gesto e grava UM item no desfazer. */
+  final?: boolean;
+  origin?: string;
+}
+
+interface FaderGesture {
+  key: ParamKey;
+  label: string;
+  before: ParamValue;
+  revisionBefore: number;
+  actorBefore?: Actor;
+  after?: ParamValue;
+  revisionAtWrite?: number;
+  origin?: string;
+  lastAt: number;
+}
+
 /** Abaixo disso, consideramos o fader todo para baixo. */
 const SILENCE_DB = -80;
 
@@ -160,6 +185,8 @@ export class MixController {
   private readonly lastKnown = new Map<ParamKey, ParamValue>();
   private readonly verifications: Array<VerificationReport & { time: string }> = [];
   private actionTimes: number[] = [];
+  /** Gestos de fader em andamento (arraste na tela): um item de desfazer por gesto. */
+  private readonly gestures = new Map<string, FaderGesture>();
 
   constructor(
     readonly mixer: MixerAdapter,
@@ -494,6 +521,129 @@ export class MixController {
    * Volta o LABORATÓRIO ao estado inicial, pela fila de comandos. Não existe na mesa real nem
    * no simulador de testes, e ainda não é exposto como tool (fica para a interface da E3).
    */
+  /**
+   * Arraste de fader feito por uma PESSOA na tela (nunca pela IA: o servidor recusa para o
+   * assistente). Diferente de setLevel:
+   * - o gesto inteiro conta como UM comando no limite por segundo e UM item no desfazer;
+   * - não pede confirmação por passo grande (a pessoa está movendo o fader com a mão);
+   * - continua respeitando o teto de volume, o estado da ligação e a fila única.
+   * O master não tem gesto: muda só por setMaster (sempre com aprovação).
+   */
+  async setFader(req: FaderRequest): Promise<Result> {
+    const ch = this.resolve(() => this.names.channel(req.channel));
+    if ('error' in ch) return ch.error;
+    let bus: Bus = MASTER;
+    let where = 'no master';
+    let ceiling = this.safety.maxChannelLevelDB;
+    if (req.aux !== undefined && req.aux !== '') {
+      const a = this.resolve(() => this.names.auxBus(req.aux!));
+      if ('error' in a) return a.error;
+      bus = auxBus(a.value.number);
+      where = `no ${a.value.name}`;
+      ceiling = this.safety.maxAuxSendDB;
+    }
+    const key = paramKey.level(ch.value.number, bus);
+    const label = `${ch.value.name} ${where}`;
+    if (typeof req.db !== 'number' || Number.isNaN(req.db)) return { ok: false, code: 'INVALID', message: 'Valor do fader inválido.' };
+
+    return this.queue.run(async () => {
+      this.sweepGesturesInner(3000);
+      const gate = this.writeGate();
+      if (gate) {
+        this.closeGesture(req.gestureId);
+        return gate;
+      }
+      const cur = this.mixer.read(key);
+      if (!cur.known) return this.unknownState(label);
+      const current = cur.value as number;
+      let g = this.gestures.get(req.gestureId);
+      if (g && g.key !== key) {
+        this.closeGesture(req.gestureId);
+        g = undefined;
+      }
+      if (!g) {
+        const limited = this.rateLimit(); // o gesto inteiro conta como um comando
+        if (limited) return limited;
+        g = {
+          key,
+          label,
+          before: current,
+          revisionBefore: this.tracker.revisionOf(key),
+          actorBefore: this.tracker.actorOf(key),
+          origin: req.origin,
+          lastAt: this.clock(),
+        };
+        this.gestures.set(req.gestureId, g);
+      }
+      g.lastAt = this.clock();
+      let target = req.db <= SILENCE_DB ? -Infinity : roundHalf(req.db);
+      const clamped = target > ceiling;
+      if (clamped) target = ceiling;
+      let result: Result = { ok: true, code: 'OK', message: `${label}: ${formatDB(target)}`, data: { toDB: target, clamped } };
+      if (target !== roundHalf(current)) {
+        const applied = await this.applyChanges([{ key, label, from: current, to: target }]);
+        const done = applied.done[0];
+        if (done) {
+          g.after = target;
+          g.revisionAtWrite = done.revisionAtWrite;
+        } else {
+          const why = applied.uncertain[0]?.error ?? this.mixer.statusText();
+          result = {
+            ok: false,
+            code: applied.uncertain.length ? 'PARTIAL' : 'NO_CONNECTION',
+            message: applied.uncertain.length
+              ? `RESULTADO INCERTO ao mover ${label} (${why}): confira na mesa.`
+              : `${label} não foi alterado: ${why}`,
+          };
+          this.closeGesture(req.gestureId);
+          return result;
+        }
+      }
+      if (req.final) this.closeGesture(req.gestureId);
+      return result;
+    });
+  }
+
+  /** Fecha um gesto (soltou o fader, a tela caiu ou o gesto ficou parado). */
+  async endFader(gestureId: string): Promise<void> {
+    await this.queue.run(async () => this.closeGesture(gestureId));
+  }
+
+  /** Fecha gestos parados há mais de `idleMs` (ex.: o navegador fechou no meio do arraste). */
+  async sweepGestures(idleMs = 3000): Promise<void> {
+    await this.queue.run(async () => this.sweepGesturesInner(idleMs));
+  }
+
+  private sweepGesturesInner(idleMs: number) {
+    const now = this.clock();
+    for (const [id, g] of this.gestures) if (now - g.lastAt > idleMs) this.closeGesture(id);
+  }
+
+  private closeGesture(id: string) {
+    const g = this.gestures.get(id);
+    if (!g) return;
+    this.gestures.delete(id);
+    if (g.after === undefined || g.revisionAtWrite === undefined || sameValue(g.after, g.before)) return;
+    const description = `${g.label}: ${fmt(g.before)} → ${fmt(g.after)} (fader)`;
+    this.undoStack.push({
+      origin: g.origin,
+      critical: false,
+      description,
+      items: [
+        {
+          key: g.key,
+          label: g.label,
+          before: g.before,
+          after: g.after,
+          revisionAtWrite: g.revisionAtWrite,
+          revisionBefore: g.revisionBefore,
+          actorBefore: g.actorBefore,
+        },
+      ],
+    });
+    this.log.add({ action: 'fader', ok: true, message: description, details: { key: g.key, from: g.before, to: g.after, origin: g.origin } });
+  }
+
   async resetLab(): Promise<Result> {
     return this.queue.run(async () => {
       const lab = this.mixer as { mode: string; resetToDefaults?: () => ParamKey[] };

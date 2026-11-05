@@ -29,7 +29,7 @@ export interface RunningServer {
  */
 export async function startServer(
   loaded: LoadedConfig,
-  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number } = {},
+  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string } = {},
 ): Promise<RunningServer> {
   const { config } = loaded;
   const mode = config.mixer.mode;
@@ -69,7 +69,7 @@ export async function startServer(
 
     let boundPort = port;
     for (const host of hosts) {
-      const http = await buildHttp(core);
+      const http = await buildHttp(core, { webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(http);
       await http.listen({ host, port: boundPort });
       const addr = http.server.address();
