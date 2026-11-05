@@ -43,6 +43,7 @@ Experimento reproduzível: `node docs/lab/spikes/reconexao.mjs` (WebSocket falso
 | Comando dado na janela da queda (socket morto, status ainda `OPEN`) | **perdido em silêncio**, sem erro para o chamador |
 | Descartar a instância na primeira queda e criar outra | a instância velha **não reconecta**; o buffer dela morre com ela |
 | `disconnect()` depois da queda | a promessa **não resolve** (exige tempo limite) |
+| `disconnect()` chamado **dentro** do evento de queda | **não** cancela a reconexão automática; a instância "descartada" reabre sozinha ~2 s depois (achado durante a implementação, coberto em `library-behavior.test.ts`) |
 
 Mais um fato relevante, lido no código da biblioteca: o estado local (`store.state$`) é montado a partir das mensagens **recebidas e também das enviadas**. Uma escrita aparece no estado local **no mesmo instante**, mesmo que nunca chegue à mesa. Portanto, **o estado local da instância que enviou nunca serve como prova de execução**.
 
@@ -66,7 +67,7 @@ Mais um fato relevante, lido no código da biblioteca: o estado local (`store.st
 - **Descarte da instância**, no primeiro evento diferente de `OPEN` (`CLOSE`, `ERROR`, `RECONNECTING`) ou no tempo limite de conexão:
   1. cancelar **todos** os temporizadores da geração;
   2. cancelar **todas** as assinaturas;
-  3. chamar `disconnect()` sem esperar (o erro é ignorado);
+  3. chamar `disconnect()` sem esperar (o erro é ignorado), **de novo na próxima volta do loop de eventos** e sempre que a instância descartada tentar reabrir (vigia de 30 s);
   4. soltar a referência.
 - **Uma única tentativa ativa:** `connect()` chamado de novo durante uma tentativa devolve a mesma promessa. Existe no máximo um temporizador de reconexão, e no máximo uma instância viva.
 - **Reconexão:** sempre com uma instância **nova**, com espera progressiva (base 1 s, dobrando até 10 s). Nada é levado de uma instância para outra.
@@ -270,6 +271,8 @@ Todos os demais testes atuais permanecem sem alteração.
 | 6 | `docs: README e ESTADO-ATUAL` | todos |
 
 Cada commit compila e passa em todos os testes. Os commits 3 e 4 juntam itens interdependentes; separá-los produziria estados intermediários que não compilam.
+
+**Como ficou na implementação:** os itens dos commits 3, 4 e parte do 5 foram para um único commit de código (`feat(e0)`), porque a troca do contrato `MixerAdapter` exige mudar ao mesmo tempo o controlador, o simulador, a mesa real e quem os monta. As primitivas independentes (fila, revisões, pendências, desfazer) foram em commit próprio antes, e os testes de isolamento, parser e nomes em commit próprio depois.
 
 ## 13. Rollback (apenas por Git)
 

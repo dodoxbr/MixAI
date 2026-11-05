@@ -1,4 +1,4 @@
-# MixAI — estado atual (04/11/2026)
+# MixAI — estado atual (05/11/2026, v0.2 / E0)
 
 Controle da mesa **Soundcraft Ui16** por IA, para uma banda de samba/pagode amadora que toca em roda.
 O músico pede em português ("mais Fred no fone", "abaixa o surdo") e o Claude ajusta a mesa,
@@ -83,7 +83,7 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 40 testes (Vitest)
+test/                 105 testes (Vitest)
 ```
 
 ---
@@ -120,18 +120,22 @@ test/                 40 testes (Vitest)
 | Comandos por segundo | 5 |
 | Canal todo abaixado (-∞) em ajuste relativo | tratado como -60 dB (abrir = mudança grande) |
 
-"Pedir confirmação" nunca altera nada: a tool devolve `needsConfirmation` e a IA precisa perguntar
-ao usuário e repetir com `confirm=true`. Tudo vai para o log (`logs/acoes-AAAA-MM-DD.jsonl`) e para
+"Pedir confirmação" nunca altera nada: a tool devolve `NEEDS_CONFIRMATION` com um `pendingId`, e a IA
+precisa perguntar ao usuário e repetir o mesmo comando com `confirmation_id` (uso único, 60 s,
+invalidado se a mesa mudar antes). Tudo vai para o log (`logs/acoes-AAAA-MM-DD.jsonl`) e para
 a pilha de desfazer (até 50 ações).
 
 ---
 
 ## 5. Testes
 
-40 testes, todos passando (Windows e Linux):
+105 testes passando (Linux; validar no Windows ao atualizar). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
+- **E0:** reconexão segura (supervisor com gerações e descarte de instância), fila única,
+  desfazer causal por revisão, pendências vinculadas ao estado, operações compostas parciais,
+  estados distintos, isolamento mock × real, parser e nomes restritos;
 - desfazer (vários passos, volta a -∞);
 - servidor MCP de ponta a ponta (cliente MCP em memória);
 - **adaptador real com WebSocket falso** imitando a Ui16: confere que os comandos saem no
