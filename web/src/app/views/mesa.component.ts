@@ -87,7 +87,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
         }
       }
       @if (live.pending().length || showHistory() || assistant.open()) {
-        <aside class="side">
+        <aside class="side" [class.has-assistant]="assistant.open()">
           <mx-pending-cards
             [cards]="live.pending()"
             [canDecide]="true"

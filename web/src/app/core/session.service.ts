@@ -3,6 +3,7 @@ import type { Hello, Role } from './protocol';
 
 const TOKEN = 'mixai.token';
 const ROLE = 'mixai.role';
+const SERVER = 'mixai.serverId';
 
 /** sessionStorage pode falhar (aba privada, bloqueio): a tela funciona sem ele. */
 function store(): Storage | undefined {
@@ -23,6 +24,8 @@ export class SessionService {
   readonly role = signal<Role | null>(null);
   /** Mensagem mostrada na tela de PIN (sessão vencida, servidor reiniciado...). */
   readonly notice = signal<string | null>(null);
+  /** Instância do servidor em que esta sessão foi aberta (para reconhecer um reinício). */
+  serverId: string | null = null;
 
   constructor() {
     try {
@@ -31,6 +34,7 @@ export class SessionService {
       if (t && (r === 'operator' || r === 'musician')) {
         this.token.set(t);
         this.role.set(r);
+        this.serverId = store()?.getItem(SERVER) ?? null;
       }
     } catch {
       /* sem armazenamento: precisa entrar com PIN a cada recarga */
@@ -62,6 +66,7 @@ export class SessionService {
     if (!res.ok || !body.token || (body.role !== 'operator' && body.role !== 'musician')) {
       return body.result?.message ?? 'Não foi possível entrar.';
     }
+    this.serverId = null;
     this.token.set(body.token);
     this.role.set(body.role);
     this.notice.set(null);
@@ -80,6 +85,16 @@ export class SessionService {
     if (t) await fetch('/api/logout', { method: 'POST', headers: { authorization: `Bearer ${t}`, 'content-type': 'application/json' }, body: '{}' }).catch(() => undefined);
   }
 
+  /** Guarda a instância do servidor vista no hello desta sessão. */
+  rememberServer(id: string): void {
+    this.serverId = id;
+    try {
+      store()?.setItem(SERVER, id);
+    } catch {
+      /* ignora */
+    }
+  }
+
   /** O servidor recusou a sessão (vencida, logout em outro lugar, servidor reiniciado). */
   expire(message: string): void {
     this.clear();
@@ -89,9 +104,11 @@ export class SessionService {
   private clear() {
     this.token.set(null);
     this.role.set(null);
+    this.serverId = null;
     try {
       store()?.removeItem(TOKEN);
       store()?.removeItem(ROLE);
+      store()?.removeItem(SERVER);
     } catch {
       /* ignora */
     }

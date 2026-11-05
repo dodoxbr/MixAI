@@ -104,13 +104,30 @@ export class AssistantPanelComponent {
   private readonly log = viewChild<ElementRef<HTMLElement>>('log');
 
   constructor() {
-    // Sempre mostra a mensagem mais recente (cartão, pergunta ou "Melhorou?").
+    // Sempre mostra a mensagem mais recente (cartão, pergunta ou "Melhorou?") — dentro da
+    // conversa E na página: o painel pode estar abaixo dos faders (tela estreita) ou abaixo dos
+    // cartões de aprovação. Sem isso a resposta chegava, mas ficava fora da área visível.
+    let lastSeen = -1;
     afterRenderEffect(() => {
-      this.assistant.items();
+      const items = this.assistant.items();
       this.assistant.cardState();
-      this.assistant.thinking();
-      const el = this.log()?.nativeElement;
-      if (el) el.scrollTop = el.scrollHeight;
+      const thinking = this.assistant.thinking();
+      const log = this.log()?.nativeElement;
+      if (!log) return;
+      const newest = items.at(-1)?.id ?? 0;
+      const changed = newest !== lastSeen;
+      lastSeen = newest;
+      const reveal = () => {
+        const target = log.lastElementChild as HTMLElement | null;
+        if (!target) return;
+        // Dentro da conversa: mostra o COMEÇO da mensagem nova se ela não couber inteira.
+        const tall = target.offsetHeight > log.clientHeight;
+        log.scrollTop = tall ? target.offsetTop : log.scrollHeight; // .assist-log é position: relative
+        // Na página (painel abaixo dos faders ou das aprovações): traz a mensagem para a tela.
+        if (changed || thinking) target.scrollIntoView?.({ block: tall ? 'start' : 'nearest', inline: 'nearest' });
+      };
+      reveal();
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(reveal);
     });
   }
   stateText(s: CardState): string {

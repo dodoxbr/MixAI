@@ -5,7 +5,7 @@ import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
 import type { Result } from '../core/controller.js';
-import type { Principal } from './auth.js';
+import type { Principal, RevokeReason } from './auth.js';
 import { fail, type CommandResponse, type ServerCore } from './core.js';
 
 /** Fechamentos do WebSocket com motivo (o cliente decide o que fazer). */
@@ -161,16 +161,25 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
   const raw = (msg: unknown) => {
     if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(msg));
   };
-  const close = (code: number, reason: string) => {
-    raw({ type: 'error', code: code === WS_CLOSE.UNAUTHORIZED ? 'UNAUTHORIZED' : 'PROTOCOL', message: reason });
-    socket.close(code, reason);
+  /**
+   * Fecha com motivo. UNAUTHORIZED leva também `reason` (para a tela explicar):
+   * expired = venceu; logout = saiu; unknown_session = token não reconhecido (servidor
+   * reiniciado ou sessão que não existe mais); no_auth = não se autenticou.
+   */
+  const close = (code: number, message: string, reason?: string) => {
+    raw({ type: 'error', serverId: core.serverId, code: code === WS_CLOSE.UNAUTHORIZED ? 'UNAUTHORIZED' : 'PROTOCOL', reason, message });
+    socket.close(code, message.slice(0, 120));
   };
   /** Derruba a conexão de uma sessão encerrada/vencida e para TODOS os envios dela. */
-  const revoke = () => {
+  const revoke = (why: RevokeReason = 'expired') => {
     if (revoked) return;
     revoked = true;
     stopAll();
-    close(WS_CLOSE.UNAUTHORIZED, 'Sessão encerrada ou vencida. Entre de novo com o PIN.');
+    close(
+      WS_CLOSE.UNAUTHORIZED,
+      why === 'logout' ? 'Sessão encerrada (Sair). Entre de novo com o PIN.' : 'Sessão vencida. Entre de novo com o PIN.',
+      why,
+    );
   };
   /** Todo envio depois da autenticação passa por aqui: a sessão é conferida ANTES de enviar. */
   const send = (msg: unknown) => {
@@ -183,7 +192,7 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
     meterTimer = undefined;
     for (const c of cleanups.splice(0)) c();
   };
-  const authTimer = setTimeout(() => close(WS_CLOSE.UNAUTHORIZED, 'Autenticação não recebida.'), 5000);
+  const authTimer = setTimeout(() => close(WS_CLOSE.UNAUTHORIZED, 'Autenticação não recebida.', 'no_auth'), 5000);
   authTimer.unref?.();
 
   const sendSnapshot = () => send({ type: 'snapshot', serverId: core.serverId, snapshot: core.snapshotFor(principal!.role) });
@@ -192,7 +201,7 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
     principal = p;
     clearTimeout(authTimer);
     // Logout derruba na hora; vencimento é conferido a cada segundo (conexão ociosa também cai).
-    cleanups.push(core.auth.onRevoke((id) => id === p.id && revoke()));
+    cleanups.push(core.auth.onRevoke((id, why) => id === p.id && revoke(why)));
     const watch = setInterval(() => !core.auth.isActive(p) && revoke(), 1000);
     watch.unref?.();
     cleanups.push(() => clearInterval(watch));
@@ -219,9 +228,9 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
       return close(WS_CLOSE.PROTOCOL, 'Mensagem inválida (esperado JSON).');
     }
     if (!principal) {
-      if (msg.type !== 'auth') return close(WS_CLOSE.UNAUTHORIZED, 'A primeira mensagem deve ser {type:"auth", token}.');
+      if (msg.type !== 'auth') return close(WS_CLOSE.UNAUTHORIZED, 'A primeira mensagem deve ser {type:"auth", token}.', 'no_auth');
       const p = core.auth.authenticate(msg.token, ip);
-      if (!p) return close(WS_CLOSE.UNAUTHORIZED, 'Sessão inválida ou servidor reiniciado. Entre de novo com o PIN.');
+      if (!p) return close(WS_CLOSE.UNAUTHORIZED, 'Sessão inválida ou servidor reiniciado. Entre de novo com o PIN.', 'unknown_session');
       return start(p);
     }
     const p = principal;

@@ -696,6 +696,19 @@ mx-root {
   }
   .side {
     width: 100%;
+    overflow-y: visible;
+  }
+  .side.has-assistant > .mx-pending-cards,
+  .side.has-assistant > .history {
+    max-height: none;
+  }
+  .side.has-assistant > .mx-assistant-panel {
+    flex: none;
+    min-height: 0;
+  }
+  .side .mx-assistant-panel .assist-log {
+    flex: none;
+    max-height: 60vh;
   }
   .fones-rows {
     padding: 0 10px 80px;
@@ -708,7 +721,38 @@ mx-root {
 /* ---------- assistente (E4) ---------- */
 .mx-assistant-input form {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+}
+.assist-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--warn, #f2c14e);
+}
+/* Coluna lateral com o assistente aberto: aprovações (no máximo 40%, com rolagem própria)
+   e o assistente dividem a altura; a conversa rola por dentro e nunca some da tela. */
+.side.has-assistant > .mx-pending-cards {
+  flex: 0 1 auto;
+  max-height: 40%;
+  min-height: 0;
+  overflow-y: auto;
+}
+.side.has-assistant > .mx-assistant-panel {
+  flex: 1 1 260px;
+  min-height: 260px;
+}
+.side.has-assistant > .history {
+  flex: 0 1 auto;
+  max-height: 30%;
+  min-height: 0;
+  overflow-y: auto;
+}
+.side .mx-assistant-panel .assist-log {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 .mx-assistant-input input {
   width: clamp(220px, 26vw, 380px);
@@ -755,6 +799,7 @@ mx-root {
   color: var(--ok);
 }
 .assist-log {
+  position: relative;
   list-style: none;
   margin: 0;
   padding: 10px;
@@ -765,6 +810,7 @@ mx-root {
   max-height: 60vh;
 }
 .assist-item {
+  scroll-margin: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
