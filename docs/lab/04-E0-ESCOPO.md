@@ -1,129 +1,127 @@
 # 04 — E0: escopo exato (correção e fortalecimento do núcleo)
 
-**Data:** 05/11/2026 · **Status: para revisão. Nada desta etapa foi implementado.**
-**Linha de base:** commit `ec7b861` em `main` · 40 testes passando (`npx vitest run`: 5 arquivos, 40 testes).
+**Data:** 05/11/2026 · **Versão 2**: incorpora o parecer "aprovado com ajustes obrigatórios" (ajustes 1 a 7).
+**Linha de base:** commit `ec7b861` (branch `baseline-v0.1.0`) · 40 testes passando.
+**Implementação:** branch `e0-nucleo`, com Pull Request para revisão. **Sem merge automático.**
 
 ## 1. Objetivo e limites
 
-**Objetivo:** deixar o núcleo seguro para múltiplos clientes e para a mesa real, **sem mudar o que o usuário vê** no Claude Desktop e no console.
+**Objetivo:** deixar o núcleo seguro para múltiplos clientes e para a mesa real, **sem mudar o que o usuário vê** no Claude Desktop e no console (exceto o formato da confirmação, seção 7).
 
 **Dentro da E0:**
 1. reconexão segura;
 2. fila única;
-3. revisões por parâmetro e desfazer pela revisão;
-4. estados distintos (desconhecido, -∞, indisponível, ressincronizando);
-5. autorização vinculada à operação;
-6. AUX e canais restritos ao configurado;
-7. `import()` dinâmico da mesa real;
-8. parser extraído do console.
+3. revisões por parâmetro e desfazer causal;
+4. estados distintos;
+5. resultado honesto das operações;
+6. autorização vinculada à operação **e ao estado**;
+7. operações compostas com resultado parcial;
+8. AUX e canais restritos ao configurado;
+9. `import()` dinâmico da mesa real;
+10. parser extraído do console.
 
-**Fora da E0** (vão para E1–E9): servidor HTTP/WS, `LabMixer` persistente, frontend, EQ, cenas, medidores, voz, canal humano de confirmação pela tela.
+**Fora da E0** (vão para E1–E9): servidor HTTP/WS, `LabMixer` persistente, frontend, EQ, cenas, medidores, voz e confirmação humana autenticada pela tela.
 
-## 2. Ordem acordada antes de mexer no núcleo
+## 2. Ordem acordada
 
 | Passo | Situação |
 | --- | --- |
-| Inicializar o Git e criar o commit inicial | **feito** (`ec7b861`, publicado em `main`) |
-| Garantir os 40 testes atuais | **feito**: verde em Linux; verde no Windows do Fernando antes da publicação |
-| Revisar a E0 com as decisões D1–D11 | **este documento** |
-| Acrescentar os testes de regressão | primeiro commit da implementação (seção 9) |
+| Git inicializado e commit inicial | feito (`ec7b861`) |
+| 40 testes atuais verdes | feito |
+| Escopo revisado (v1 → parecer → v2) | este documento |
+| Testes de regressão + implementação incremental | branch `e0-nucleo` |
 
-## 3. Reconexão segura (D8)
+## 3. Reconexão segura
 
 ### 3.1 O que foi comprovado
 
 Experimento reproduzível: `node docs/lab/spikes/reconexao.mjs` (WebSocket falso, sem rede).
 
-| Cenário | Resultado com a biblioteca 7.1.0 | Risco |
+| Cenário | Resultado com a biblioteca 7.1.0 |
+| --- | --- |
+| Comando dado depois que a biblioteca percebeu a queda | guardado num buffer interno e **reenviado** na reconexão |
+| Comando dado na janela da queda (socket morto, status ainda `OPEN`) | **perdido em silêncio**, sem erro para o chamador |
+| Descartar a instância na primeira queda e criar outra | a instância velha **não reconecta**; o buffer dela morre com ela |
+| `disconnect()` depois da queda | a promessa **não resolve** (exige tempo limite) |
+| `disconnect()` chamado **dentro** do evento de queda | **não** cancela a reconexão automática; a instância "descartada" reabre sozinha ~2 s depois (achado durante a implementação, coberto em `library-behavior.test.ts`) |
+
+Mais um fato relevante, lido no código da biblioteca: o estado local (`store.state$`) é montado a partir das mensagens **recebidas e também das enviadas**. Uma escrita aparece no estado local **no mesmo instante**, mesmo que nunca chegue à mesa. Portanto, **o estado local da instância que enviou nunca serve como prova de execução**.
+
+### 3.2 Máquina de estados do `ConnectionSupervisor`
+
+| Estado | Leitura | Escrita | Sai para |
+| --- | --- | --- | --- |
+| `DISCONNECTED` | não | não | `CONNECTING` (connect) |
+| `CONNECTING` | não | não | `SYNCING` (OPEN da geração atual) · `LOST` (outro evento ou tempo limite) |
+| `SYNCING` | não | não | `READY` (todos os parâmetros obrigatórios conhecidos) · `DEGRADED_READ_ONLY` (tempo limite) · `LOST` |
+| `DEGRADED_READ_ONLY` | **parcial** (o que chegou; o resto aparece como desconhecido) | **não** | `READY` (quando os parâmetros que faltavam chegarem) · `LOST` |
+| `READY` | sim | **sim** | `LOST` |
+| `LOST` | não | não | `CONNECTING` (nova tentativa com espera progressiva) |
+| `STOPPED` | não | não | — (disconnect pedido pelo usuário) |
+
+**Parâmetros obrigatórios:** nível e mute no master, e nível e mute no AUX configurado, para **cada canal do `channels.yaml`**, mais o nível do master.
+
+### 3.3 Gerações, eventos atrasados e recursos
+
+- **Geração:** cada instância de `SoundcraftUI` recebe um número crescente. Todo callback (status, valores, temporizadores) carrega a geração em que nasceu e **é ignorado se ela não for a atual**. Isso descarta eventos atrasados de instâncias antigas e eventos fora de ordem.
+- **Descarte da instância**, no primeiro evento diferente de `OPEN` (`CLOSE`, `ERROR`, `RECONNECTING`) ou no tempo limite de conexão:
+  1. cancelar **todos** os temporizadores da geração;
+  2. cancelar **todas** as assinaturas;
+  3. chamar `disconnect()` sem esperar (o erro é ignorado), **de novo na próxima volta do loop de eventos** e sempre que a instância descartada tentar reabrir (vigia de 30 s);
+  4. soltar a referência.
+- **Uma única tentativa ativa:** `connect()` chamado de novo durante uma tentativa devolve a mesma promessa. Existe no máximo um temporizador de reconexão, e no máximo uma instância viva.
+- **Reconexão:** sempre com uma instância **nova**, com espera progressiva (base 1 s, dobrando até 10 s). Nada é levado de uma instância para outra.
+- **Eventos tratados explicitamente:**
+
+| Evento \ Estado | `CONNECTING` | `SYNCING` | `DEGRADED_READ_ONLY` | `READY` |
+| --- | --- | --- | --- | --- |
+| `OPEN` (geração atual) | → `SYNCING` | ignorado (duplicado) | ignorado | ignorado |
+| `CLOSE` / `ERROR` / `RECONNECTING` | → `LOST` | → `LOST` | → `LOST` | → `LOST` (escritas da janela viram pendentes de verificação) |
+| valor recebido | — | registra; se completo → `READY` | registra; se completo → `READY` | registra como mudança externa |
+| evento de geração antiga | ignorado | ignorado | ignorado | ignorado |
+| tempo limite de conexão / sincronização | → `LOST` | → `DEGRADED_READ_ONLY` | — | — |
+
+### 3.4 Estado degradado (comportamento conservador)
+
+- Sincronização incompleta **permite leitura parcial** e **bloqueia todas as escritas** (código `DEGRADED_READ_ONLY`), não só as de parâmetros desconhecidos.
+- A sincronização **continua em segundo plano**. Quando os parâmetros obrigatórios ficam conhecidos, o estado passa a `READY` e as escritas são liberadas.
+- `DEGRADED_READ_ONLY` e `READY` aparecem separados em `mixer_status`, no console e nos códigos de resultado.
+
+### 3.5 Sem rollback inseguro
+
+- **Não existe** `strategy: legacy` na configuração. O comportamento antigo (reconexão automática da biblioteca) **não é acessível** em operação.
+- O comportamento da biblioteca sem supervisor fica documentado **só** nos testes de caracterização, que usam a biblioteca diretamente com um WebSocket falso.
+- **Se o supervisor falhar** (estado inesperado ou exceção interna), ele vai para `STOPPED`, recusa escritas e informa: "controle automático interrompido: use a interface oficial da Soundcraft".
+- O rollback de código é feito só pelo Git (seção 12).
+
+## 4. Resultado honesto das operações (ajuste 1)
+
+O protocolo da Ui **não confirma** comandos. Cada escrita passa por estas etapas, registradas no log:
+
+| Etapa | Significado | Quando |
 | --- | --- | --- |
-| Comando dado **depois** que a biblioteca percebeu a queda | guardado num buffer interno e **reenviado** ao reconectar (~2 s depois) | **mudança fantasma** |
-| Comando dado **na janela** da queda (socket morto, status ainda `OPEN`) | **perdido em silêncio**: não é enviado, não é reenviado, e o chamador não recebe erro | o MixAI diz "feito" e a mesa não mudou (**operação indeterminada**) |
-| **Descartar a instância** (`disconnect()` logo na primeira queda) e criar outra | a instância velha **não reconecta**, e o que ficou no buffer dela **morre com ela**; a nova não recebe nada antigo | resolve o reenvio |
-| `disconnect()` depois da queda | **não resolve** (a promessa fica pendente) | já mitigado: o MixAI usa tempo limite |
-
-Investigação dos pontos pedidos:
-
-- **Buffer interno:** confirmado. Ele fica dentro do `WebSocketSubject` (rxjs), que é privado à biblioteca.
-- **Descartar comandos pendentes:** não há API pública pra isso. A única forma limpa é descartar a instância inteira.
-- **Recriar a instância:** funciona e é a solução adotada.
-- **Operações indeterminadas:** existem (cenário 2) e são tratadas na seção 3.3.
-- **Sincronização obrigatória antes de aceitar novos comandos:** adotada (seção 3.2).
-
-Conclusão: **verificar `OPEN` antes de enviar não basta.** Esse portão evita o reenvio só nos casos em que o status já mudou, e nada faz contra a perda silenciosa.
-
-### 3.2 Desenho: `ConnectionSupervisor` dentro do `RealMixer`
-
-```
-DISCONNECTED ──connect()──▶ CONNECTING ──open──▶ SYNCING ──estado completo──▶ READY
-      ▲                                              │ tempo limite                │
-      │                                              ▼                             │ 1º evento ≠ OPEN
-      └──────── nova tentativa (backoff) ◀── LOST ◀──┴─────────────────────────────┘
-                                        (descarta a instância)
-```
+| `prepared` | validada, planejada e liberada pelas travas | sempre, antes de escrever |
+| `sent` | entregue à biblioteca com o supervisor em `READY` | mesa real |
+| `applied_simulated` | aplicada no simulador | mock e Lab (o próprio simulador é a mesa) |
+| `observed_target` | depois de uma ressincronização, a mesa mostrou o valor desejado | mesa real, após reconexão |
+| `observed_different` | depois de uma ressincronização, a mesa mostrou outro valor | mesa real, após reconexão |
+| `indeterminate` | sem informação suficiente (parâmetro não chegou na ressincronização) | mesa real, após reconexão |
+| `not_sent` | recusada antes de chegar à biblioteca (sem `READY`, trava, conflito) | qualquer modo |
 
 Regras:
 
-1. **Comandos de escrita só em `READY`.** Em qualquer outro estado: recusa com código `NO_CONNECTION` ou `RESYNCING`. Nada é guardado para depois.
-2. **Primeiro evento diferente de `OPEN` (`CLOSE`, `ERROR`, `RECONNECTING`) → `LOST`:**
-   - chamar `disconnect()` na instância sem esperar (o resultado é ignorado);
-   - soltar todas as assinaturas;
-   - **descartar o objeto**.
+- **Mesa real em funcionamento normal:** o resultado é `sent`. As mensagens dizem "enviado à mesa", nunca "aplicado". `observed_target` significa apenas que **o valor desejado foi observado**, e **não prova que o MixAI o executou** (outra pessoa pode ter feito o mesmo ajuste).
+- **Na queda:** escritas `sent` nos últimos `indeterminateWindowMs` (3 s) viram **pendentes de verificação**. Na próxima ressincronização, são classificadas em `observed_target`, `observed_different` ou `indeterminate`. **Nada é reaplicado.**
+- **Desfazer (política conservadora, ajuste da revisão da implementação):**
+  - **qualquer** escrita verificada após reconexão, **inclusive `observed_target`**, perde o desfazer (ator `uncertain`): ver o valor desejado não prova que foi o MixAI;
+  - escritas fora da janela da queda, cujo valor volta igual na ressincronização, continuam desfazíveis;
+  - itens `not_sent` nunca entram na pilha;
+  - escrita interrompida por **erro inesperado** fica `indeterminate` e também perde o desfazer.
+- **Avisos:** o resultado das verificações aparece em `mixer_status` (lista "verificações após reconexão") e no log.
 
-   A reconexão automática da biblioteca nunca chega a reenviar nada.
-3. **Reconexão:** sempre com uma instância **nova** de `SoundcraftUI`, com espera progressiva (1 s, 2 s, 4 s… até 10 s). Ela é automática, mas **nunca leva comandos**.
-4. **`SYNCING`:**
-   - depois de abrir, esperar `store.state$` conter **todos os parâmetros obrigatórios**: nível e mute no master e no AUX configurado para cada canal do `channels.yaml`, mais o master;
-   - limite de 5 s (configurável);
-   - estourou o limite: o estado vira `READY` apenas para leitura (modo **degradado**), com escrita recusada (`UNKNOWN_STATE`) para qualquer parâmetro ainda desconhecido.
-5. **Portão extra no envio:** mesmo em `READY`, a escrita confere o status da instância imediatamente antes de chamar a biblioteca (defesa em profundidade, não é a proteção principal).
-
-### 3.3 Operações indeterminadas
-
-- Toda escrita fica registrada por `indeterminateWindowMs` (padrão 3 000 ms) depois de enviada.
-- Na passagem para `LOST`, as escritas ainda dentro da janela viram **indeterminadas**.
-- Ao chegar em `READY`, cada indeterminada é conferida contra o estado ressincronizado:
-
-| Valor lido depois da ressincronização | Classificação | O que o MixAI faz |
-| --- | --- | --- |
-| igual ao valor enviado | **aplicada** | registra no log; o desfazer continua válido |
-| diferente do valor enviado | **não aplicada** | registra no log; **remove** o item da pilha de desfazer; avisa no próximo `mixer_status` |
-| parâmetro não chegou | **indeterminada** | registra; remove do desfazer; avisa |
-
-- **Nada é reaplicado automaticamente.** O aviso aparece em `mixer_status` e no console; a pessoa decide se repete.
-
-### 3.4 Configuração e rollback rápido
-
-```yaml
-mixer:
-  connection:
-    strategy: supervisor        # supervisor (novo) | legacy (comportamento de hoje)
-    syncTimeoutMs: 5000
-    indeterminateWindowMs: 3000
-    reconnectMaxDelayMs: 10000
-```
-
-`legacy` existe **só durante a E0 e a E1**, como saída de emergência sem precisar reverter código. Ele é removido na E2.
-
-## 4. Fila única e `applyChange()`
-
-- **`CommandQueue`** (novo, ~30 linhas, sem dependência): uma promessa encadeada. Toda escrita (nível, mute, master, desfazer, snapshot) entra nela; as leituras não entram.
-- **`applyChange(change)`** substitui o corpo repetido de `setLevel`, `setMute` e `setMaster`. Ordem fixa:
-  1. resolver nomes;
-  2. checar o estado da conexão;
-  3. planejar (teto, piso, arredondamento);
-  4. confirmação (seção 7);
-  5. limite por segundo;
-  6. escrever;
-  7. registrar a revisão;
-  8. empilhar o desfazer;
-  9. log.
-- Os textos de retorno continuam **idênticos** aos de hoje (os testes atuais conferem as mensagens).
-
-## 5. Revisões e desfazer
+## 5. Revisões e desfazer causal (ajuste 2)
 
 ### 5.1 Chave de parâmetro
-
-`ParamKey` mínimo, já no formato que a E1 vai ampliar (EQ e HPF entram lá):
 
 ```ts
 type ParamKey = `ch.${number}.main.level` | `ch.${number}.main.mute`
@@ -133,183 +131,186 @@ type ParamKey = `ch.${number}.main.level` | `ch.${number}.main.mute`
 
 ### 5.2 `RevisionTracker`
 
-- **`revision`** global e crescente.
-- Para cada `ParamKey`, guarda `{ revision, actor: 'mixai' | 'external' | 'resync' }`.
-- **Escritas do MixAI:** recebem `actor: 'mixai'`.
-- **Mudanças observadas na mesa** (outro tablet, interface oficial): recebem `actor: 'external'`.
-  - Na mesa real, são lidas de `store.state$`.
-  - Pra não confundir com o "eco" da própria escrita, o MixAI registra o valor que acabou de mandar (parâmetro, valor, até 1 s). Se esse mesmo valor chegar dentro desse prazo, é tratado como eco, não como mudança externa.
-  - **Se a mesa ecoa ou não é um ponto a verificar no F0.**
-- **Ressincronização:** todo parâmetro cujo valor mudou em relação ao último conhecido recebe `actor: 'resync'`.
+- A revisão global cresce a cada mudança conhecida. Para cada parâmetro, o tracker guarda `{ revision, actor }`, com `actor` = `mixai` | `external` | `resync` | `snapshot`.
+- **Escrita do MixAI:** revisão nova, ator `mixai`.
+- **Mudança observada** (outro tablet, interface oficial): revisão nova, ator `external`.
+  - As escritas do próprio MixAI aparecem no estado local da biblioteca **de forma síncrona**, durante a chamada de escrita. O adaptador marca a chave enquanto escreve e ignora o eco local, sem janela de tempo.
+- **Ressincronização:** cada parâmetro cujo valor difere do último conhecido recebe revisão nova, ator `resync`.
+- **Snapshot carregado:** todos os parâmetros conhecidos recebem revisão nova, ator `snapshot`, e a pilha de desfazer é **esvaziada**.
 
-### 5.3 Desfazer pela revisão
+### 5.3 Desfazer causal
 
-- Cada item da pilha guarda `{ key, before, after, revisionAtWrite }`.
-- **O desfazer só aplica** se `tracker.revisionOf(key) === revisionAtWrite`. A comparação é pela revisão, não pelo valor: se alguém mexeu e voltou ao mesmo valor, o item é **recusado** do mesmo jeito.
-- Conflito: recusa com o código `CONFLICT` e a mensagem "o Fred no Fones foi alterado depois (por outro aparelho/na mesa); não desfiz para não apagar essa mudança".
-- No desfazer de vários passos, os itens em conflito são **pulados e listados**, e os demais são desfeitos.
-- O desfazer passa por fila, teto e limite por segundo.
-- **Mudança externa invalida o desfazer conflitante:** o item continua na pilha, mas fica marcado como inválido, e `get_action_log` mostra isso.
+Cada item da pilha guarda, por parâmetro: `{ key, before, after, revisionAtWrite, revisionBefore }`. `revisionBefore` é a revisão do parâmetro imediatamente antes da escrita.
 
-### 5.4 Contrato do adaptador
-
-`MixerAdapter` ganha **um** método novo, precursor do `subscribe()` da E1:
-
-```ts
-onParamChange(listener: (key: ParamKey, value: number | boolean | null, origin: 'external' | 'resync') => void): () => void;
-```
-
-- `MockMixer`: implementa e ganha `simulateExternalChange(key, value)` (só para testes).
-- `RealMixer`: implementa a partir de `store.state$`, traduzindo os caminhos do protocolo num único arquivo (`protocol-map.ts`).
+1. Um item só é desfeito se `revisionOf(key) === revisionAtWrite`. A comparação é pela **revisão**, nunca pelo valor.
+2. **Encadeamento causal:**
+   - o desfazer de um item gera uma revisão nova, `r'`;
+   - em seguida, o item **imediatamente anterior para o mesmo parâmetro** é procurado na pilha;
+   - **se** `revisionAtWrite` dele for igual ao `revisionBefore` do item desfeito (ou seja, nada aconteceu entre as duas escritas do MixAI), ele passa a ter `revisionAtWrite = r'`.
+   - Assim, três alterações seguidas no mesmo fader podem ser desfeitas em sequência.
+3. Se houve **mudança externa entre as duas escritas**, o encadeamento não acontece, e o item anterior fica em conflito. Desfazê-lo apagaria a mudança externa.
+4. **Mudança externa que volta ao valor anterior** também gera revisão nova, e portanto também gera conflito.
+5. **Conflito:**
+   - o item é recusado (código `CONFLICT`) com a explicação de quem mexeu depois;
+   - no desfazer de vários passos, os itens em conflito são **pulados e listados**, e os demais são desfeitos;
+   - nos itens compostos (vários canais), cada parâmetro é avaliado separadamente e o resultado é parcial e explícito.
+6. O desfazer passa pela fila, pelo teto e pelo limite de comandos por segundo.
 
 ## 6. Estados distintos
 
-| Situação | Hoje | Depois da E0 |
+| Situação | Representação | Código |
 | --- | --- | --- |
-| Canal em -∞ | número `-Infinity` (JSON: `"-inf"`) | `{ state: 'off' }`, JSON `levelDB: "-inf"` (sem mudança visível) |
-| Valor ainda não recebido | erro "não respondeu a tempo" derruba a leitura inteira | `{ state: 'unknown' }`, JSON `levelDB: null, known: false`; **o resto da leitura funciona** |
-| Sem conexão | mensagem livre | código `NO_CONNECTION` |
-| Ressincronizando | não existe | código `RESYNCING` |
+| Canal em -∞ | JSON `levelDB: "-inf"`, `known: true` | — |
+| Valor desconhecido | JSON `levelDB: null`, `known: false` (só aquele parâmetro) | — |
+| Sem conexão | — | `NO_CONNECTION` |
+| Conectando ou sincronizando | — | `RESYNCING` |
+| Sincronização parcial | leitura parcial | `DEGRADED_READ_ONLY` (escrita) |
+| Controle interrompido | — | `CONTROL_STOPPED` |
 
-`Result` ganha o campo `code`, com os valores estáveis: `OK`, `NEEDS_CONFIRMATION`, `NO_CONNECTION`, `RESYNCING`, `UNKNOWN_STATE`, `CONFLICT`, `NOT_FOUND`, `NOT_CONFIGURED`, `RATE_LIMIT`, `INVALID`, `CONFIRMATION_EXPIRED`, `CONFIRMATION_MISMATCH`.
+`Result.code` tem valores estáveis: `OK`, `PARTIAL`, `NEEDS_CONFIRMATION`, `NO_CONNECTION`, `RESYNCING`, `DEGRADED_READ_ONLY`, `CONTROL_STOPPED`, `CONFLICT`, `NOT_FOUND`, `NOT_CONFIGURED`, `RATE_LIMIT`, `INVALID`, `CONFIRMATION_EXPIRED`, `CONFIRMATION_MISMATCH`, `CONFIRMATION_STALE`, `CONFIRMATION_USED`. As mensagens em português continuam.
 
-As mensagens em português continuam. O `code` é para máquinas (E2 e frontend).
+## 7. Autorização vinculada à operação e ao estado (ajuste 3)
 
-## 7. Autorização vinculada à operação (D4)
+1. Uma ação crítica sem autorização gera uma **pendência** com:
+   - `pendingId` aleatório;
+   - **hash** do comando normalizado;
+   - as **revisões de cada parâmetro envolvido**, no momento em que a mudança foi calculada;
+   - validade de 60 s e **uso único**.
+2. A execução exige o mesmo comando com `confirmation_id`. O servidor confere, nesta ordem, e recusa com o código correspondente:
+   - existe (`NOT_FOUND`);
+   - não foi usada (`CONFIRMATION_USED`);
+   - não expirou (`CONFIRMATION_EXPIRED`);
+   - o hash bate (`CONFIRMATION_MISMATCH`);
+   - **nenhum parâmetro envolvido mudou de revisão** (`CONFIRMATION_STALE`).
+3. Uma pendência invalidada **não pode ser reaproveitada**: é preciso pedir de novo, e o servidor recalcula a mudança sobre o estado atual.
+4. `confirm: true` continua no esquema das tools, mas **sozinho nunca executa**: devolve uma pendência.
+5. **Limite explícito da E0:**
+   - o `confirmation_id` **não comprova aprovação humana**, porque a IA pode reenviá-lo;
+   - ele garante só que o que é executado é exatamente o que foi avaliado, sobre o estado avaliado, uma única vez, dentro do prazo;
+   - a autorização humana autenticada, pela tela e com o papel verificado no backend, é implementada na **E2**;
+   - esse limite fica escrito no README e nas instruções das tools.
 
-- Ação crítica sem autorização → o servidor cria uma **pendência**:
-  - `pendingId`: aleatório, 8 caracteres;
-  - **hash** do comando normalizado (canal, barramento, valor alvo);
-  - validade de 60 s;
-  - **uso único**.
-- A resposta traz `needsConfirmation: true`, `pendingId`, o resumo e a validade.
-- Para executar, o chamador repete o comando com `confirmation_id: <pendingId>`.
-- O servidor confere: existe, não expirou, não foi usada e o hash bate. Se o hash não bater (por exemplo, outro valor), recusa com `CONFIRMATION_MISMATCH`.
-- **Compatibilidade MCP:**
-  - as tools mantêm nomes e parâmetros;
-  - ganham `confirmation_id`;
-  - `confirm: true` continua aceito no esquema, mas **sozinho não executa mais nada**: devolve a pendência. Isso impede a IA de "confirmar sozinha" com um booleano;
-  - as instruções da IA passam a pedir: "mostre o resumo ao usuário e só repita com `confirmation_id` depois do sim dele".
-- **Limite honesto:** no Claude Desktop, quem repassa o "sim" ainda é a IA (a aprovação de tools do próprio app ajuda). O **canal humano de verdade** chega na E2, com o cartão na tela. A E0 garante o vínculo à operação; a E2 garante a origem humana.
-- **Console:** a pergunta "Confirmar? (s/n)" passa a usar o `pendingId` internamente, sem mudança pra quem digita.
+## 8. Operações compostas (ajuste 7)
 
-## 8. Demais itens
+- **Mutar vários canais:** escrita canal a canal, com o estado conferido antes de cada uma.
+- **Se a conexão cair no meio** (por exemplo, 2 de 4 enviados):
+  - resultado `ok: false`, código `PARTIAL`;
+  - mensagem com o que foi enviado e o que **não** foi;
+  - o log registra cada parâmetro com a sua etapa (`sent`/`applied_simulated` × `not_sent`);
+  - o item de desfazer contém **apenas** os parâmetros efetivamente enviados;
+  - as escritas enviadas na janela da queda seguem a regra da seção 4.
+- **Nunca** declarar sucesso completo nem criar desfazer para o que não foi enviado.
+- **Snapshot:** carregar um snapshot invalida todas as revisões (ator `snapshot`) e esvazia a pilha de desfazer.
+
+## 9. Demais itens
 
 | Item | Mudança |
 | --- | --- |
-| AUX e canais não configurados | `ChannelMap` recebe `allowUnmapped` (padrão `false` no `config.yaml`). "aux 4" e "canal 12" passam a ser recusados com `NOT_CONFIGURED`. A fixture dos testes antigos usa `true`, preservando aqueles testes. |
-| `import()` dinâmico | `createApp()` passa a ser `async` e só carrega `mixer/real.js` quando `mode === 'real'`. `index.ts` e `console.ts` passam a usar `await`. |
-| Parser | `parse()` e `channelAndValue()` saem de `console.ts` para `src/core/parser.ts`, com o comportamento idêntico (base do assistente da E4). |
-| Instruções MCP | texto da confirmação atualizado (seção 7); nenhuma tool renomeada. |
+| AUX e canais não configurados | `naming.allowUnmapped` (padrão `false`). "aux 4" e "canal 12" são recusados com `NOT_CONFIGURED`. A fixture dos testes antigos usa `true`. |
+| `import()` dinâmico | `createApp()` passa a ser `async` e só carrega `mixer/real.js` quando `mode === 'real'`. |
+| Parser | sai de `console.ts` para `src/core/parser.ts`, devolvendo um objeto de comando testável, com o mesmo comportamento. |
+| Instruções MCP | confirmação com `confirmation_id` e o limite da seção 7; nenhuma tool renomeada. |
 
-## 9. Arquivos
+## 10. Arquivos
 
 | Arquivo | Tipo | Mudança |
 | --- | --- | --- |
-| `src/core/queue.ts` | **novo** | `CommandQueue` |
-| `src/core/revisions.ts` | **novo** | `RevisionTracker`, `ParamKey` |
-| `src/core/pending.ts` | **novo** | pendências de autorização (id, hash, validade, uso único) |
-| `src/core/parser.ts` | **novo** | parser extraído do console |
-| `src/mixer/connection-supervisor.ts` | **novo** | máquina de estados da seção 3 |
-| `src/mixer/protocol-map.ts` | **novo** | `ParamKey ↔ caminho do protocolo` (único lugar com o protocolo) |
-| `src/core/controller.ts` | modificado | `applyChange`, fila, revisões, desfazer, códigos, pendências |
-| `src/mixer/types.ts` | modificado | `onParamChange`, tipo de valor com `unknown`/`off` |
-| `src/mixer/real.ts` | modificado | usa o supervisor; espelho de `store.state$`; portão no envio |
-| `src/mixer/mock.ts` | modificado | `onParamChange`, `simulateExternalChange`, simulação de queda/ressincronização |
-| `src/core/channels.ts` | modificado | `allowUnmapped` |
-| `src/core/config.ts` | modificado | `mixer.connection.*`, `naming.allowUnmapped` |
-| `src/core/app.ts` | modificado | `async`, `import()` dinâmico |
-| `src/mcp/server.ts` | modificado | `confirmation_id`, `code`, instruções |
-| `src/index.ts`, `src/console.ts` | modificados | `await createApp()`; console usa `parser.ts` e pendências |
-| `config/config.yaml` | modificado | novas chaves com padrões seguros |
-| `README.md` | modificado | seção "Reconexão e confirmações" |
-| `test/support/fake-ui-socket.ts` | **novo** | WebSocket falso controlável (abrir, cair, janela, eco, estado inicial parcial ou completo) |
+| `src/core/queue.ts` | novo | `CommandQueue` |
+| `src/core/revisions.ts` | novo | `ParamKey`, `RevisionTracker` |
+| `src/core/pending.ts` | novo | pendências (hash, revisões, validade, uso único) |
+| `src/core/undo.ts` | novo | pilha de desfazer causal |
+| `src/core/parser.ts` | novo | parser extraído do console |
+| `src/mixer/connection-supervisor.ts` | novo | máquina de estados da seção 3 |
+| `src/mixer/protocol-map.ts` | novo | `ParamKey ↔ API da biblioteca` (único lugar com o protocolo) |
+| `src/core/controller.ts` | modificado | fila, `applyChanges`, revisões, desfazer, pendências, códigos, resultados parciais |
+| `src/mixer/types.ts` | modificado | contrato por `ParamKey`, estado do link, eventos |
+| `src/mixer/real.ts` | modificado | usa o supervisor |
+| `src/mixer/mock.ts` | modificado | mesmo contrato; simulação de queda, ressincronização, mudança externa e falha no meio |
+| `src/core/channels.ts`, `src/core/config.ts` | modificados | `allowUnmapped`; `mixer.connection.*` (sem `strategy`) |
+| `src/core/app.ts`, `src/index.ts`, `src/console.ts`, `src/mcp/server.ts` | modificados | `async`, import dinâmico, parser, `confirmation_id`, `code` |
+| `config/config.yaml`, `README.md` | modificados | chaves novas; seção "Reconexão e confirmações" |
+| `test/support/fake-ui-socket.ts` | novo | WebSocket falso controlável |
 
 Nenhuma dependência nova.
 
-## 10. Testes
+## 11. Testes
 
-### 10.1 Novos (regressão dos cenários identificados)
+### 11.1 Novos
 
-| Arquivo | Teste |
+| Arquivo | Cenários |
 | --- | --- |
-| `test/reconnect.test.ts` | comando depois da queda **não** chega ao socket novo |
-| | comando na janela da queda vira **indeterminado**; depois da ressincronização, é classificado como aplicado, não aplicado ou indeterminado |
-| | instância velha não cria socket novo depois de descartada |
-| | nenhum comando é aceito em `SYNCING`; aceito em `READY` |
-| | estado inicial parcial: `SYNCING` → `READY` degradado; escrita em parâmetro desconhecido é recusada (`UNKNOWN_STATE`) |
-| | quedas seguidas não acumulam instâncias nem assinaturas |
-| | `strategy: legacy` reproduz o comportamento antigo (rede de segurança) |
-| `test/queue.test.ts` | dois `setLevel` em paralelo no mesmo canal somam (+3 +3 = +6) |
-| | 20 comandos concorrentes terminam na ordem de chegada |
-| | erro num comando não trava a fila |
-| `test/undo-revision.test.ts` | mudança externa invalida o desfazer daquele parâmetro |
-| | mudança externa que volta ao **mesmo valor** também invalida (prova de que compara revisão, não valor) |
-| | desfazer de vários passos pula os itens em conflito e desfaz os demais |
-| | desfazer respeita teto e limite por segundo |
-| | ressincronização com valor diferente invalida o desfazer |
-| `test/state-kinds.test.ts` | `mixState` com parâmetro ausente devolve `unknown` só nele, sem derrubar o resto |
-| | -∞ continua `"-inf"`; desconhecido é `null` + `known: false` |
-| | códigos `NO_CONNECTION` e `RESYNCING` |
-| `test/pending.test.ts` | `confirm: true` sozinho **não executa** |
-| | `confirmation_id` válido executa uma vez; o segundo uso é recusado |
-| | expirado → `CONFIRMATION_EXPIRED` |
-| | id de outra operação ou valor diferente → `CONFIRMATION_MISMATCH` |
-| `test/isolation.test.ts` | modo mock não carrega `mixer/real.js` e não constrói `WebSocket` (espião global) |
-| | precedência: `--real` > `--mock` > `MIXAI_MODE` > `config.yaml`; `MIXAI_IP` aplicado |
-| `test/parser.test.ts` | todas as frases do `HELP` do console geram o mesmo comando de antes |
-| `test/channels.test.ts` (acréscimo) | com `allowUnmapped: false`, "aux 4" e "canal 12" são recusados |
+| `test/library-behavior.test.ts` (caracterização) | a biblioteca **sozinha** reenvia após reconexão; perde comando na janela; instância descartada não reconecta |
+| `test/supervisor.test.ts` | comando depois da queda não chega ao socket novo · nenhum comando em `CONNECTING`/`SYNCING` · `READY` só com os obrigatórios · `DEGRADED_READ_ONLY` permite leitura parcial e bloqueia escrita · sincronização continua e libera `READY` · quedas consecutivas (em `CONNECTING`, `SYNCING` e `READY`) não acumulam instâncias, sockets nem temporizadores · evento atrasado de geração antiga é ignorado · `connect()` concorrente gera uma tentativa só · escrita na janela vira `observed_target`/`observed_different`/`indeterminate` após a ressincronização, sem reenvio · mudança feita na mesa vira evento `external` · eco local da própria escrita não vira `external` |
+| `test/queue.test.ts` | `+3` e `+3` em paralelo dão `+6` · 20 comandos em ordem · erro não trava a fila |
+| `test/undo-causal.test.ts` | três alterações no mesmo fader, desfeitas em sequência · várias ações em parâmetros diferentes · mudança externa entre operações · mudança externa que volta ao valor anterior · desfazer de vários passos pula conflitos · teto e limite respeitados · ressincronização com valor diferente invalida · snapshot esvazia e invalida |
+| `test/composite.test.ts` | mutar 4 canais com queda depois do 2º → `PARTIAL`, só 2 no desfazer, log por canal · desfazer do parcial restaura só os 2 |
+| `test/pending.test.ts` | `confirm: true` sozinho não executa · uso único · expiração · hash diferente · parâmetro mudou antes da confirmação → `CONFIRMATION_STALE` · nova pendência recalcula sobre o estado atual |
+| `test/state-kinds.test.ts` | desconhecido × -∞ × sem conexão × sincronizando × degradado |
+| `test/isolation.test.ts` | modo mock não importa `mixer/real.js` · precedência `--real` > `--mock` > `MIXAI_MODE` > `config.yaml` · `MIXAI_IP` |
+| `test/parser.test.ts` | frases do `HELP` do console geram os mesmos comandos |
+| `test/channels.test.ts` (acréscimo) | `allowUnmapped: false` recusa "aux 4" e "canal 12" |
 
-### 10.2 Testes existentes que mudam (explicitamente)
+### 11.2 Testes existentes que mudam (explicitamente)
 
-| Teste atual | Por quê | Como fica |
+| Teste atual | Motivo | Como fica |
 | --- | --- | --- |
-| `controller.test.ts`: confirmação de mudança grande, mutar 3 canais, master, snapshot | hoje executam com `confirm: true` | passam a obter o `pendingId` e confirmar com ele; **a regra de quando pede confirmação não muda** |
-| `mcp.test.ts`: fluxo completo | idem, na parte do master | idem |
+| `controller.test.ts`: teto, mudança grande, db muito baixo, teto do retorno, mute em lote, master, desfazer até -∞, snapshots | usam `confirm: true`, que deixa de executar | passam por um helper que obtém o `pendingId` e confirma; **a regra de quando confirmar não muda** |
+| `mcp.test.ts`: fluxo completo | a resposta do master passa a citar `confirmation_id` | troca da string esperada |
+| `real-adapter.test.ts` | o socket falso mandava estado parcial; o supervisor exige os obrigatórios para `READY` | o socket falso envia o estado completo; as asserções de protocolo continuam iguais |
 
-Todos os outros testes atuais permanecem **sem alteração** e precisam continuar verdes. A contagem esperada ao final fica em torno de 75, e o número exato vai no relatório da implementação.
+Todos os demais testes atuais permanecem sem alteração.
 
-## 11. Commits planejados (branch `e0-nucleo`)
+## 12. Commits planejados (branch `e0-nucleo`)
 
-| # | Commit | Testes verdes ao final |
+| # | Commit | Ao final |
 | --- | --- | --- |
-| 1 | `test: suporte de WebSocket falso controlável + testes de caracterização` (documentam o comportamento atual) | 40 + caracterização |
-| 2 | `feat(core): fila única e applyChange` | + `queue` |
-| 3 | `feat(core): revisões por parâmetro e desfazer pela revisão` | + `undo-revision` |
-| 4 | `feat(real): ConnectionSupervisor (descartar instância, ressincronizar, indeterminadas)` | + `reconnect` |
-| 5 | `feat(core): estados distintos e códigos de resultado` | + `state-kinds` |
-| 6 | `feat(core): autorização vinculada à operação` | + `pending` (com o ajuste da seção 10.2) |
-| 7 | `refactor: import dinâmico, allowUnmapped, parser extraído` | + `isolation`, `parser`, `channels` |
-| 8 | `docs: README e ESTADO-ATUAL` | todos |
+| 1 | `docs(lab): escopo da E0 v2` (este documento) | 40 verdes |
+| 2 | `test: WebSocket falso controlável + caracterização da biblioteca` | 40 + caracterização |
+| 3 | `feat(core): fila, revisões, desfazer causal, pendências, estados e operações compostas` | + `queue`, `undo-causal`, `composite`, `pending`, `state-kinds` |
+| 4 | `feat(real): ConnectionSupervisor com gerações e verificação pós-reconexão` | + `supervisor` |
+| 5 | `refactor: import dinâmico, nomes restritos, parser, MCP e console` | + `isolation`, `parser`, `channels` |
+| 6 | `docs: README e ESTADO-ATUAL` | todos |
 
-Cada commit compila e passa em todos os testes. A revisão cruzada acontece no Pull Request para `main`.
+Cada commit compila e passa em todos os testes. Os commits 3 e 4 juntam itens interdependentes; separá-los produziria estados intermediários que não compilam.
 
-## 12. Estratégia de rollback
+**Como ficou na implementação:** os itens dos commits 3, 4 e parte do 5 foram para um único commit de código (`feat(e0)`), porque a troca do contrato `MixerAdapter` exige mudar ao mesmo tempo o controlador, o simulador, a mesa real e quem os monta. As primitivas independentes (fila, revisões, pendências, desfazer) foram em commit próprio antes, e os testes de isolamento, parser e nomes em commit próprio depois.
+
+## 13. Rollback (apenas por Git)
 
 | Nível | Como |
 | --- | --- |
-| Configuração (sem mexer em código) | `mixer.connection.strategy: legacy` volta a reconexão ao comportamento de hoje |
-| Um commit específico | `git revert <commit>`: os commits são independentes na ordem acima |
-| A etapa inteira | o branch `baseline-v0.1.0` (publicado) aponta para `ec7b861`, o estado anterior à E0; `git checkout baseline-v0.1.0 && npm ci && npm run build`. A tag `v0.1.0-baseline` existe no clone local; o envio de tags pelo ambiente de automação foi recusado, então o branch cumpre o papel |
-| No notebook | o Claude Desktop aponta para `dist/index.js`; voltar = checkout de `baseline-v0.1.0` + `npm run build` + reiniciar o Claude Desktop |
+| Um commit | `git revert <commit>` |
+| A etapa inteira | branch `baseline-v0.1.0` (= `ec7b861`): `git checkout baseline-v0.1.0 && npm ci && npm run build` |
+| No notebook | checkout + `npm run build` + reiniciar o Claude Desktop |
+| Durante uma apresentação | **não** trocar versão: usar a interface oficial da Soundcraft |
 
-**Observação:** hoje `C:\Desenvolvimento\mixai` **não é um clone Git**, e sim uma cópia. Antes de usar a E0 no notebook, recomendo trocar por um clone: `git clone https://github.com/dodoxbr/MixAI.git C:\Desenvolvimento\mixai-git`, seguido de apontar o Claude Desktop pra lá. Assim o rollback vira um comando.
+`C:\Desenvolvimento\mixai` ainda é uma cópia. Antes de usar a E0 no notebook, trocar por um clone do repositório.
 
-## 13. Riscos residuais e o que o F0 precisa confirmar
+## 14. O que o F0 (mesa física) precisa confirmar
 
-| Ponto | Por que importa | Verificação no F0 |
-| --- | --- | --- |
-| A mesa **ecoa** as escritas? | define a janela de eco (5.2) | mudar um fader pelo MixAI e observar `store.state$` |
-| A mesa manda o **estado completo** ao conectar? | define o `SYNCING` | contar os parâmetros recebidos nos primeiros 5 s |
-| Quantos **AUX** a Ui16 expõe (4 ou 6)? | biblioteca diz 6, especificação de loja diz 4 | listar pela interface oficial |
-| Queda de rede real × WebSocket falso | o experimento usa um socket simulado | **depois** da E0 aprovada: puxar o cabo, dar comando, religar, conferir no log que nada foi reenviado |
+| Ponto | Verificação |
+| --- | --- |
+| A mesa manda o estado completo ao conectar? | quanto tempo até `READY` |
+| A mesa reflete escritas de outros clientes? | mudar um fader pela interface oficial e ver o evento `external` |
+| Quantos AUX a Ui16 expõe (4 ou 6)? | interface oficial |
+| Queda de rede real | **só depois** da E0 aprovada: puxar o cabo, dar comando, religar e conferir no log que nada foi reenviado |
 
-## 14. Critérios de aceite da E0
+## 15. Critérios de aceite
 
-1. Todos os testes passam (os 40 atuais, com o ajuste explícito da seção 10.2, mais os novos).
-2. `node docs/lab/spikes/reconexao.mjs` continua documentando a biblioteca, e o teste `reconnect.test.ts` prova que o **MixAI** não reenvia nada.
-3. No Claude Desktop, em modo mock:
+1. Todos os testes passam (os atuais, com os ajustes da 11.2, mais os novos).
+2. Nenhum comando antigo é executado após a reconexão (`supervisor.test.ts`).
+3. Claude Desktop em modo mock:
    - "como está a mix?", "sobe um pouco o Fred no fone" e "desfaz" funcionam como hoje;
-   - "sobe o surdo 10 dB" pede confirmação e só executa depois do "sim".
+   - "sobe o surdo 10 dB" devolve uma pendência e só executa com o `confirmation_id`.
 4. O console funciona como hoje.
-5. Revisão cruzada aprovada no Pull Request.
+5. Revisão cruzada aprovada no Pull Request. **Sem merge automático.**
+
+## 16. Ajustes da revisão da implementação (aprovada com 4 ajustes + CI)
+
+| # | Ajuste | Implementação | Testes |
+| --- | --- | --- | --- |
+| 1 | Desfazer após reconexão | todo relatório de verificação (inclusive `observed_target`) gera revisão com ator `uncertain`, e o desfazer daquele parâmetro é recusado | `supervisor.test.ts` › desfazer conservador (mesa real com socket falso); `undo-causal.test.ts` |
+| 2 | Confirmação de snapshot | a pendência guarda um `guard` = revisão global + snapshot atual; qualquer mudança na mesa, escrita do próprio MixAI ou troca de snapshot até a confirmação → `CONFIRMATION_STALE` | `pending.test.ts` › confirmação de snapshot (4 cenários) |
+| 3 | Exceções inesperadas | `applyChanges` distingue enviado/aplicado, **incerto** (a escrita que lançou o erro) e não enviado; resultado `PARTIAL`, nunca sucesso; o incerto perde o desfazer; a fila continua; o mesmo vale para o desfazer e o snapshot | `unexpected-errors.test.ts` (4 canais com erro na 2ª escrita, comando simples, desfazer, snapshot) |
+| 4 | Instâncias descartadas após 30 s | **portão por geração**: o RealMixer cria os sockets por um construtor que recusa conexão depois do descarte e derruba a instância de novo. A garantia não depende mais da duração da vigilância (que continua como derrubada rápida, agora configurável por `zombieWatchMs`) | `supervisor.test.ts` › instâncias descartadas (portão continua fechado após a vigilância; biblioteca real tentando reconectar sozinha sem abrir socket; RealMixer com vigilância curta) |
+| 5 | Integração contínua | `.github/workflows/ci.yml`: em PR para `main`, Ubuntu e Windows, Node 22: `npm ci`, `npm run typecheck`, `npm test`, `npm run build` | — |

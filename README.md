@@ -17,7 +17,7 @@ mesa simulada e console de teste.
 cd mixai
 npm install
 npm run build
-npm test        # 37 testes, todos devem passar
+npm test        # 119 testes, todos devem passar
 ```
 
 ## Testar sem a mesa (modo simulado)
@@ -96,8 +96,48 @@ Confira o mapeamento com a ligação real na mesa (por exemplo, quais entradas s
 | Comandos por segundo | 5 |
 | Ganho de entrada e phantom | a IA não tem acesso |
 
-Pedir confirmação nunca altera nada: a IA precisa perguntar a você e repetir
-o comando com `confirm=true`.
+Pedir confirmação nunca altera nada: a resposta traz um `pendingId`, e a IA precisa
+perguntar a você e repetir o mesmo comando com `confirmation_id`. Veja a seção abaixo.
+
+## Reconexão e confirmações (desde a v0.2 / E0)
+
+**Reconexão segura (mesa real).**
+- A biblioteca da mesa guardava comandos dados com a conexão caída e os reenviava ao reconectar.
+- Agora, na primeira queda, o MixAI **descarta** a conexão inteira, cria outra do zero e
+  **ressincroniza** o estado da mesa antes de aceitar qualquer comando. **Nada é reenviado.**
+- Estados (aparecem em `status`/`mixer_status`):
+  - `READY`: lê e escreve;
+  - `DEGRADED_READ_ONLY`: a mesa ainda não mandou tudo; lê o que chegou, não escreve;
+  - `SYNCING`/`CONNECTING`: nenhum comando;
+  - `LOST`: caiu, tentando de novo;
+  - `STOPPED`: controle interrompido; use a interface oficial da Soundcraft.
+- A Ui16 **não confirma** comandos. Na mesa real, o MixAI diz "enviado", nunca "aplicado".
+- Comandos enviados até 3 s antes de uma queda são conferidos depois da reconexão e aparecem
+  em `mixer_status`, sem serem repetidos:
+  - "a mesa mostra o valor desejado" (isso não prova que foi o MixAI);
+  - "a mesa mostra outro valor";
+  - "indeterminado".
+
+**Confirmações.**
+- Ações críticas devolvem `NEEDS_CONFIRMATION` com um `pendingId`. Para executar, repita o
+  mesmo comando com `confirmation_id`.
+- O id vale **uma vez**, por **60 s**, e é invalidado se algum parâmetro envolvido mudar antes
+  da confirmação (`CONFIRMATION_STALE`). `confirm=true` sozinho **não executa** nada.
+- **Limite atual:** o id garante que só é executado o que foi avaliado, sobre o estado avaliado.
+  Ele **não prova que um humano aprovou**, porque a IA pode reenviá-lo. A aprovação humana
+  autenticada pela tela chega na etapa E2.
+
+**Desfazer.**
+- O desfazer compara a **revisão** de cada parâmetro: se outra pessoa (ou a mesa, ou uma
+  reconexão) mexeu depois, ele recusa aquele item para não apagar a mudança dela.
+- Comandos com resultado **incerto** (enviados perto de uma queda, ou interrompidos por erro)
+  **não podem ser desfeitos** pelo MixAI, mesmo que a mesa mostre o valor esperado.
+- Alterações seguidas do próprio MixAI no mesmo fader podem ser desfeitas em sequência.
+- Operações em vários canais que caem no meio são marcadas como **PARCIAL**, e o desfazer
+  cobre só o que foi enviado.
+
+**Nomes.** Só canais e AUX do `channels.yaml` podem ser alterados (`naming.allowUnmapped: false`).
+"aux 4" ou "canal 12", sem cadastro, são recusados.
 
 ## Log
 
@@ -124,6 +164,10 @@ test/                 testes (Vitest)
 - **"Não consegui conectar"**: confira o IP da mesa e se o notebook está na mesma rede.
 - **Claude Desktop não mostra as tools**: confira o caminho absoluto do `dist/index.js`
   e se rodou `npm run build`.
+- **"CONTROL_STOPPED" ou "DEGRADED_READ_ONLY" durante um evento**: não insista pelo MixAI;
+  use a interface oficial da Soundcraft. O som continua com o último ajuste.
+- **Voltar para a versão anterior** (fora de evento): `git checkout baseline-v0.1.0 && npm ci && npm run build`
+  e reinicie o Claude Desktop.
 - **Depois de atualizar o firmware da mesa algo parou**: a biblioteca usa o protocolo
   da interface web, que não é oficial. Teste no console antes de qualquer evento.
   A versão da biblioteca está fixada em `package.json` de propósito.

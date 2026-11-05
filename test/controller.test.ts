@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { auxBus, MASTER } from '../src/mixer/types.js';
 import { formatDB } from '../src/core/controller.js';
-import { setup } from './helpers.js';
+import { confirmed, setup } from './helpers.js';
 
 describe('volume do canal', () => {
   it('ajuste absoluto e relativo', async () => {
@@ -25,7 +25,7 @@ describe('volume do canal', () => {
 
   it('nunca passa do teto e avisa que limitou', async () => {
     const { controller, mixer } = await setup({ maxChannelLevelDB: -3 });
-    const r = await controller.setLevel({ channel: 'cavaco', db: 5, confirm: true });
+    const r = await confirmed((id) => controller.setLevel({ channel: 'cavaco', db: 5, confirmationId: id }));
     expect(r.ok).toBe(true);
     expect(await mixer.getLevelDB(4, MASTER)).toBe(-3);
     expect(r.message).toContain('limitei');
@@ -39,7 +39,7 @@ describe('volume do canal', () => {
     expect(await mixer.getLevelDB(6, MASTER)).toBe(-10);
     expect(mixer.writes).toHaveLength(0);
 
-    const ok = await controller.setLevel({ channel: 'surdo', deltaDB: 8, confirm: true });
+    const ok = await controller.setLevel({ channel: 'surdo', deltaDB: 8, confirmationId: r.pendingId });
     expect(ok.ok).toBe(true);
     expect(await mixer.getLevelDB(6, MASTER)).toBe(-2);
   });
@@ -59,7 +59,7 @@ describe('volume do canal', () => {
 
   it('db muito baixo vira fader todo para baixo', async () => {
     const { controller, mixer } = await setup();
-    await controller.setLevel({ channel: 1, db: -100, confirm: true });
+    await confirmed((id) => controller.setLevel({ channel: 1, db: -100, confirmationId: id }));
     expect(await mixer.getLevelDB(1, MASTER)).toBe(-Infinity);
   });
 
@@ -92,7 +92,7 @@ describe('retornos (AUX)', () => {
 
   it('respeita o teto próprio dos retornos', async () => {
     const { controller, mixer } = await setup({ maxAuxSendDB: -6 });
-    await controller.setLevel({ channel: 'voz 1', aux: 'cavaco', db: 0, confirm: true });
+    await confirmed((id) => controller.setLevel({ channel: 'voz 1', aux: 'cavaco', db: 0, confirmationId: id }));
     expect(await mixer.getLevelDB(1, auxBus(2))).toBe(-6);
   });
 });
@@ -111,7 +111,7 @@ describe('mute', () => {
     const r = await controller.setMute({ channels: ['voz 1', 'voz 2', 'voz 3'], muted: true });
     expect(r.needsConfirmation).toBe(true);
     expect(await mixer.getMute(1, MASTER)).toBe(false);
-    const ok = await controller.setMute({ channels: ['voz 1', 'voz 2', 'voz 3'], muted: true, confirm: true });
+    const ok = await controller.setMute({ channels: ['voz 1', 'voz 2', 'voz 3'], muted: true, confirmationId: r.pendingId });
     expect(ok.ok).toBe(true);
     expect(await mixer.getMute(3, MASTER)).toBe(true);
   });
@@ -130,7 +130,7 @@ describe('master', () => {
     const r = await controller.setMaster({ deltaDB: 1 });
     expect(r.needsConfirmation).toBe(true);
     expect(await mixer.getMasterDB()).toBe(-6);
-    await controller.setMaster({ deltaDB: 1, confirm: true });
+    await controller.setMaster({ deltaDB: 1, confirmationId: r.pendingId });
     expect(await mixer.getMasterDB()).toBe(-5);
   });
 });
@@ -158,7 +158,7 @@ describe('desfazer', () => {
   it('desfaz até o fader todo para baixo', async () => {
     const { controller, mixer } = await setup();
     await mixer.setLevelDB(2, MASTER, -Infinity);
-    await controller.setLevel({ channel: 2, db: -12, confirm: true });
+    await confirmed((id) => controller.setLevel({ channel: 2, db: -12, confirmationId: id }));
     await controller.undo();
     expect(await mixer.getLevelDB(2, MASTER)).toBe(-Infinity);
   });
@@ -209,7 +209,7 @@ describe('snapshots', () => {
     expect(ask.needsConfirmation).toBe(true);
     expect(await mixer.currentSnapshot()).toEqual({});
 
-    const ok = await controller.loadSnapshot({ show: 'pagode', snapshot: 'bar', confirm: true });
+    const ok = await controller.loadSnapshot({ show: 'pagode', snapshot: 'bar', confirmationId: ask.pendingId });
     expect(ok.ok).toBe(true);
     expect(await mixer.currentSnapshot()).toEqual({ show: 'Pagode', snapshot: 'Bar' });
     expect((await controller.undo()).message).toContain('nada para desfazer');

@@ -9,6 +9,19 @@ mixer:
   model: ui16
   # Tempo máximo (ms) para conectar
   connectTimeoutMs: 8000
+  # Reconexão segura (mesa real). Não existe modo "legacy": na queda, a conexão é descartada,
+  # recriada do zero e ressincronizada antes de aceitar qualquer comando. Nada é reenviado.
+  connection:
+    # Tempo máximo esperando o estado completo da mesa; depois disso fica SOMENTE LEITURA
+    syncTimeoutMs: 5000
+    # Escritas enviadas até este tempo antes de uma queda são verificadas após reconectar
+    indeterminateWindowMs: 3000
+    reconnectBaseMs: 1000
+    reconnectMaxDelayMs: 10000
+
+naming:
+  # false = só canais e AUX cadastrados no channels.yaml podem ser alterados
+  allowUnmapped: false
 
 safety:
   # Teto de volume (dB) que a IA consegue colocar num canal no master

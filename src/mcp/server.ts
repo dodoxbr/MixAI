@@ -8,13 +8,16 @@ Regras:
 - Use os nomes da banda ("voz 2", "cavaco", "surdo", "retorno do cavaco"). Na dúvida, chame list_channels.
 - Antes de ajustes relativos importantes, veja o estado atual com get_mix_state.
 - Prefira passos pequenos: "um pouco" = 2 dB, "mais" = 3 dB, "bastante" = 5 dB.
-- Pedido sobre o que um músico ouve no palco = retorno (set_aux_send). Pedido sobre o som do público = master (set_channel_level).
-- Se a resposta vier com needsConfirmation, NÃO repita sozinho: explique ao usuário e só use confirm=true depois que ele concordar.
+- Pedido sobre o que os músicos ouvem no fone = retorno (set_aux_send). O AUX 1 "Fones" é UMA mix compartilhada: mudar ali muda o fone de TODOS. Pedido sobre o som do público = PA (set_channel_level).
+- Ações críticas devolvem code=NEEDS_CONFIRMATION e um pendingId. NÃO repita sozinho: mostre o resumo ao usuário e, só depois de um "sim" explícito dele, repita EXATAMENTE o mesmo comando com confirmation_id=<pendingId>. O id vale uma vez, por 60 s, e é invalidado se a mesa mudar antes. confirm=true sozinho não executa nada.
+- Se vier CONFIRMATION_STALE/EXPIRED/USED/MISMATCH, nada foi alterado: peça de novo (sem confirmation_id) e mostre o novo resumo.
+- Na mesa real, "enviado" não é "confirmado": a Ui16 não confirma comandos. Não diga que a mesa aplicou; diga que foi enviado.
+- Se vier PARTIAL, diga exatamente o que foi e o que NÃO foi enviado. Se vier NO_CONNECTION, RESYNCING, DEGRADED_READ_ONLY ou CONTROL_STOPPED, não tente de novo em loop; informe o usuário.
 - Depois de cada mudança, diga em uma frase o que mudou e pergunte se melhorou. Se piorou, use undo_last.
 - Você não ouve o som: baseie-se no que o usuário descreve e no estado da mesa. Não invente canais.`;
 
 function reply(result: Result) {
-  const lines = [result.message];
+  const lines = [`[${result.code}] ${result.message}`];
   if (result.data) lines.push(JSON.stringify(jsonSafe(result.data), null, 2));
   return {
     content: [{ type: 'text' as const, text: lines.join('\n') }],
@@ -25,11 +28,19 @@ function reply(result: Result) {
 const levelFields = {
   db: z.number().min(-100).max(10).optional().describe('Valor absoluto em dB. Use -100 para abaixar tudo.'),
   delta_db: z.number().min(-40).max(20).optional().describe('Mudança relativa em dB: +3 sobe, -3 desce.'),
-  confirm: z.boolean().optional().describe('Só true depois que o usuário confirmar uma ação que pediu confirmação.'),
+  confirm: z
+    .boolean()
+    .optional()
+    .describe('Obsoleto: sozinho NÃO executa. Use confirmation_id.'),
+  confirmation_id: z
+    .string()
+    .max(64)
+    .optional()
+    .describe('pendingId devolvido pelo pedido anterior; use só depois do "sim" explícito do usuário.'),
 };
 
 /** Cria o servidor MCP com as tools do MixAI. */
-export function createMcpServer(controller: MixController, version = '0.1.0'): McpServer {
+export function createMcpServer(controller: MixController, version = '0.2.0'): McpServer {
   const server = new McpServer({ name: 'mixai', version }, { instructions: SERVER_INSTRUCTIONS });
 
   server.registerTool(
@@ -77,8 +88,8 @@ export function createMcpServer(controller: MixController, version = '0.1.0'): M
         ...levelFields,
       },
     },
-    async ({ channel, db, delta_db, confirm }) =>
-      reply(await controller.setLevel({ channel, db, deltaDB: delta_db, confirm })),
+    async ({ channel, db, delta_db, confirm, confirmation_id }) =>
+      reply(await controller.setLevel({ channel, db, deltaDB: delta_db, confirm, confirmationId: confirmation_id })),
   );
 
   server.registerTool(
@@ -92,8 +103,8 @@ export function createMcpServer(controller: MixController, version = '0.1.0'): M
         ...levelFields,
       },
     },
-    async ({ channel, aux, db, delta_db, confirm }) =>
-      reply(await controller.setLevel({ channel, aux, db, deltaDB: delta_db, confirm })),
+    async ({ channel, aux, db, delta_db, confirm, confirmation_id }) =>
+      reply(await controller.setLevel({ channel, aux, db, deltaDB: delta_db, confirm, confirmationId: confirmation_id })),
   );
 
   server.registerTool(
@@ -105,10 +116,12 @@ export function createMcpServer(controller: MixController, version = '0.1.0'): M
         channels: z.array(z.string()).min(1).describe('Canais pelo nome ou número.'),
         muted: z.boolean().describe('true = mutar, false = desmutar.'),
         aux: z.string().optional().describe('Retorno onde mutar. Vazio = master.'),
-        confirm: z.boolean().optional().describe('Só true depois que o usuário confirmar.'),
+        confirm: levelFields.confirm,
+        confirmation_id: levelFields.confirmation_id,
       },
     },
-    async ({ channels, muted, aux, confirm }) => reply(await controller.setMute({ channels, muted, aux, confirm })),
+    async ({ channels, muted, aux, confirm, confirmation_id }) =>
+      reply(await controller.setMute({ channels, muted, aux, confirm, confirmationId: confirmation_id })),
   );
 
   server.registerTool(
@@ -118,7 +131,8 @@ export function createMcpServer(controller: MixController, version = '0.1.0'): M
       description: 'Muda o volume geral da mesa. Sempre pede confirmação do usuário.',
       inputSchema: levelFields,
     },
-    async ({ db, delta_db, confirm }) => reply(await controller.setMaster({ db, deltaDB: delta_db, confirm })),
+    async ({ db, delta_db, confirm, confirmation_id }) =>
+      reply(await controller.setMaster({ db, deltaDB: delta_db, confirm, confirmationId: confirmation_id })),
   );
 
   server.registerTool(
@@ -161,10 +175,12 @@ export function createMcpServer(controller: MixController, version = '0.1.0'): M
       inputSchema: {
         show: z.string().describe('Nome do show.'),
         snapshot: z.string().describe('Nome do snapshot.'),
-        confirm: z.boolean().optional(),
+        confirm: levelFields.confirm,
+        confirmation_id: levelFields.confirmation_id,
       },
     },
-    async ({ show, snapshot, confirm }) => reply(await controller.loadSnapshot({ show, snapshot, confirm })),
+    async ({ show, snapshot, confirm, confirmation_id }) =>
+      reply(await controller.loadSnapshot({ show, snapshot, confirm, confirmationId: confirmation_id })),
   );
 
   return server;

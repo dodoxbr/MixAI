@@ -1,11 +1,22 @@
-import { ConnectionStatus, DEVICE_CAPABILITIES, SoundcraftUI } from 'soundcraft-ui-connection';
-import type { Bus, MixerAdapter, MixerCapabilities, ShowList } from './types.js';
+import { DEVICE_CAPABILITIES, SoundcraftUI } from 'soundcraft-ui-connection';
+import type { ParamKey, ParamValue } from '../core/revisions.js';
+import { ConnectionSupervisor, type GenerationGate } from './connection-supervisor.js';
+import {
+  LinkUnavailableError,
+  type MixerAdapter,
+  type MixerCapabilities,
+  type ParamChangeOrigin,
+  type ReadResult,
+  type ShowList,
+  type VerificationReport,
+  type WriteOutcome,
+} from './types.js';
 
 interface Subscribable<T> {
   subscribe(next: (value: T) => void): { unsubscribe(): void };
 }
 
-/** Lê o valor atual de um stream da biblioteca (a mesa manda o estado ao conectar). */
+/** Lê o valor atual de um stream da biblioteca (para listas que não fazem parte do estado espelhado). */
 export function currentValue<T>(source: Subscribable<T>, timeoutMs = 1500): Promise<T> {
   return new Promise((resolve, reject) => {
     let done = false;
@@ -27,85 +38,108 @@ export function currentValue<T>(source: Subscribable<T>, timeoutMs = 1500): Prom
   });
 }
 
+type SocketCtor = new (url: string, protocols?: string | string[]) => unknown;
+
+/**
+ * Envolve o construtor de WebSocket usado pela biblioteca: depois que a geração é descartada,
+ * qualquer tentativa de abrir conexão é recusada (e a instância é derrubada de novo).
+ * Assim uma instância antiga nunca volta a falar com a mesa, mesmo que a reconexão
+ * automática da biblioteca escape do disconnect.
+ */
+export function gatedSocketCtor(Base: SocketCtor, gate: GenerationGate): SocketCtor {
+  const Gated = function (this: unknown, url: string, protocols?: string | string[]) {
+    if (!gate.isAlive()) {
+      gate.onBlocked();
+      throw new Error(`conexão bloqueada: instância descartada (geração ${gate.generation})`);
+    }
+    return new Base(url, protocols);
+  } as unknown as SocketCtor & Record<string, unknown>;
+  for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'] as const) {
+    (Gated as Record<string, unknown>)[k] = (Base as unknown as Record<string, unknown>)[k];
+  }
+  return Gated;
+}
+
 export interface RealMixerOptions {
   ip: string;
   model?: 'ui12' | 'ui16' | 'ui24';
+  /** Parâmetros obrigatórios para liberar escrita (canais do channels.yaml + master). */
+  requiredKeys: ParamKey[];
+  /** Parâmetros acompanhados (inclui os obrigatórios). */
+  watchedKeys: ParamKey[];
+  nameChannels?: number[];
   connectTimeoutMs?: number;
+  zombieWatchMs?: number;
+  syncTimeoutMs?: number;
+  indeterminateWindowMs?: number;
+  reconnectBaseMs?: number;
+  reconnectMaxDelayMs?: number;
   /** Só para testes: troca o WebSocket usado pela biblioteca. */
   webSocketCtor?: unknown;
+  onTrace?: (event: string) => void;
 }
 
-/** Mesa real, via biblioteca soundcraft-ui-connection (WebSocket da interface web). */
+/** Mesa real, via soundcraft-ui-connection, sempre atrás do ConnectionSupervisor. */
 export class RealMixer implements MixerAdapter {
   readonly mode = 'real' as const;
-  readonly ui: SoundcraftUI;
-  private status: ConnectionStatus = ConnectionStatus.Close;
-  private lastError: string | undefined;
+  readonly supervisor: ConnectionSupervisor;
   private caps: MixerCapabilities;
 
   constructor(private opts: RealMixerOptions) {
-    const options: Record<string, unknown> = { targetIP: opts.ip };
-    if (opts.webSocketCtor) options.webSocketCtor = opts.webSocketCtor;
-    this.ui = new SoundcraftUI(options as never);
-    this.ui.status$.subscribe((ev) => {
-      this.status = ev.type;
-      if (ev.type === ConnectionStatus.Error) {
-        const payload = (ev as { payload?: unknown }).payload;
-        this.lastError = payload instanceof Error ? payload.message : String(payload ?? 'erro desconhecido');
-      }
-      if (ev.type === ConnectionStatus.Open) this.lastError = undefined;
-    });
     const c = DEVICE_CAPABILITIES[opts.model ?? 'ui16'];
     this.caps = { model: c.model, inputs: c.input, aux: c.aux };
+    this.supervisor = new ConnectionSupervisor({
+      createUi: (gate) => {
+        const Base = (opts.webSocketCtor ?? (globalThis as { WebSocket?: unknown }).WebSocket) as SocketCtor | undefined;
+        if (!Base) throw new Error('WebSocket indisponível neste Node (use Node 22 ou mais novo)');
+        return new SoundcraftUI({ targetIP: opts.ip, webSocketCtor: gatedSocketCtor(Base, gate) } as never);
+      },
+      zombieWatchMs: opts.zombieWatchMs,
+      requiredKeys: opts.requiredKeys,
+      watchedKeys: opts.watchedKeys,
+      nameChannels: opts.nameChannels,
+      connectTimeoutMs: opts.connectTimeoutMs ?? 8000,
+      syncTimeoutMs: opts.syncTimeoutMs ?? 5000,
+      indeterminateWindowMs: opts.indeterminateWindowMs ?? 3000,
+      reconnectBaseMs: opts.reconnectBaseMs ?? 1000,
+      reconnectMaxDelayMs: opts.reconnectMaxDelayMs ?? 10000,
+      onTrace: opts.onTrace,
+    });
   }
 
   async connect() {
-    const timeout = this.opts.connectTimeoutMs ?? 8000;
-    let timer: NodeJS.Timeout | undefined;
     try {
-      await Promise.race([
-        this.ui.connect(),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`Não consegui conectar na mesa em ${this.opts.ip} (tempo esgotado)`)),
-            timeout,
-          );
-        }),
-      ]);
-    } finally {
-      clearTimeout(timer);
+      await this.supervisor.connect();
+    } catch (err) {
+      throw new Error(`Não consegui conectar na mesa em ${this.opts.ip}: ${(err as Error).message}`);
     }
   }
 
   async disconnect() {
-    // Não deixa o encerramento travar se a mesa sumiu da rede.
-    let timer: NodeJS.Timeout | undefined;
-    await Promise.race([
-      this.ui.disconnect().catch(() => undefined),
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, 2000);
-      }),
-    ]);
-    clearTimeout(timer);
-    this.status = ConnectionStatus.Close;
+    await this.supervisor.disconnect();
   }
 
-  isConnected() {
-    return this.status === ConnectionStatus.Open;
+  link() {
+    return this.supervisor.link();
   }
 
   statusText() {
-    switch (this.status) {
-      case ConnectionStatus.Open:
-        return `Conectado à mesa em ${this.opts.ip}`;
-      case ConnectionStatus.Opening:
-        return `Conectando à mesa em ${this.opts.ip}...`;
-      case ConnectionStatus.Reconnecting:
-        return `Reconectando à mesa em ${this.opts.ip}...`;
-      case ConnectionStatus.Error:
-        return `Erro na conexão com ${this.opts.ip}: ${this.lastError ?? 'desconhecido'}`;
+    const ip = this.opts.ip;
+    switch (this.supervisor.link()) {
+      case 'READY':
+        return `Conectado à mesa em ${ip}`;
+      case 'CONNECTING':
+        return `Conectando à mesa em ${ip}...`;
+      case 'SYNCING':
+        return `Sincronizando o estado da mesa em ${ip}...`;
+      case 'DEGRADED_READ_ONLY':
+        return `Mesa em ${ip}: estado incompleto, somente leitura (sincronização continua)`;
+      case 'LOST':
+        return `Conexão com ${ip} perdida (${this.supervisor.reason()}); tentando de novo, sem reenviar comandos`;
+      case 'STOPPED':
+        return `Controle automático interrompido (${this.supervisor.reason()}). Use a interface oficial da Soundcraft.`;
       default:
-        return `Desconectado da mesa (${this.opts.ip})`;
+        return `Desconectado da mesa (${ip})`;
     }
   }
 
@@ -113,39 +147,32 @@ export class RealMixer implements MixerAdapter {
     return this.caps;
   }
 
-  private channel(channel: number, bus: Bus) {
-    return bus.kind === 'master' ? this.ui.master.input(channel) : this.ui.aux(bus.aux).input(channel);
+  read(key: ParamKey): ReadResult {
+    return this.supervisor.read(key);
   }
 
-  async getLevelDB(channel: number, bus: Bus) {
-    return currentValue(this.channel(channel, bus).faderLevelDB$);
+  async write(key: ParamKey, value: ParamValue): Promise<WriteOutcome> {
+    this.supervisor.write(key, value);
+    return 'sent';
   }
-  async setLevelDB(channel: number, bus: Bus, db: number) {
-    this.channel(channel, bus).setFaderLevelDB(db);
+
+  onParamChange(listener: (key: ParamKey, value: ParamValue, origin: ParamChangeOrigin) => void) {
+    return this.supervisor.onParamChange(listener);
   }
-  async getMute(channel: number, bus: Bus) {
-    return currentValue(this.channel(channel, bus).mute$);
+
+  onVerification(listener: (reports: VerificationReport[]) => void) {
+    return this.supervisor.onVerification(listener);
   }
-  async setMute(channel: number, bus: Bus, muted: boolean) {
-    this.channel(channel, bus).setMute(muted);
+
+  channelName(channel: number) {
+    return this.supervisor.channelName(channel);
   }
-  async getChannelName(channel: number) {
+
+  async listShows(): Promise<ShowList> {
+    const ui = this.supervisor.currentUi();
+    if (!ui) return {};
     try {
-      const name = await currentValue(this.ui.master.input(channel).name$, 500);
-      return name || undefined;
-    } catch {
-      return undefined;
-    }
-  }
-  async getMasterDB() {
-    return currentValue(this.ui.master.faderLevelDB$);
-  }
-  async setMasterDB(db: number) {
-    this.ui.master.setFaderLevelDB(db);
-  }
-  async listShows() {
-    try {
-      const shows = await currentValue(this.ui.shows.shows$, 2000);
+      const shows = await currentValue(ui.shows.shows$, 2000);
       const out: ShowList = {};
       for (const [name, details] of Object.entries(shows ?? {})) out[name] = [...(details?.snapshots ?? [])];
       return out;
@@ -153,14 +180,21 @@ export class RealMixer implements MixerAdapter {
       return {};
     }
   }
+
   async currentSnapshot() {
+    const ui = this.supervisor.currentUi();
+    if (!ui) return {};
     const [show, snapshot] = await Promise.all([
-      currentValue(this.ui.shows.currentShow$, 800).catch(() => undefined),
-      currentValue(this.ui.shows.currentSnapshot$, 800).catch(() => undefined),
+      currentValue(ui.shows.currentShow$, 800).catch(() => undefined),
+      currentValue(ui.shows.currentSnapshot$, 800).catch(() => undefined),
     ]);
     return { show: show || undefined, snapshot: snapshot || undefined };
   }
-  async loadSnapshot(show: string, snapshot: string) {
-    this.ui.shows.loadSnapshot(show, snapshot);
+
+  async loadSnapshot(show: string, snapshot: string): Promise<WriteOutcome> {
+    this.supervisor.withReadyUi((ui) => ui.shows.loadSnapshot(show, snapshot));
+    return 'sent';
   }
 }
+
+export { LinkUnavailableError };

@@ -61,7 +61,7 @@ describe('servidor MCP', () => {
 
     const big = await call('set_master_level', { delta_db: 2 });
     expect(big.isError).toBe(false); // pedir confirmação não é erro
-    expect(big.text).toContain('confirm=true');
+    expect(big.text).toContain('confirmation_id');
     expect(await mixer.getMasterDB()).toBe(-6);
 
     await call('undo_last', { steps: 2 });
