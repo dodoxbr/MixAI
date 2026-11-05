@@ -83,6 +83,7 @@ export class StubUi {
 function pathOf(key: ParamKey): string {
   const p = parseKey(key);
   if (p.kind === 'master') return 'm.mix';
+  if (p.kind !== 'channel') throw new Error(`stub não suporta ${key}`);
   const prefix = p.aux ? `i.${p.channel}.aux.${p.aux}` : `i.${p.channel}`;
   return `${prefix}.${p.param === 'level' ? 'mix' : 'mute'}`;
 }
