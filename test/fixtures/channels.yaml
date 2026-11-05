@@ -1,0 +1,38 @@
+# Nomes da banda para os canais e retornos.
+# Edite à vontade: a IA e o console passam a entender os novos nomes sem mexer no código.
+# Acentos, maiúsculas e espaços são ignorados ("Violão" = "violao" = "VIOLAO").
+
+channels:
+  - number: 1
+    name: Voz 1
+    aliases: [voz 1, vocal 1, voz principal, vocal principal]
+  - number: 2
+    name: Voz 2
+    aliases: [voz 2, vocal 2]
+  - number: 3
+    name: Voz 3
+    aliases: [voz 3, vocal 3]
+  - number: 4
+    name: Cavaco
+    aliases: [cavaco, cavaquinho, cava]
+  - number: 5
+    name: Violão
+    aliases: [violão, violao, viola, 7 cordas]
+  - number: 6
+    name: Surdo
+    aliases: [surdo, surdão, surdao]
+
+# Retornos: um AUX por músico (a Ui16 tem 6 barramentos AUX).
+aux:
+  - number: 1
+    name: Retorno Voz 1
+    aliases: [voz 1, cantor, vocal principal]
+  - number: 2
+    name: Retorno Cavaco
+    aliases: [cavaco, cavaquinho]
+  - number: 3
+    name: Retorno Violão
+    aliases: [violão, violao]
+  - number: 4
+    name: Retorno Surdo
+    aliases: [surdo, percussão, percussao]

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+logs/
+*.log
+
+# Segredos e dados locais (nunca publicar)
+.env
+.env.*
+*.pem
+*.key
+data/

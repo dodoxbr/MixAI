@@ -1,0 +1,33 @@
+# Configuração do MixAI
+# Variáveis de ambiente têm prioridade: MIXAI_MODE, MIXAI_IP, MIXAI_CONFIG_DIR, MIXAI_LOG_DIR
+
+mixer:
+  # mock = mesa simulada (para testar sem a mesa) | real = Soundcraft Ui16
+  mode: mock
+  # IP da mesa. 10.10.1.1 é o padrão do Wi-Fi da própria Ui; confira na tela de rede da mesa.
+  ip: 10.10.1.1
+  model: ui16
+  # Tempo máximo (ms) para conectar
+  connectTimeoutMs: 8000
+
+safety:
+  # Teto de volume (dB) que a IA consegue colocar num canal no master
+  maxChannelLevelDB: 0
+  # Teto de volume (dB) para os envios de retorno (AUX)
+  maxAuxSendDB: 0
+  # Teto do master
+  maxMasterLevelDB: 0
+  # Mudança acima disso (em dB, num único comando) pede confirmação
+  maxStepDB: 6
+  # Qualquer mudança no master pede confirmação
+  masterRequiresConfirmation: true
+  # Mutar mais canais que isso de uma vez pede confirmação
+  bulkMuteConfirmAbove: 2
+  # Limite de comandos que mudam a mesa por segundo
+  maxActionsPerSecond: 5
+  # Canal totalmente abaixado (-inf) é tratado como este valor em ajustes relativos
+  relativeFloorDB: -60
+
+logs:
+  # Pasta do log de ações (um arquivo .jsonl por dia). Relativa à pasta do projeto.
+  dir: logs
