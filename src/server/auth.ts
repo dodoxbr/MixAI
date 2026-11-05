@@ -61,6 +61,7 @@ export class Auth {
   private throttles = new Map<string, Throttle>();
   private globalFailures: number[] = [];
   private globalLockedUntil = 0;
+  private revokeListeners = new Set<(principalId: string) => void>();
   private readonly agentHash: Buffer;
   private readonly clock: () => number;
   private readonly ttl: number;
@@ -141,17 +142,47 @@ export class Auth {
     return s.principal;
   }
 
-  /** A sessão ainda vale? (usado pelo WebSocket para derrubar sessões encerradas). */
+  /**
+   * A sessão ainda vale? Conferido pelo WebSocket antes de CADA envio e periodicamente,
+   * para derrubar conexões de sessões encerradas ou vencidas mesmo que estejam ociosas.
+   */
   isActive(principal: Principal): boolean {
     if (principal.role === 'agent') return true;
     const now = this.clock();
-    for (const s of this.sessions.values()) if (s.principal.id === principal.id) return now <= s.expiresAt;
+    for (const [key, s] of this.sessions) {
+      if (s.principal.id !== principal.id) continue;
+      if (now <= s.expiresAt) return true;
+      this.sessions.delete(key);
+      this.emitRevoke(principal.id);
+      return false;
+    }
     return false;
   }
 
   logout(token: unknown): boolean {
     if (typeof token !== 'string') return false;
-    return this.sessions.delete(sha256(token).toString('hex'));
+    const key = sha256(token).toString('hex');
+    const s = this.sessions.get(key);
+    if (!s) return false;
+    this.sessions.delete(key);
+    this.emitRevoke(s.principal.id);
+    return true;
+  }
+
+  /** Avisa quando uma sessão é encerrada (logout) ou vence. */
+  onRevoke(listener: (principalId: string) => void): () => void {
+    this.revokeListeners.add(listener);
+    return () => this.revokeListeners.delete(listener);
+  }
+
+  private emitRevoke(id: string) {
+    for (const l of this.revokeListeners) {
+      try {
+        l(id);
+      } catch {
+        /* ignora */
+      }
+    }
   }
 
   private blocked(ms: number, why: string): LoginResult {
