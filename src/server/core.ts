@@ -9,7 +9,7 @@ import { authorizeCommand, CommandSchema, describeCommand, dispatch, visibleKey,
 import type { MeterSource } from './meters.js';
 
 export const PROTOCOL_VERSION = 1;
-export const SERVER_VERSION = '0.4.0';
+export const SERVER_VERSION = '0.5.0';
 
 export type Mode = 'mock' | 'lab' | 'real';
 
@@ -75,6 +75,7 @@ export class ServerCore {
   private requests = new Map<string, { at: number; response: Promise<CommandResponse> }>();
   private noticeListeners = new Set<(n: Notice, audience: { roles: Role[]; principalId?: string }) => void>();
   private sweepTimer: NodeJS.Timeout | undefined;
+  private faders = new Map<string, { running: boolean; next?: { channel: string | number; aux: string | number | undefined; db: number; final: boolean } }>();
 
   constructor(
     readonly controller: MixController,
@@ -203,6 +204,72 @@ export class ServerCore {
     return reply(result);
   }
 
+  // ---------- gesto de fader (arraste humano) ----------
+
+  /**
+   * Arraste de fader vindo de uma tela. Só pessoas (operador e músico, este só no AUX dele); o
+   * assistente nunca arrasta. Enquanto uma escrita do gesto está em andamento, as mensagens
+   * seguintes são JUNTADAS: só o valor mais recente é escrito depois (coalescência).
+   * Devolve o resultado da última escrita e se o gesto foi fechado (soltou ou erro), ou
+   * undefined se a mensagem foi juntada a outra que já está sendo processada.
+   */
+  async fader(p: Principal, msg: Record<string, unknown>): Promise<{ result: Result; closed: boolean } | undefined> {
+    const gestureId = typeof msg.gestureId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(msg.gestureId) ? msg.gestureId : '';
+    const db = typeof msg.db === 'number' && msg.db >= -100 && msg.db <= 10 ? msg.db : undefined;
+    const channel = msg.channel;
+    const aux = msg.aux;
+    const final = msg.final === true;
+    if (!gestureId || db === undefined || (typeof channel !== 'string' && typeof channel !== 'number')) {
+      return { result: fail('INVALID', 'Gesto de fader inválido (gestureId, channel e db obrigatórios).'), closed: true };
+    }
+    if (aux !== undefined && typeof aux !== 'string' && typeof aux !== 'number') return { result: fail('INVALID', 'aux inválido.'), closed: true };
+    if (p.role === 'agent') return { result: fail('FORBIDDEN', 'O assistente não move faders por arraste; use os comandos.'), closed: true };
+    if (msg.targetMode !== undefined && msg.targetMode !== this.mode) {
+      return { result: fail('MODE_MISMATCH', `Este servidor está em modo ${this.mode.toUpperCase()}.`), closed: true };
+    }
+    const auth = authorizeCommand(p.role, { type: 'set_level', channel, aux, db }, this.controller.names, this.options.musicianAux);
+    if (!auth.ok) {
+      this.audit(p, 'forbidden', auth.message, { command: 'fader' });
+      return { result: fail('FORBIDDEN', auth.message), closed: true };
+    }
+    const id = `${p.id}:${gestureId}`;
+    const st = this.faders.get(id) ?? { running: false };
+    const req = { channel, aux, db, final };
+    if (st.running) {
+      st.next = st.next?.final ? { ...req, final: true } : req; // um "soltou" pendente nunca se perde
+      return undefined;
+    }
+    this.faders.set(id, st);
+    st.running = true;
+    let current: typeof req | undefined = req;
+    let last: Result = fail('INVALID', 'gesto vazio');
+    let closed = false;
+    try {
+      while (current) {
+        last = await this.controller.setFader({ ...current, gestureId: id, origin: p.role });
+        closed = !!current.final || !last.ok;
+        current = st.next;
+        st.next = undefined;
+        if (!last.ok && current) {
+          if (current.final) closed = true;
+          current = undefined; // erro: descarta o resto do gesto (o servidor já fechou o gesto)
+        }
+      }
+    } finally {
+      st.running = false;
+      if (closed) this.faders.delete(id);
+    }
+    return { result: jsonSafe(last) as Result, closed };
+  }
+
+  /** A tela caiu no meio de um arraste: fecha os gestos dela (vira um item no desfazer). */
+  async endFaders(p: Principal, gestureIds: Iterable<string>): Promise<void> {
+    for (const g of gestureIds) {
+      this.faders.delete(`${p.id}:${g}`);
+      await this.controller.endFader(`${p.id}:${g}`);
+    }
+  }
+
   // ---------- aprovação humana ----------
 
   private registerPending(p: Principal, command: Command, result: Result): Result {
@@ -319,6 +386,7 @@ export class ServerCore {
 
   /** Fecha pendências vencidas ou invalidadas (ex.: reset, mudança na mesa) e avisa as telas. */
   sweep(): void {
+    void this.controller.sweepGestures(3000);
     const now = this.now();
     for (const [id, rec] of this.pendings) {
       if (rec.state === 'open' && !this.controller.isPendingOpen(id)) {

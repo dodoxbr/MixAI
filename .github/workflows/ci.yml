@@ -26,7 +26,21 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
       - run: npm ci
+      - run: npm ci --prefix web
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # Interface (E3)
+      - run: npm run test:web
+      - run: npm run build:web
+      # Integração com navegador real (Chromium): servidor LAB + build da interface.
+      - name: Instalar Chromium (Playwright)
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+      - name: Testes de integração da interface
+        if: runner.os == 'Linux'
+        run: npm run test:e2e

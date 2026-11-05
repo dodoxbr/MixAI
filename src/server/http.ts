@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
@@ -42,9 +45,44 @@ function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) 
  * instância por endereço de escuta: 127.0.0.1 e, se configurado, o IP do Wi-Fi), sempre com o
  * MESMO core: um só controlador, um só estado, uma só fila.
  */
-export async function buildHttp(core: ServerCore, opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 64 * 1024 });
+export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string } = {}): Promise<FastifyInstance> {
+  // forceCloseConnections: ao desligar, encerra TODAS as conexões na hora. Sem isso, conexões
+  // abertas pelo navegador sem requisição (pré-conexão) seguram o desligamento por até 60 s.
+  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 64 * 1024, forceCloseConnections: true });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
+
+  // Cabeçalhos de segurança da interface: só carrega código e conexões do próprio servidor.
+  app.addHook('onSend', async (req, reply, payload) => {
+    void reply.header('x-content-type-options', 'nosniff');
+    void reply.header('referrer-policy', 'no-referrer');
+    if (!req.url.startsWith('/api/')) {
+      void reply.header(
+        'content-security-policy',
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+      );
+      void reply.header('x-frame-options', 'DENY');
+    }
+    return payload;
+  });
+
+  // Interface web (E3): arquivos estáticos do build Angular, servidos pelo MESMO servidor.
+  // A tela não fala com a mesa: só com a API e o WebSocket abaixo.
+  if (opts.webRoot && existsSync(join(opts.webRoot, 'index.html'))) {
+    await app.register(fastifyStatic, {
+      root: opts.webRoot,
+      prefix: '/',
+      index: ['index.html'],
+      setHeaders: (res, path) => {
+        if (path.endsWith('index.html')) void res.header('cache-control', 'no-cache');
+      },
+    });
+  } else {
+    app.get('/', async (_req, reply) =>
+      reply
+        .type('text/plain; charset=utf-8')
+        .send('Interface web não encontrada. Rode "npm run build:web" e reinicie o servidor. A API está em /api/hello.'),
+    );
+  }
 
   app.get('/api/hello', async () => core.hello());
 
@@ -118,6 +156,8 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
   const cleanups: Array<() => void> = [];
   let meterTimer: NodeJS.Timeout | undefined;
   let revoked = false;
+  /** Arrastes em andamento desta tela (fechados se a conexão cair no meio). */
+  const gestures = new Set<string>();
   const raw = (msg: unknown) => {
     if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(msg));
   };
@@ -200,6 +240,20 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
         const run = msg.type === 'approve' ? core.approve(p, msg.requestId, id, msg.serverId) : core.reject(p, msg.requestId, id, msg.serverId);
         return void run.then((r) => send({ type: 'result', serverId: core.serverId, ...r }));
       }
+      case 'fader': {
+        const gid = typeof msg.gestureId === 'string' ? msg.gestureId : '';
+        if (msg.final === true) gestures.delete(gid);
+        else if (gid) gestures.add(gid);
+        return void core.fader(p, msg).then((r) => {
+          // Juntado a outro valor (coalescência): nada a responder. O estado chega pelos eventos.
+          if (!r) return;
+          // Responde quando o gesto fecha (soltou ou deu erro). Durante o arraste, só eventos.
+          if (r.closed) {
+            gestures.delete(gid);
+            send({ type: 'fader_result', serverId: core.serverId, gestureId: gid, result: r.result });
+          }
+        });
+      }
       case 'meters': {
         if (meterTimer) clearInterval(meterTimer);
         meterTimer = undefined;
@@ -238,5 +292,6 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
   socket.on('close', () => {
     clearTimeout(authTimer);
     stopAll();
+    if (principal && gestures.size) void core.endFaders(principal, [...gestures]);
   });
 }
