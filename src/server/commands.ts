@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ChannelMap } from '../core/channels.js';
-import type { MixController, Result, UndoPreview } from '../core/controller.js';
+import type { Expectation, MixController, Result, UndoPreview } from '../core/controller.js';
 import { parseKey, type ParamKey } from '../core/revisions.js';
 import type { Role } from './auth.js';
 
@@ -59,7 +59,7 @@ export function undoApproval(role: Role): ((entries: UndoPreview[]) => string | 
  * Executa no controlador. `confirmationId` só é passado pelo fluxo de aprovação do servidor.
  * `role` = quem PEDIU o comando (fica no desfazer e define a política de desfazer).
  */
-export async function dispatch(c: MixController, cmd: Command, confirmationId?: string, role?: Role): Promise<Result> {
+export async function dispatch(c: MixController, cmd: Command, confirmationId?: string, role?: Role, expect?: Expectation): Promise<Result> {
   switch (cmd.type) {
     case 'status':
       return c.ensureConnected();
@@ -72,13 +72,13 @@ export async function dispatch(c: MixController, cmd: Command, confirmationId?: 
     case 'list_snapshots':
       return c.listSnapshots();
     case 'set_level':
-      return c.setLevel({ channel: cmd.channel, aux: cmd.aux, db: cmd.db, deltaDB: cmd.deltaDB, confirmationId, origin: role });
+      return c.setLevel({ channel: cmd.channel, aux: cmd.aux, db: cmd.db, deltaDB: cmd.deltaDB, confirmationId, origin: role, expect });
     case 'set_mute':
-      return c.setMute({ channels: cmd.channels, muted: cmd.muted, aux: cmd.aux, confirmationId, origin: role });
+      return c.setMute({ channels: cmd.channels, muted: cmd.muted, aux: cmd.aux, confirmationId, origin: role, expect });
     case 'set_master':
-      return c.setMaster({ db: cmd.db, deltaDB: cmd.deltaDB, confirmationId, origin: role });
+      return c.setMaster({ db: cmd.db, deltaDB: cmd.deltaDB, confirmationId, origin: role, expect });
     case 'undo':
-      return c.undo(cmd.steps ?? 1, { confirmationId, approvalReason: role ? undoApproval(role) : undefined });
+      return c.undo(cmd.steps ?? 1, { confirmationId, approvalReason: role ? undoApproval(role) : undefined, expect });
     case 'load_snapshot':
       return c.loadSnapshot({ show: cmd.show, snapshot: cmd.snapshot, confirmationId });
     case 'reset_lab':

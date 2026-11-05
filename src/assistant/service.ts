@@ -129,8 +129,22 @@ export class AssistantService {
       this.proposals.set(again.proposal.card.id, again.proposal);
       return { status: 'recalculated', message: 'O valor mudou desde a proposta. Confira a proposta recalculada e toque em Aplicar de novo.', proposal: again.proposal.card };
     }
-    const r = await this.core.execute(p, { requestId, command: pr.command });
+    // A conferência definitiva acontece DENTRO da fila do controlador, junto com a escrita:
+    // se outro comando mudou os parâmetros (ou o topo do desfazer) enquanto este esperava,
+    // nada é aplicado (STATE_CHANGED).
+    const r = await this.core.execute(p, { requestId, command: pr.command }, { expect: { revisions: pr.bound, undoId: pr.undoId } });
     const result = r.result;
+    if (result.code === 'STATE_CHANGED') {
+      this.opts.log.add({ action: 'assistant_conflict', ok: false, message: `Assistente: ${pr.card.title} não aplicado (o estado mudou na fila).`, details: { role: p.role, proposal: pr.card } });
+      const again = this.builder.build(p, pr.intent, pr.card.source);
+      if (!again.ok) return { status: again.code === 'NOTHING' ? 'nothing' : 'failed', message: `O valor mudou antes de aplicar. ${again.message}` };
+      this.proposals.set(again.proposal.card.id, again.proposal);
+      return {
+        status: 'recalculated',
+        message: 'Outro comando mudou o valor enquanto este esperava. Nada foi aplicado: confira a proposta recalculada e toque em Aplicar de novo.',
+        proposal: again.proposal.card,
+      };
+    }
     this.opts.log.add({
       action: 'assistant_apply',
       ok: result.ok,
