@@ -3,8 +3,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { createApp, type App } from '../core/app.js';
-import { serverPort, type LoadedConfig } from '../core/config.js';
-import { OwnerLock, ownerLockFile } from '../core/owner-lock.js';
+import { PROJECT_ROOT, serverPort, type LoadedConfig } from '../core/config.js';
+import { equipmentLabel, OwnerLock, ownerLockFile } from '../core/owner-lock.js';
 import { Auth } from './auth.js';
 import { ServerCore } from './core.js';
 import { buildHttp } from './http.js';
@@ -37,8 +37,9 @@ export async function startServer(
   const hosts = listenHosts(config); // valida a rede ANTES de tocar na mesa
   const port = opts.port ?? serverPort(config);
 
-  const lockFile = ownerLockFile(mode, loaded.labFile, dataDir);
-  const lock = lockFile ? new OwnerLock(lockFile, 'servidor').acquire() : undefined;
+  const lockFile = ownerLockFile(mode, loaded.labFile);
+  const equipment = mode === 'real' ? equipmentLabel(config.mixer) : `laboratório ${loaded.labFile}`;
+  const lock = lockFile ? new OwnerLock(lockFile, 'servidor', { install: PROJECT_ROOT, equipment }).acquire() : undefined;
   let app: App | undefined;
   const https: FastifyInstance[] = [];
   const tokenFile = agentTokenFile(dataDir, mode);

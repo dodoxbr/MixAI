@@ -16,8 +16,14 @@ export interface UndoItem {
 }
 
 export interface UndoEntry {
+  /** Atribuído pela pilha: identifica a entrada (pendências de desfazer ficam presas a ele). */
+  id?: number;
   description: string;
   items: UndoItem[];
+  /** Quem pediu a alteração (perfil do servidor: operator, musician, agent). */
+  origin?: string;
+  /** Alteração crítica: mexeu no master ou precisou de confirmação (passo grande, mute em grupo). */
+  critical?: boolean;
 }
 
 /**
@@ -28,17 +34,23 @@ export interface UndoEntry {
  */
 export class UndoStack {
   private entries: UndoEntry[] = [];
+  private nextId = 1;
 
   constructor(private limit = 50) {}
 
   push(entry: UndoEntry) {
     if (!entry.items.length) return;
-    this.entries.push(entry);
+    this.entries.push({ ...entry, id: entry.id ?? this.nextId++ });
     if (this.entries.length > this.limit) this.entries.shift();
   }
 
   pop(): UndoEntry | undefined {
     return this.entries.pop();
+  }
+
+  /** As n entradas do topo (a primeira é a que sai primeiro), sem retirar. */
+  peek(n: number): UndoEntry[] {
+    return this.entries.slice(-n).reverse();
   }
 
   size(): number {

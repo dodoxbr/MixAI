@@ -39,7 +39,11 @@ export type ResultCode =
   | 'FORBIDDEN'
   | 'UNAUTHORIZED'
   | 'MODE_MISMATCH'
-  | 'SERVER_UNAVAILABLE';
+  | 'SERVER_UNAVAILABLE'
+  /** O servidor reiniciou: o pedido foi recusado sem executar. */
+  | 'SERVER_CHANGED'
+  /** A resposta se perdeu: a operação PODE ter sido aplicada. Confira o estado antes de repetir. */
+  | 'INDETERMINATE';
 
 export interface Result {
   ok: boolean;
@@ -61,6 +65,8 @@ export interface LevelRequest {
   /** Aceito por compatibilidade; sozinho NUNCA executa (devolve uma pendência). */
   confirm?: boolean;
   confirmationId?: string;
+  /** Quem pediu (perfil do servidor). Fica gravado no desfazer. */
+  origin?: string;
 }
 
 export interface MuteRequest {
@@ -69,6 +75,24 @@ export interface MuteRequest {
   aux?: string | number;
   confirm?: boolean;
   confirmationId?: string;
+  origin?: string;
+}
+
+/** O que o desfazer vai reverter (para decidir se precisa de aprovação humana). */
+export interface UndoPreview {
+  description: string;
+  origin?: string;
+  critical: boolean;
+  keys: ParamKey[];
+}
+
+export interface UndoOptions {
+  confirmationId?: string;
+  /**
+   * Devolve um motivo quando este desfazer precisa de aprovação humana (ex.: pedido pelo
+   * assistente e mexe no master). undefined = pode seguir direto.
+   */
+  approvalReason?: (entries: UndoPreview[]) => string | undefined;
 }
 
 interface Change {
@@ -281,13 +305,19 @@ export class MixController {
 
       const applied = await this.applyChanges([{ key, label, from: current, to: plan.target }]);
       const note = plan.clamped ? ` (limitei ao teto de ${formatDB(ceiling)})` : '';
-      return this.finish('set_level', `${label}: ${formatDB(current)} → ${formatDB(plan.target)}${note}`, applied, {
-        channel: ch.value.number,
-        bus: bus.kind === 'aux' ? `aux${bus.aux}` : 'master',
-        fromDB: current,
-        toDB: plan.target,
-        clamped: plan.clamped,
-      });
+      return this.finish(
+        'set_level',
+        `${label}: ${formatDB(current)} → ${formatDB(plan.target)}${note}`,
+        applied,
+        {
+          channel: ch.value.number,
+          bus: bus.kind === 'aux' ? `aux${bus.aux}` : 'master',
+          fromDB: current,
+          toDB: plan.target,
+          clamped: plan.clamped,
+        },
+        { origin: req.origin, critical: needs },
+      );
     });
   }
 
@@ -334,14 +364,17 @@ export class MixController {
 
       const applied = await this.applyChanges(changes);
       const description = `${req.muted ? 'Mutado' : 'Desmutado'} ${where}: ${applied.done.map((d) => d.label).join(', ')}`;
-      return this.finish('mute', description, applied, {
-        channels: applied.done.map((d) => Number(d.key.split('.')[1])),
-        muted: req.muted,
-      });
+      return this.finish(
+        'mute',
+        description,
+        applied,
+        { channels: applied.done.map((d) => Number(d.key.split('.')[1])), muted: req.muted },
+        { origin: req.origin, critical: needs },
+      );
     });
   }
 
-  async setMaster(req: { db?: number; deltaDB?: number; confirm?: boolean; confirmationId?: string }): Promise<Result> {
+  async setMaster(req: { db?: number; deltaDB?: number; confirm?: boolean; confirmationId?: string; origin?: string }): Promise<Result> {
     const key = paramKey.master();
     return this.queue.run(async () => {
       const gate = this.writeGate();
@@ -361,22 +394,45 @@ export class MixController {
 
       const applied = await this.applyChanges([{ key, label: 'Master', from: current, to: plan.target }]);
       const note = plan.clamped ? ` (limitei ao teto de ${formatDB(this.safety.maxMasterLevelDB)})` : '';
-      return this.finish('master', `Master: ${formatDB(current)} → ${formatDB(plan.target)}${note}`, applied, {
-        fromDB: current,
-        toDB: plan.target,
-      });
+      return this.finish(
+        'master',
+        `Master: ${formatDB(current)} → ${formatDB(plan.target)}${note}`,
+        applied,
+        { fromDB: current, toDB: plan.target },
+        { origin: req.origin, critical: true },
+      );
     });
   }
 
-  async undo(steps = 1): Promise<Result> {
+  async undo(steps = 1, opts: UndoOptions = {}): Promise<Result> {
     return this.queue.run(async () => {
       const gate = this.writeGate();
       if (gate) return gate;
       if (!this.undoStack.size()) return { ok: true, code: 'OK', message: 'Não há nada para desfazer.' };
-      const limited = this.rateLimit();
-      if (limited) return limited;
 
       const n = Math.max(1, Math.min(steps, this.undoStack.size()));
+      const preview = this.undoStack.peek(n);
+      const reason = opts.approvalReason?.(
+        preview.map((e) => ({
+          description: e.description,
+          origin: e.origin,
+          critical: !!e.critical || e.items.some((it) => it.key === 'master.level'),
+          keys: e.items.map((it) => it.key),
+        })),
+      );
+      if (reason) {
+        // Desfazer que precisa de aprovação humana: preso às entradas exatas da pilha (guard) e
+        // às revisões dos parâmetros envolvidos. Se algo mudar antes da aprovação, fica obsoleto.
+        const keys = [...new Set(preview.flatMap((e) => e.items.map((it) => it.key)))];
+        const summary = `Desfazer: ${preview.map((e) => e.description).join(' | ')}. Precisa de aprovação porque ${reason}.`;
+        const guard = JSON.stringify(preview.map((e) => e.id));
+        const blocked = this.authorize(true, opts.confirmationId, { op: 'undo', steps: n }, keys, summary, guard);
+        if (blocked) return blocked;
+      } else {
+        const limited = this.rateLimit();
+        if (limited) return limited;
+      }
+
       const undone: string[] = [];
       const skipped: string[] = [];
       const notSentAll: string[] = [];
@@ -414,7 +470,7 @@ export class MixController {
           // Interrompido no meio: o que não foi enviado volta para a pilha, como estava.
           // O item de resultado incerto NÃO volta (perdeu o desfazer por segurança).
           const remaining = ready.filter((it) => notSent.some((c) => c.key === it.key));
-          this.undoStack.push({ description: entry.description, items: remaining });
+          this.undoStack.push({ description: entry.description, items: remaining, origin: entry.origin, critical: entry.critical });
           notSentAll.push(...notSent.map((c) => c.label));
           break;
         }
@@ -550,11 +606,19 @@ export class MixController {
   }
 
   /** Monta o resultado, o desfazer (só do que foi enviado) e o log, com a etapa de cada parâmetro. */
-  private finish(action: string, description: string, applied: ApplyResult, data: Record<string, unknown>): Result {
+  private finish(
+    action: string,
+    description: string,
+    applied: ApplyResult,
+    data: Record<string, unknown>,
+    meta: { origin?: string; critical?: boolean } = {},
+  ): Result {
     const { done, uncertain, notSent } = applied;
     const complete = !uncertain.length && !notSent.length;
     if (done.length) {
       this.undoStack.push({
+        origin: meta.origin,
+        critical: !!meta.critical || done.some((d) => d.key === 'master.level'),
         description: complete ? description : `${description} (parcial)`,
         items: done.map((d) => ({
           key: d.key,

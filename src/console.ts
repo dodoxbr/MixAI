@@ -5,10 +5,9 @@
  */
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import { join } from 'node:path';
 import { createApp } from './core/app.js';
 import { loadConfig, PROJECT_ROOT } from './core/config.js';
-import { OwnerLock, OwnerLockError, ownerLockFile } from './core/owner-lock.js';
+import { equipmentLabel, OwnerLock, OwnerLockError, ownerLockFile } from './core/owner-lock.js';
 import type { Result } from './core/controller.js';
 import { HELP, parseCommand, runCommand } from './core/parser.js';
 
@@ -74,9 +73,11 @@ async function main() {
   // Um só dono da mesa (e do arquivo do laboratório): se o servidor estiver rodando, o console
   // não abre uma segunda conexão. Use o servidor (ou feche-o antes).
   const cfg = loadConfig();
-  const lockFile = ownerLockFile(cfg.config.mixer.mode, cfg.labFile, cfg.dataDir ?? join(PROJECT_ROOT, 'data'));
+  const lockMode = cfg.config.mixer.mode;
+  const lockFile = ownerLockFile(lockMode, cfg.labFile);
+  const equipment = lockMode === 'real' ? equipmentLabel(cfg.config.mixer) : `laboratório ${cfg.labFile}`;
   try {
-    if (lockFile) new OwnerLock(lockFile, 'console').acquire();
+    if (lockFile) new OwnerLock(lockFile, 'console', { install: PROJECT_ROOT, equipment }).acquire();
   } catch (err) {
     if (err instanceof OwnerLockError) {
       console.error(`✖ ${err.message}`);

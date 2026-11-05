@@ -17,6 +17,7 @@ const HTTP_STATUS: Partial<Record<Result['code'], number>> = {
   FORBIDDEN: 403,
   UNAUTHORIZED: 401,
   MODE_MISMATCH: 409,
+  SERVER_CHANGED: 409,
 };
 
 function bearer(req: FastifyRequest): string | undefined {
@@ -91,8 +92,11 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean } = {
     app.post<{ Params: { id: string } }>(`/api/pending/:id/${action}`, async (req, reply) => {
       const p = principalOf(core, req, reply);
       if (!p) return reply;
-      const body = (req.body ?? {}) as { requestId?: unknown };
-      const r = action === 'approve' ? await core.approve(p, body.requestId, req.params.id) : await core.reject(p, body.requestId, req.params.id);
+      const body = (req.body ?? {}) as { requestId?: unknown; serverId?: unknown };
+      const r =
+        action === 'approve'
+          ? await core.approve(p, body.requestId, req.params.id, body.serverId)
+          : await core.reject(p, body.requestId, req.params.id, body.serverId);
       return sendCommand(core, reply, r);
     });
   }
@@ -113,12 +117,31 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
   let principal: Principal | undefined;
   const cleanups: Array<() => void> = [];
   let meterTimer: NodeJS.Timeout | undefined;
-  const send = (msg: unknown) => {
+  let revoked = false;
+  const raw = (msg: unknown) => {
     if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(msg));
   };
   const close = (code: number, reason: string) => {
-    send({ type: 'error', code: code === WS_CLOSE.UNAUTHORIZED ? 'UNAUTHORIZED' : 'PROTOCOL', message: reason });
+    raw({ type: 'error', code: code === WS_CLOSE.UNAUTHORIZED ? 'UNAUTHORIZED' : 'PROTOCOL', message: reason });
     socket.close(code, reason);
+  };
+  /** Derruba a conexão de uma sessão encerrada/vencida e para TODOS os envios dela. */
+  const revoke = () => {
+    if (revoked) return;
+    revoked = true;
+    stopAll();
+    close(WS_CLOSE.UNAUTHORIZED, 'Sessão encerrada ou vencida. Entre de novo com o PIN.');
+  };
+  /** Todo envio depois da autenticação passa por aqui: a sessão é conferida ANTES de enviar. */
+  const send = (msg: unknown) => {
+    if (revoked) return;
+    if (principal && !core.auth.isActive(principal)) return revoke();
+    raw(msg);
+  };
+  const stopAll = () => {
+    if (meterTimer) clearInterval(meterTimer);
+    meterTimer = undefined;
+    for (const c of cleanups.splice(0)) c();
   };
   const authTimer = setTimeout(() => close(WS_CLOSE.UNAUTHORIZED, 'Autenticação não recebida.'), 5000);
   authTimer.unref?.();
@@ -128,14 +151,14 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
   const start = (p: Principal) => {
     principal = p;
     clearTimeout(authTimer);
+    // Logout derruba na hora; vencimento é conferido a cada segundo (conexão ociosa também cai).
+    cleanups.push(core.auth.onRevoke((id) => id === p.id && revoke()));
+    const watch = setInterval(() => !core.auth.isActive(p) && revoke(), 1000);
+    watch.unref?.();
+    cleanups.push(() => clearInterval(watch));
     send({ type: 'hello', ...core.hello(), role: p.role });
     sendSnapshot();
-    cleanups.push(
-      core.subscribeState((ev) => {
-        if (!core.auth.isActive(p)) return close(WS_CLOSE.UNAUTHORIZED, 'Sessão encerrada.');
-        send({ type: 'event', serverId: core.serverId, event: core.eventFor(p.role, ev) });
-      }),
-    );
+    cleanups.push(core.subscribeState((ev) => send({ type: 'event', serverId: core.serverId, event: core.eventFor(p.role, ev) })));
     cleanups.push(
       core.onNotice((n, audience) => {
         if (audience.roles.includes(p.role) || audience.principalId === p.id) send({ ...n, serverId: core.serverId });
@@ -162,7 +185,8 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
       return start(p);
     }
     const p = principal;
-    if (!core.auth.isActive(p)) return close(WS_CLOSE.UNAUTHORIZED, 'Sessão encerrada.');
+    if (revoked) return;
+    if (!core.auth.isActive(p)) return revoke();
     switch (msg.type) {
       case 'ping':
         return send({ type: 'pong', serverId: core.serverId });
@@ -173,13 +197,23 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
       case 'approve':
       case 'reject': {
         const id = typeof msg.pendingId === 'string' ? msg.pendingId : '';
-        const run = msg.type === 'approve' ? core.approve(p, msg.requestId, id) : core.reject(p, msg.requestId, id);
+        const run = msg.type === 'approve' ? core.approve(p, msg.requestId, id, msg.serverId) : core.reject(p, msg.requestId, id, msg.serverId);
         return void run.then((r) => send({ type: 'result', serverId: core.serverId, ...r }));
       }
       case 'meters': {
         if (meterTimer) clearInterval(meterTimer);
         meterTimer = undefined;
         if (msg.on !== true) return;
+        if (p.role === 'musician') {
+          // Os medidores existentes são do PA/master: o músico só pode ver o AUX 1, e a medição
+          // específica do AUX 1 ainda não existe. Recusado até existir.
+          return send({
+            type: 'meters_unavailable',
+            serverId: core.serverId,
+            code: 'FORBIDDEN',
+            message: 'Medidores do PA/master não são liberados para músicos; a medição do AUX 1 (fones) ainda não existe.',
+          });
+        }
         const source = core.meters;
         if (!source || core.mode === 'real') {
           return send({
@@ -203,7 +237,6 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
 
   socket.on('close', () => {
     clearTimeout(authTimer);
-    if (meterTimer) clearInterval(meterTimer);
-    for (const c of cleanups) c();
+    stopAll();
   });
 }
