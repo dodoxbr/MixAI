@@ -155,6 +155,30 @@ describe('alterações em lote e reset do laboratório (ajuste 2)', () => {
     expect(r.code).toBe('CONFIRMATION_STALE');
   });
 
+  it('regressão (revisão da E1): reset invalida TODAS as pendências, inclusive de parâmetro que não mudou', async () => {
+    const { controller, mixer } = await openLab();
+    // O surdo está no valor inicial: o reset não muda o surdo.
+    const ask = await controller.setLevel({ channel: 'surdo', deltaDB: 10 });
+    expect(ask.code).toBe('NEEDS_CONFIRMATION');
+    expect(controller.isPendingOpen(ask.pendingId!)).toBe(true);
+    await controller.setLevel({ channel: 'voz 1', db: -8 }); // o reset terá algo a mudar
+    await controller.resetLab();
+    expect(controller.isPendingOpen(ask.pendingId!)).toBe(false);
+    const r = await controller.setLevel({ channel: 'surdo', deltaDB: 10, confirmationId: ask.pendingId });
+    expect(r.code).toBe('CONFIRMATION_STALE');
+    expect(r.message).toContain('resetado');
+    expect(mixer.read(paramKey.level(6, MASTER))).toEqual({ known: true, value: -10 }); // nada aplicado
+
+    // Reset sem nenhuma diferença também invalida (pelo controlador e direto no LabMixer).
+    for (const reset of [() => controller.resetLab(), async () => mixer.resetToDefaults()]) {
+      const again = await controller.setLevel({ channel: 'surdo', deltaDB: 10 });
+      await reset();
+      expect((await controller.setLevel({ channel: 'surdo', deltaDB: 10, confirmationId: again.pendingId })).code).toBe(
+        'CONFIRMATION_STALE',
+      );
+    }
+  });
+
   it('reset chamado direto no LabMixer também mantém os clientes sincronizados', async () => {
     const { controller, mixer } = await openLab();
     await controller.setLevel({ channel: 'voz 2', db: -4 });

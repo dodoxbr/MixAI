@@ -1,9 +1,11 @@
 # MixAI — controle da Soundcraft Ui16 por IA
 
-Servidor MCP que deixa o Claude ajustar a Ui16 por comandos em português
-("sobe a voz 1 no retorno do cavaco"), com travas de segurança, desfazer e log.
-Esta versão cobre as **Fases 0 e 1** do plano: volume, mute, retornos, snapshots,
-mesa simulada e console de teste.
+Deixa o Claude (e, a partir da E3, a tela do notebook e os celulares) ajustar a Ui16 por
+comandos em português ("sobe a voz 1 no retorno do cavaco"), com travas de segurança,
+desfazer, log e **aprovação humana** das operações críticas.
+
+Desde a v0.4 (E2) existe um **servidor único** (`npm run serve:lab` / `serve:real`) que é o dono
+da mesa; o MCP do Claude Desktop é só um cliente dele. Detalhes: `docs/lab/06-E2-SERVIDOR.md`.
 
 ## O que precisa
 
@@ -17,7 +19,7 @@ mesa simulada e console de teste.
 cd mixai
 npm install
 npm run build
-npm test        # 170 testes, todos devem passar
+npm test        # 201 testes, todos devem passar
 ```
 
 ## Testar sem a mesa: laboratório ou simulador
@@ -59,7 +61,25 @@ desfazer
 log
 ```
 
+## Servidor único (E2)
+
+```bash
+npm run pin -- operador   # cadastra o PIN do operador (grava só o hash, fora do Git)
+npm run pin -- musico     # opcional: PIN dos músicos (só ajustam o AUX 1, os fones)
+npm run serve:lab         # laboratório em http://127.0.0.1:8790
+npm run serve:real        # mesa física em http://127.0.0.1:8791
+```
+
+- Só um processo controla a mesa: um segundo servidor (ou o console) é recusado.
+- Por padrão só o próprio notebook acessa. Para os celulares no Wi-Fi, configure `server.lan`
+  com o IP do **Wi-Fi do notebook** (não o da mesa) — passo a passo em `docs/lab/06-E2-SERVIDOR.md`.
+- Operações críticas (master, snapshot, passo grande, mute em massa) viram **pendências** que só
+  um operador autenticado aprova. O assistente propõe, mas não confirma.
+
 ## Ligar no Claude Desktop
+
+**Antes:** deixe o servidor rodando (`npm run serve:lab`). Sem ele, o assistente responde que o
+servidor não está disponível e não mexe em nada.
 
 Edite o `claude_desktop_config.json` do Claude Desktop e acrescente o MixAI
 (troque o caminho pelo da sua pasta):
@@ -116,8 +136,8 @@ Confira o mapeamento com a ligação real na mesa (por exemplo, quais entradas s
 | Comandos por segundo | 5 |
 | Ganho de entrada e phantom | a IA não tem acesso |
 
-Pedir confirmação nunca altera nada: a resposta traz um `pendingId`, e a IA precisa
-perguntar a você e repetir o mesmo comando com `confirmation_id`. Veja a seção abaixo.
+Pedir confirmação nunca altera nada: vira uma pendência que **só o operador aprova**, com PIN,
+pelo canal de aprovação do servidor (a tela chega na E3). Veja a seção abaixo.
 
 ## Reconexão e confirmações (desde a v0.2 / E0)
 
@@ -138,14 +158,14 @@ perguntar a você e repetir o mesmo comando com `confirmation_id`. Veja a seçã
   - "a mesa mostra outro valor";
   - "indeterminado".
 
-**Confirmações.**
-- Ações críticas devolvem `NEEDS_CONFIRMATION` com um `pendingId`. Para executar, repita o
-  mesmo comando com `confirmation_id`.
-- O id vale **uma vez**, por **60 s**, e é invalidado se algum parâmetro envolvido mudar antes
-  da confirmação (`CONFIRMATION_STALE`). `confirm=true` sozinho **não executa** nada.
-- **Limite atual:** o id garante que só é executado o que foi avaliado, sobre o estado avaliado.
-  Ele **não prova que um humano aprovou**, porque a IA pode reenviá-lo. A aprovação humana
-  autenticada pela tela chega na etapa E2.
+**Confirmações (desde a E2).**
+- Ações críticas devolvem `NEEDS_CONFIRMATION`: nada foi alterado e a pendência vai para os
+  operadores (`/api/pending`, WebSocket `pending`).
+- Só um **operador autenticado** aprova (`approve`) ou recusa (`reject`). O assistente não
+  consegue: `confirmation_id` enviado por ele é recusado com `FORBIDDEN`, e o canal de aprovação
+  não aceita o token dele.
+- A pendência vale **uma vez**, por **60 s**, e é invalidada se algum parâmetro envolvido mudar
+  antes (`CONFIRMATION_STALE`) ou se o laboratório for resetado.
 
 **Desfazer.**
 - O desfazer compara a **revisão** de cada parâmetro: se outra pessoa (ou a mesa, ou uma
@@ -167,9 +187,14 @@ Cada ação (e cada recusa) vai para `logs/acoes-AAAA-MM-DD.jsonl`.
 
 ```
 src/
-  index.ts            servidor MCP (stdio)
-  console.ts          console de teste sem IA
+  serve.ts            servidor único (E2): HTTP + WebSocket, dono da mesa
+  server/             núcleo do servidor, rotas, perfis, PIN, medidores simulados
+  client/             cliente de referência da sincronização de estado
+  index.ts            MCP (stdio) — cliente HTTP do servidor
+  pin.ts              cadastro de PIN (só hash)
+  console.ts          console de teste sem IA (respeita a trava de dono)
   mcp/server.ts       tools e instruções para a IA
+  mcp/remote.ts       cliente HTTP usado pelas tools
   core/controller.ts  travas, fila, desfazer, confirmações, log
   core/params.ts      registro central de parâmetros (unidade, faixa, capacidade)
   core/state.ts       estado observável: snapshot, eventos, revisões
@@ -189,6 +214,12 @@ test/                 testes (Vitest)
 - **"Não consegui conectar"**: confira o IP da mesa e se o notebook está na mesma rede.
 - **Claude Desktop não mostra as tools**: confira o caminho absoluto do `dist/index.js`
   e se rodou `npm run build`.
+- **"SERVER_UNAVAILABLE"**: o servidor não está rodando. Abra um terminal e rode
+  `npm run serve:lab` (ou `serve:real`).
+- **"Outro processo do MixAI ... já controla isto"**: já existe um servidor (ou console) aberto.
+  Use o que está rodando, ou feche-o.
+- **Celular não abre a página**: confira `server.lan.host` (IP do Wi-Fi do notebook), se o
+  celular está no mesmo Wi-Fi e se o firewall do Windows permitiu em "Redes privadas".
 - **"CONTROL_STOPPED" ou "DEGRADED_READ_ONLY" durante um evento**: não insista pelo MixAI;
   use a interface oficial da Soundcraft. O som continua com o último ajuste.
 - **Voltar para a versão anterior** (fora de evento): `git checkout baseline-v0.1.0 && npm ci && npm run build`

@@ -128,8 +128,8 @@ export abstract class SimulatedMixer implements MixerAdapter {
     for (const l of this.changeListeners) l(key, value, origin);
   }
 
+  /** Avisa mesmo com a lista vazia: um reset sem diferenças ainda invalida as pendências. */
   protected emitBatch(changes: Array<[ParamKey, ParamValue]>, origin: ParamBatchOrigin) {
-    if (!changes.length) return;
     for (const l of this.batchListeners) l(changes, origin);
   }
 

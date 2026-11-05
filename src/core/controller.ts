@@ -34,7 +34,12 @@ export type ResultCode =
   | 'CONFIRMATION_EXPIRED'
   | 'CONFIRMATION_MISMATCH'
   | 'CONFIRMATION_STALE'
-  | 'CONFIRMATION_USED';
+  | 'CONFIRMATION_USED'
+  // servidor (E2)
+  | 'FORBIDDEN'
+  | 'UNAUTHORIZED'
+  | 'MODE_MISMATCH'
+  | 'SERVER_UNAVAILABLE';
 
 export interface Result {
   ok: boolean;
@@ -442,6 +447,8 @@ export class MixController {
       const gate = this.writeGate();
       if (gate) return gate;
       const changed = lab.resetToDefaults();
+      // Mesmo que nada tenha mudado de valor, nenhuma pendência anterior ao reset vale mais.
+      this.pending.invalidateAll('o laboratório foi resetado');
       return {
         ok: true,
         code: 'OK',
@@ -625,6 +632,18 @@ export class MixController {
     return undefined;
   }
 
+  // ---------- pendências (usadas pelo servidor da E2) ----------
+
+  /** true = a pendência ainda pode ser confirmada. */
+  isPendingOpen(id: string): boolean {
+    return this.pending.isOpen(id);
+  }
+
+  /** Recusa humana de uma pendência: ela deixa de valer. */
+  cancelPending(id: string): boolean {
+    return this.pending.cancel(id);
+  }
+
   // ---------- regras internas ----------
 
   private observe(key: ParamKey, value: ParamValue, actor: Actor) {
@@ -643,6 +662,7 @@ export class MixController {
       this.lastKnown.set(key, value);
     }
     this.undoStack.clear();
+    this.pending.invalidateAll('o laboratório foi resetado');
     this.log.add({ action: 'lab_reset', ok: true, message: `Laboratório voltou ao estado inicial (${changes.length} parâmetro(s) alterado(s)). Desfazer zerado.` });
     this.state.flush();
   }

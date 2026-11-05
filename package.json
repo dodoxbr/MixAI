@@ -1,7 +1,7 @@
 {
   "name": "mixai",
-  "version": "0.3.0",
-  "description": "Controle da Soundcraft Ui16 por IA (servidor MCP)",
+  "version": "0.4.0",
+  "description": "Controle da Soundcraft Ui16 por IA (servidor único + MCP)",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -12,12 +12,19 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.test.json",
     "start:mock": "node dist/index.js --mock",
     "console:lab": "node dist/console.js --lab",
-    "start:lab": "node dist/index.js --lab"
+    "start:lab": "node dist/index.js --lab",
+    "serve": "node dist/serve.js",
+    "serve:lab": "node dist/serve.js --lab",
+    "serve:mock": "node dist/serve.js --mock",
+    "serve:real": "node dist/serve.js --real",
+    "pin": "node dist/pin.js"
   },
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@fastify/websocket": "^11.3.7",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "fastify": "^5.12.8",
     "rxjs": "^7.8.2",
     "soundcraft-ui-connection": "7.1.0",
     "yaml": "^2.9.1",
@@ -25,13 +32,15 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
   },
   "type": "module",
   "bin": {
-    "mixai": "dist/index.js"
+    "mixai": "dist/index.js",
+    "mixai-server": "dist/serve.js"
   },
   "engines": {
     "node": ">=22"

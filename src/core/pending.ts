@@ -18,6 +18,8 @@ interface Pending {
   expiresAt: number;
   /** Usada com sucesso, ou invalidada por uma tentativa errada: não serve mais. */
   closed: boolean;
+  /** Invalidada por um evento global (ex.: reset do laboratório), mesmo sem mudança nos parâmetros dela. */
+  invalidated?: string;
 }
 
 /** Hash estável do comando normalizado (ordem das chaves não importa). */
@@ -76,6 +78,9 @@ export class PendingStore {
   ): { ok: true } | { ok: false; code: PendingFailure; message: string } {
     const p = this.items.get(id);
     if (!p) return { ok: false, code: 'NOT_FOUND', message: `Confirmação "${id}" não encontrada. Peça de novo.` };
+    if (p.invalidated) {
+      return { ok: false, code: 'CONFIRMATION_STALE', message: `Esta confirmação foi invalidada (${p.invalidated}). Nada foi alterado; peça de novo.` };
+    }
     if (p.closed) return { ok: false, code: 'CONFIRMATION_USED', message: 'Esta confirmação já foi usada ou invalidada. Peça de novo.' };
     p.closed = true;
     if (this.clock() > p.expiresAt) {
@@ -97,6 +102,32 @@ export class PendingStore {
       };
     }
     return { ok: true };
+  }
+
+  /** Invalida TODAS as pendências abertas (ex.: reset do laboratório). */
+  invalidateAll(reason: string): number {
+    let n = 0;
+    for (const p of this.items.values()) {
+      if (!p.closed && !p.invalidated) {
+        p.invalidated = reason;
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /** true = ainda pode ser usada (existe, não foi usada nem invalidada, e está no prazo). */
+  isOpen(id: string): boolean {
+    const p = this.items.get(id);
+    return !!p && !p.closed && !p.invalidated && this.clock() <= p.expiresAt;
+  }
+
+  /** Cancela uma pendência (recusada por um humano). */
+  cancel(id: string): boolean {
+    const p = this.items.get(id);
+    if (!p || p.closed) return false;
+    p.closed = true;
+    return true;
   }
 
   private prune() {

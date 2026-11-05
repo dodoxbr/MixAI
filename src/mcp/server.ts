@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import type { MixController, Result } from '../core/controller.js';
+import type { Result } from '../core/controller.js';
 import { jsonSafe } from '../core/log.js';
+import type { MixBackend } from './backend.js';
 
 export const SERVER_INSTRUCTIONS = `Você opera uma mesa de som Soundcraft Ui16 de uma banda de pagode pelo MixAI.
 Regras:
@@ -9,8 +10,9 @@ Regras:
 - Antes de ajustes relativos importantes, veja o estado atual com get_mix_state.
 - Prefira passos pequenos: "um pouco" = 2 dB, "mais" = 3 dB, "bastante" = 5 dB.
 - Pedido sobre o que os músicos ouvem no fone = retorno (set_aux_send). O AUX 1 "Fones" é UMA mix compartilhada: mudar ali muda o fone de TODOS. Pedido sobre o som do público = PA (set_channel_level).
-- Ações críticas devolvem code=NEEDS_CONFIRMATION e um pendingId. NÃO repita sozinho: mostre o resumo ao usuário e, só depois de um "sim" explícito dele, repita EXATAMENTE o mesmo comando com confirmation_id=<pendingId>. O id vale uma vez, por 60 s, e é invalidado se a mesa mudar antes. confirm=true sozinho não executa nada.
-- Se vier CONFIRMATION_STALE/EXPIRED/USED/MISMATCH, nada foi alterado: peça de novo (sem confirmation_id) e mostre o novo resumo.
+- Ações críticas devolvem code=NEEDS_CONFIRMATION: NADA foi alterado e o pedido foi para a tela do OPERADOR, que aprova ou recusa (vale 60 s). Você NÃO pode confirmar: confirmation_id enviado por você é recusado (FORBIDDEN). Diga ao usuário o que vai mudar e que precisa ser aprovado na tela do MixAI; depois confira com get_mix_state ou get_action_log.
+- Se vier FORBIDDEN, a operação não é permitida para você; explique e não insista.
+- Se vier SERVER_UNAVAILABLE, o servidor do MixAI não está rodando no notebook: peça para iniciá-lo. Você não controla a mesa sem ele.
 - Na mesa real, "enviado" não é "confirmado": a Ui16 não confirma comandos. Não diga que a mesa aplicou; diga que foi enviado.
 - Se vier PARTIAL, diga exatamente o que foi e o que NÃO foi enviado. Se vier NO_CONNECTION, RESYNCING, DEGRADED_READ_ONLY ou CONTROL_STOPPED, não tente de novo em loop; informe o usuário.
 - Depois de cada mudança, diga em uma frase o que mudou e pergunte se melhorou. Se piorou, use undo_last.
@@ -36,11 +38,14 @@ const levelFields = {
     .string()
     .max(64)
     .optional()
-    .describe('pendingId devolvido pelo pedido anterior; use só depois do "sim" explícito do usuário.'),
+    .describe('Não use: a confirmação é feita só pelo operador, na tela do MixAI. Enviado pelo assistente, é recusado.'),
 };
 
-/** Cria o servidor MCP com as tools do MixAI. */
-export function createMcpServer(controller: MixController, version = '0.3.0'): McpServer {
+/**
+ * Cria o servidor MCP com as 11 tools do MixAI. Em produção o backend é o cliente HTTP do
+ * servidor único (RemoteBackend); nos testes pode ser o próprio controlador.
+ */
+export function createMcpServer(controller: MixBackend, version = '0.4.0'): McpServer {
   const server = new McpServer({ name: 'mixai', version }, { instructions: SERVER_INSTRUCTIONS });
 
   server.registerTool(
@@ -62,7 +67,7 @@ export function createMcpServer(controller: MixController, version = '0.3.0'): M
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
-    async () => reply(controller.listNames()),
+    async () => reply(await controller.listNames()),
   );
 
   server.registerTool(
@@ -153,7 +158,7 @@ export function createMcpServer(controller: MixController, version = '0.3.0'): M
       inputSchema: { limit: z.number().int().min(1).max(100).optional() },
       annotations: { readOnlyHint: true },
     },
-    async ({ limit }) => reply(controller.history(limit ?? 20)),
+    async ({ limit }) => reply(await controller.history(limit ?? 20)),
   );
 
   server.registerTool(

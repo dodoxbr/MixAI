@@ -1,4 +1,4 @@
-# MixAI — estado atual (05/11/2026, v0.3 / E1)
+# MixAI — estado atual (05/11/2026, v0.4 / E2)
 
 Controle da mesa **Soundcraft Ui16** por IA, para uma banda de samba/pagode amadora que toca em roda.
 O músico pede em português ("mais Fred no fone", "abaixa o surdo") e o Claude ajusta a mesa,
@@ -41,17 +41,20 @@ Retorno: **AUX 1 = Fones** (aliases: fone, retorno, monitor).
 ## 2. Arquitetura
 
 ```
-Usuário (texto)
-   │
-Claude Desktop  ──(internet)──  Claude (nuvem)
-   │  MCP via stdio
-Servidor MixAI (Node.js + TypeScript)
-   ├── travas de segurança, apelidos, desfazer, log
-   ├── mesa real  → soundcraft-ui-connection 7.1.0 (WebSocket da interface web da Ui)
-   └── mesa simulada (MIXAI_MODE=mock)
+Usuário (texto)                       Navegadores / celulares (E3)
+   │                                          │ HTTP + WebSocket (PIN: operador | músico)
+Claude Desktop ──MCP stdio──▶ dist/index.js ──┤ HTTP 127.0.0.1 (token local do assistente)
+                                              ▼
+                        Servidor único MixAI (dist/serve.js, Fastify)
+                          ├── perfis, aprovação humana, requestId, eventos com revisões
+                          ├── travas de segurança, apelidos, desfazer, log (MixController)
+                          ├── mesa real → soundcraft-ui-connection 7.1.0  (porta 8791)
+                          └── laboratório persistente (porta 8790)
 ```
 
-- A IA **nunca** fala direto com a mesa: tudo passa pelo `MixController`.
+- A IA **nunca** fala direto com a mesa: tudo passa pelo servidor e pelo `MixController`.
+- **Um só dono** da mesa (trava de processo); o MCP é cliente HTTP e não abre a mesa.
+- Operações críticas só são **aprovadas por operador autenticado** (o assistente propõe).
 - Toda leitura/escrita da mesa está atrás de uma interface `MixerAdapter`
   (`RealMixer` e `MockMixer` implementam a mesma interface).
 
@@ -61,7 +64,8 @@ Servidor MixAI (Node.js + TypeScript)
 | --- | --- |
 | Linguagem | TypeScript (Node.js 22+) |
 | Mesa | [`soundcraft-ui-connection`](https://www.npmjs.com/package/soundcraft-ui-connection) 7.1.0 (versão fixada) |
-| IA | `@modelcontextprotocol/sdk` 1.32 (servidor MCP, stdio) |
+| IA | `@modelcontextprotocol/sdk` 1.32 (MCP stdio, cliente do servidor) |
+| Servidor | Fastify 5 + `@fastify/websocket` 11 |
 | Validação | zod 4 |
 | Config | YAML (`yaml`) |
 | Testes | Vitest |
@@ -70,7 +74,9 @@ Servidor MixAI (Node.js + TypeScript)
 
 ```
 src/
-  index.ts            servidor MCP (stdio)
+  serve.ts            servidor único (HTTP + WebSocket)
+  server/             perfis, PIN, pendências/cartões, requestId, medidores simulados
+  index.ts            MCP (stdio), cliente HTTP do servidor
   console.ts          console de teste sem IA
   mcp/server.ts       tools + instruções para a IA
   core/controller.ts  travas, desfazer, log
@@ -83,7 +89,7 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 170 testes (Vitest)
+test/                 201 testes (Vitest)
 ```
 
 ---
@@ -98,11 +104,11 @@ test/                 170 testes (Vitest)
 | `set_channel_level` | volume do canal no PA (absoluto `db` ou relativo `delta_db`) |
 | `set_aux_send` | volume do canal no fone (AUX) |
 | `mute_channel` | muta/desmuta um ou mais canais, no master ou num AUX |
-| `set_master_level` | volume geral (sempre pede confirmação) |
+| `set_master_level` | volume geral (sempre vira pendência para o operador aprovar) |
 | `undo_last` | desfaz as últimas N ações |
 | `get_action_log` | histórico de ações e recusas |
 | `list_snapshots` | shows/snapshots salvos na mesa |
-| `load_snapshot` | carrega snapshot (sempre pede confirmação) |
+| `load_snapshot` | carrega snapshot (sempre vira pendência para o operador aprovar) |
 
 **Fora de propósito:** ganho de entrada e phantom power não são expostos à IA.
 
@@ -129,13 +135,16 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-170 testes passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+201 testes passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
 - **E1:** laboratório persistente (gravação atômica, backup, recuperação), registro central de
   parâmetros (inclui EQ/HPF/bypass só no laboratório), estado observável com eventos e
   sincronização, transmissão JSON (-∞ como "-inf"), reset integrado às revisões, isolamento laboratório × mesa real, estrutura de cenas;
+- **E2:** servidor único (dois clientes WS, reconexão, ressincronização por evento perdido,
+  `requestId` sem duplicar, perfis operador/músico, aprovação só por operador, LAB ≠ REAL,
+  MCP sem servidor, reinício invalida sessões, um só controlador, rede do Yoga, segredos);
 - **E0:** reconexão segura (supervisor com gerações e descarte de instância), fila única,
   desfazer causal por revisão, pendências vinculadas ao estado, operações compostas parciais,
   estados distintos, isolamento mock × real, parser e nomes restritos;
