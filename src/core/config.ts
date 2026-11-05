@@ -71,6 +71,39 @@ const ConfigSchema = z.object({
       sessionHours: z.number().positive().max(48).default(12),
     })
     .prefault({}),
+  /** Assistente de texto (E4): parser local + Claude opcional. Tudo vira proposta com "Aplicar". */
+  assistant: z
+    .object({
+      /** "um pouco", "um pouquinho", "levemente" (e o padrão quando não diz quanto). */
+      smallStepDB: z.number().positive().max(6).default(2),
+      /** "mais" ("aumenta mais o surdo"). */
+      mediumStepDB: z.number().positive().max(6).default(3),
+      /** "bastante", "muito". */
+      largeStepDB: z.number().positive().max(12).default(5),
+      /** Validade de uma proposta antes de tocar em Aplicar. */
+      proposalTtlSec: z.number().int().min(10).max(600).default(120),
+    })
+    .prefault({}),
+  /** Claude (API da Anthropic). Opcional: desligado sem chave. A chave fica só no servidor. */
+  ai: z
+    .object({
+      enabled: z.boolean().default(false),
+      model: z.string().min(1).default('claude-haiku-5-5'),
+      /** Máximo de tokens na resposta da IA. */
+      maxOutputTokens: z.number().int().min(64).max(4000).default(600),
+      /** Pedido do usuário maior que isso é recusado (não vai para a API). */
+      maxInputChars: z.number().int().min(20).max(2000).default(400),
+      timeoutMs: z.number().int().min(1000).max(60_000).default(12_000),
+      /** Teto de gasto por dia (US$, estimado pelos preços abaixo). */
+      dailyBudgetUSD: z.number().min(0).default(0.5),
+      maxRequestsPerMinute: z.number().int().min(1).max(60).default(6),
+      /** Preço por milhão de tokens (US$). Padrão: Claude Haiku 5.5. Confira em platform.claude.com/docs/en/about-claude/pricing. */
+      priceInputPerMTok: z.number().min(0).default(0.1),
+      priceOutputPerMTok: z.number().min(0).default(0.5),
+      /** Quantas trocas anteriores vão junto (contexto curto). */
+      historyTurns: z.number().int().min(0).max(10).default(4),
+    })
+    .prefault({}),
   safety: SafetySchema.prefault({}),
   logs: z.object({ dir: z.string().nullable().default('logs') }).prefault({}),
 });
@@ -114,6 +147,8 @@ function readYaml(path: string): unknown {
 const SecretsSchema = z.object({
   operatorPinHash: z.string().optional(),
   musicianPinHash: z.string().optional(),
+  /** Chave da API da Anthropic (opcional). Só o servidor lê; nunca vai para o navegador nem para o log. */
+  anthropicApiKey: z.string().optional(),
 });
 export type Secrets = z.infer<typeof SecretsSchema>;
 
@@ -154,6 +189,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
   const secrets = SecretsSchema.parse(readYaml(join(configDir, 'secrets.yaml')) ?? {});
   if (env.MIXAI_OPERATOR_PIN_HASH) secrets.operatorPinHash = env.MIXAI_OPERATOR_PIN_HASH;
   if (env.MIXAI_MUSICIAN_PIN_HASH) secrets.musicianPinHash = env.MIXAI_MUSICIAN_PIN_HASH;
+  if (env.ANTHROPIC_API_KEY) secrets.anthropicApiKey = env.ANTHROPIC_API_KEY;
   const dataDir = env.MIXAI_DATA_DIR ? resolve(env.MIXAI_DATA_DIR) : join(PROJECT_ROOT, 'data');
 
   let logDir: string | null = env.MIXAI_LOG_DIR ?? config.logs.dir;

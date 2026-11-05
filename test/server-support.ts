@@ -23,6 +23,10 @@ export interface TestServerOptions {
   dir?: string;
   port?: number;
   logDir?: string | null;
+  /** IA (E4): configuração, chave de teste e fetch simulado (nunca a API real). */
+  ai?: Record<string, unknown>;
+  aiKey?: string;
+  aiFetch?: typeof fetch;
   /** Nomes dos canais (padrão: a fixture dos testes). */
   channels?: ReturnType<typeof fixtureChannels>;
 }
@@ -42,20 +46,26 @@ export async function startTestServer(opts: TestServerOptions = {}) {
       lab: { saveDebounceMs: 0 },
       logs: { dir: null },
       safety: { maxActionsPerSecond: 100, ...opts.safety },
+      ai: opts.ai ?? {},
     }),
     channels: opts.channels ?? fixtureChannels(),
     configDir: dir,
     logDir: opts.logDir ?? null,
     labFile: join(dir, 'lab-state.json'),
     dataDir: dir,
-    secrets: pinHashes(),
+    secrets: { ...pinHashes(), anthropicApiKey: opts.aiKey },
   };
   const clock = shiftableClock();
   const log = new ActionLog(opts.logDir ?? null);
   const caps = { model: 'ui16' as const, inputs: 12, aux: 6 };
   const mixer = mode === 'lab' ? new LabMixer({ file: loaded.labFile, saveDebounceMs: 0 }) : new MockMixer(caps);
   const controller = new MixController(mixer, loaded.config.safety, new ChannelMap(loaded.channels, caps), log, clock.now);
-  const server = await startServer(loaded, { port: opts.port ?? 0, clock: clock.now, app: { loaded, mixer, controller, log } });
+  const aiFetch: typeof fetch =
+    opts.aiFetch ??
+    (async () => {
+      throw new Error('teste tentou chamar a API real da Anthropic');
+    });
+  const server = await startServer(loaded, { port: opts.port ?? 0, clock: clock.now, app: { loaded, mixer, controller, log }, aiFetch });
   const base = server.urls[0]!;
 
   const http = async (path: string, init: { method?: string; token?: string; body?: unknown } = {}) => {

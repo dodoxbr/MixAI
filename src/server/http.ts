@@ -254,6 +254,26 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
           }
         });
       }
+      // ---------- assistente (E4): só propostas; aplicar passa pela fila e pela autorização ----------
+      case 'assistant': {
+        const a = core.assistant;
+        if (!a) return send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply: { kind: 'error', source: 'local', text: 'Assistente indisponível.' } });
+        return void a.ask(p, msg.text).then((reply) => send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply }));
+      }
+      case 'proposal_apply': {
+        const a = core.assistant;
+        if (!a) return;
+        return void a.apply(p, msg.proposalId, msg.requestId).then((r) => send({ type: 'proposal_result', serverId: core.serverId, requestId: msg.requestId, proposalId: msg.proposalId, ...r }));
+      }
+      case 'proposal_cancel':
+        core.assistant?.cancel(p, msg.proposalId);
+        return;
+      case 'assistant_feedback': {
+        const a = core.assistant;
+        if (!a) return;
+        const reply = a.feedback(p, msg.proposalId, msg.better);
+        return send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply });
+      }
       case 'meters': {
         if (meterTimer) clearInterval(meterTimer);
         meterTimer = undefined;

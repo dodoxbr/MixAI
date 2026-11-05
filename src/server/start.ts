@@ -10,6 +10,9 @@ import { ServerCore } from './core.js';
 import { buildHttp } from './http.js';
 import { listenHosts } from './listen.js';
 import { SimulatedMeters } from './meters.js';
+import { ClaudeClient } from '../ai/claude.js';
+import { UsageTracker } from '../ai/usage.js';
+import { AssistantService } from '../assistant/service.js';
 
 /** Arquivo com o token do assistente (pasta de dados local, fora do Git; recriado a cada início). */
 export const agentTokenFile = (dataDir: string, mode: string) => join(dataDir, `agent-${mode}.token`);
@@ -29,7 +32,7 @@ export interface RunningServer {
  */
 export async function startServer(
   loaded: LoadedConfig,
-  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string } = {},
+  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch } = {},
 ): Promise<RunningServer> {
   const { config } = loaded;
   const mode = config.mixer.mode;
@@ -60,6 +63,25 @@ export async function startServer(
       clock: opts.clock,
       meters,
     });
+
+    // Assistente (E4): parser local sempre; Claude só com ai.enabled e chave (só no servidor).
+    const ai = new ClaudeClient(
+      config.ai,
+      loaded.secrets?.anthropicApiKey,
+      new UsageTracker(join(dataDir, 'ai-usage.json'), opts.clock),
+      opts.aiFetch ?? fetch,
+      opts.clock,
+    );
+    core.assistant = new AssistantService(core, {
+      steps: config.assistant,
+      ttlMs: config.assistant.proposalTtlSec * 1000,
+      musicianAux: config.server.musicianAux,
+      channels: loaded.channels.channels,
+      ai,
+      log: app.log,
+      clock: opts.clock,
+    });
+    if (config.ai.enabled && !loaded.secrets?.anthropicApiKey) opts.log?.('ai.enabled = true, mas sem chave (ANTHROPIC_API_KEY ou anthropicApiKey em config/secrets.yaml): só o parser local.');
 
     try {
       await app.mixer.connect();

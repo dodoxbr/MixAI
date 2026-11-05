@@ -7,6 +7,7 @@ import type { MixerAdapter } from '../mixer/types.js';
 import type { Auth, Principal, Role } from './auth.js';
 import { authorizeCommand, CommandSchema, describeCommand, dispatch, visibleKey, type Command } from './commands.js';
 import type { MeterSource } from './meters.js';
+import type { AssistantService } from '../assistant/service.js';
 
 export const PROTOCOL_VERSION = 1;
 export const SERVER_VERSION = '0.5.0';
@@ -75,6 +76,8 @@ export class ServerCore {
   private requests = new Map<string, { at: number; response: Promise<CommandResponse> }>();
   private noticeListeners = new Set<(n: Notice, audience: { roles: Role[]; principalId?: string }) => void>();
   private sweepTimer: NodeJS.Timeout | undefined;
+  /** Assistente de texto (E4). Montado em start.ts. */
+  assistant: AssistantService | undefined;
   private faders = new Map<string, { running: boolean; next?: { channel: string | number; aux: string | number | undefined; db: number; final: boolean } }>();
 
   constructor(
@@ -115,6 +118,7 @@ export class ServerCore {
       musicianAux: this.options.musicianAux,
       auth: this.auth.configured(),
       meters: { available: !!this.options.meters && this.mode !== 'real', simulated: true },
+      assistant: { available: !!this.assistant, ai: !!this.assistant?.aiAvailable() },
     };
   }
 

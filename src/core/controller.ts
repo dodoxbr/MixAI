@@ -846,6 +846,25 @@ export class MixController {
     return undefined;
   }
 
+  /** O que o próximo desfazer reverteria (para o cartão de proposta do assistente). */
+  peekUndo(): { id: number; description: string; keys: ParamKey[] } | undefined {
+    const e = this.undoStack.peek(1)[0];
+    return e && e.id !== undefined ? { id: e.id, description: e.description, keys: e.items.map((it) => it.key) } : undefined;
+  }
+
+  /** Limites de volume (para o assistente calcular o valor resultante igual ao controlador). */
+  limits() {
+    return {
+      maxChannelLevelDB: this.safety.maxChannelLevelDB,
+      maxAuxSendDB: this.safety.maxAuxSendDB,
+      maxMasterLevelDB: this.safety.maxMasterLevelDB,
+      maxStepDB: this.safety.maxStepDB,
+      relativeFloorDB: this.safety.relativeFloorDB,
+      masterRequiresConfirmation: this.safety.masterRequiresConfirmation,
+      bulkMuteConfirmAbove: this.safety.bulkMuteConfirmAbove,
+    };
+  }
+
   // ---------- pendências (usadas pelo servidor da E2) ----------
 
   /** true = a pendência ainda pode ser confirmada. */
