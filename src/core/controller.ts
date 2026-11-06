@@ -511,7 +511,9 @@ export class MixController {
             const current = this.tracker.actorOf(item.key);
             const actor = item.blockedBy ?? (current && current !== 'mixai' ? current : 'external');
             skipped.push(`${item.label}: alterado depois ${ACTOR_TEXT[actor]}; não desfiz para não apagar essa mudança`);
-          } else if (typeof item.before === 'number' && item.before > this.ceilingFor(item.key)) {
+          } else if (this.registry.get(item.key)?.capability === 'simulated_only' && this.mixer.mode !== 'lab') {
+            skipped.push(`${item.label}: somente laboratório`);
+          } else if (this.registry.get(item.key)?.kind === 'level' && typeof item.before === 'number' && item.before > this.ceilingFor(item.key)) {
             skipped.push(`${item.label}: o valor anterior (${formatDB(item.before)}) está acima do teto atual`);
           } else {
             ready.push(item);
@@ -810,6 +812,34 @@ export class MixController {
         { scene: req.sceneId, sceneName: req.sceneName, changed: applied.done.length },
         { origin: req.origin, critical: true, actor: req.actor },
       );
+    });
+  }
+
+  /** EQ exclusivo LAB: valida o lote inteiro antes da escrita e registra um item no desfazer. */
+  async editLabEq(channel: number, values?: Record<string, number | boolean>, meta: { origin?: string; actor?: string; expect?: Expectation } = {}): Promise<Result> {
+    return this.queue.run(async () => {
+      if (this.mixer.mode !== 'lab') return this.refuse('lab_eq', 'MODE_MISMATCH', 'EQ somente no laboratório.', {});
+      const gate = this.writeGate();
+      if (gate) return gate;
+      const changed = this.checkExpectation(meta.expect);
+      if (changed) return changed;
+      if (!this.names.inputs.list().some(c => c.number === channel)) return this.refuse('lab_eq', 'INVALID', 'Canal não configurado.', {});
+      const specs = this.registry.specs().filter(s => s.key.startsWith(`ch.${channel}.eq.`));
+      const targets = values ?? Object.fromEntries(specs.map(s => [s.key, s.labDefault]));
+      if (!Object.keys(targets).length) return this.refuse('lab_eq', 'INVALID', 'Lote vazio.', {});
+      const changes: Change[] = [];
+      for (const [raw, to] of Object.entries(targets)) {
+        const spec = specs.find(s => s.key === raw);
+        if (!spec) return this.refuse('lab_eq', 'INVALID', 'Somente EQ do canal selecionado.', {});
+        const problem = this.registry.validate(spec.key, to);
+        if (problem) return this.refuse('lab_eq', 'INVALID', problem, {});
+        const cur = this.mixer.read(spec.key);
+        if (!cur.known) return this.unknownState(raw);
+        if (cur.value !== to) changes.push({ key: spec.key, label: raw, from: cur.value, to });
+      }
+      const limited = this.rateLimit();
+      if (limited) return limited;
+      return this.finish('lab_eq', `EQ ${values ? 'alterado' : 'restaurado'} no laboratório (canal ${channel})`, await this.applyChanges(changes), { channel }, meta);
     });
   }
 

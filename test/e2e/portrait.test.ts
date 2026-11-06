@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Browser, Page } from 'playwright';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { paramKey } from '../../src/core/revisions.js';
@@ -12,6 +14,7 @@ const WIDTHS: Array<[number, number]> = [
   [390, 844],
   [430, 932],
 ];
+const screenshotsDir = mkdtempSync(join(tmpdir(), 'mixai-portrait-'));
 const phone = (w: number, h: number) => ({ viewport: { width: w, height: h }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
 
 type Lab = Awaited<ReturnType<typeof startLab>>;
@@ -116,7 +119,7 @@ describe('Mesa do operador em retrato: barra compacta', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(await page.locator('.toolbar').evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       await expectNoOverlap(page);
-      await page.screenshot({ path: `/tmp/claude-0/-home-claude/d8ea7a8d-dd83-571a-8de8-489dd3e3dc93/scratchpad/portrait-${w}.png` });
+      await page.screenshot({ path: join(screenshotsDir, `portrait-${w}.png`) });
       expect(errors).toEqual([]);
     });
   }

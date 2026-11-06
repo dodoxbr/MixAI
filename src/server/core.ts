@@ -225,6 +225,9 @@ export class ServerCore {
       return reply(fail('FORBIDDEN', auth.message));
     }
     const command = auth.command;
+    if ((command.type === 'set_lab_eq' || command.type === 'reset_lab_eq') && this.mode !== 'lab') {
+      return reply(fail('MODE_MISMATCH', 'EQ disponível somente no LABORATÓRIO.'));
+    }
     let result: Result;
     if (isSceneCommand(command)) {
       try {
