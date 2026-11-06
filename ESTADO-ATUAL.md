@@ -1,4 +1,4 @@
-# MixAI — estado atual (05/11/2026, v0.6 / E4)
+# MixAI — estado atual (05/11/2026, v0.7 / E5)
 
 Controle da mesa **Soundcraft Ui16** por IA, para uma banda de samba/pagode amadora que toca em roda.
 O músico pede em português ("mais Fred no fone", "abaixa o surdo") e o Claude ajusta a mesa,
@@ -91,8 +91,8 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 311 testes (Vitest) + 27 de integração com navegador (test/e2e)
-web/                  interface Angular (43 testes unitários)
+test/                 335 testes (Vitest) + 35 de integração com navegador (test/e2e)
+web/                  interface Angular (46 testes unitários)
 ```
 
 ---
@@ -138,7 +138,7 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-311 testes do servidor + 43 da interface + 27 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+335 testes do servidor + 46 da interface + 35 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
@@ -150,6 +150,10 @@ a pilha de desfazer (até 50 ações).
   MCP sem servidor, reinício invalida sessões, um só controlador, rede do Yoga, segredos;
   correções da revisão: escrita nunca repetida após reinício (INDETERMINATE), desfazer crítico com
   aprovação, WebSocket revogado no logout/vencimento, trava de dono entre instalações e processos);
+- **E5 — cenas do MixAI (`docs/lab/10-E5-CENAS.md`):** salvar/duplicar/renomear/excluir,
+  importar/exportar JSON (formato v2, −∞ preservado, versão e equipamento conferidos), comparação
+  por PA/FONES/MASTER, carregamento só no LAB com pendência da E2 vinculada às revisões, um item
+  no desfazer, só operador;
 - **Ajustes do Yoga (`docs/lab/09-AJUSTES-YOGA.md`):** chat do operador sempre visível (aprovações,
   histórico, tela estreita), motivos de sessão encerrada, política do músico `fones_only` (padrão) /
   `pa_without_master` (PA em passos de até 3 dB, nunca master), `config/config.local.yaml` fora do

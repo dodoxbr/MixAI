@@ -116,10 +116,19 @@ export class PendingStore {
     return n;
   }
 
-  /** true = ainda pode ser usada (existe, não foi usada nem invalidada, e está no prazo). */
-  isOpen(id: string): boolean {
+  /**
+   * true = ainda pode ser usada (existe, não foi usada nem invalidada, e está no prazo).
+   * Com `revisionOf`, também confere se algum parâmetro vinculado mudou: se mudou, a
+   * pendência é invalidada NA HORA (o cartão some com aviso, sem esperar o "Aprovar" falhar).
+   */
+  isOpen(id: string, revisionOf?: (key: ParamKey) => number): boolean {
     const p = this.items.get(id);
-    return !!p && !p.closed && !p.invalidated && this.clock() <= p.expiresAt;
+    if (!p || p.closed || p.invalidated || this.clock() > p.expiresAt) return false;
+    if (revisionOf && p.revisions.some(([key, rev]) => revisionOf(key) !== rev)) {
+      p.invalidated = 'a mesa mudou depois do pedido';
+      return false;
+    }
+    return true;
   }
 
   /** Cancela uma pendência (recusada por um humano). */

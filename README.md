@@ -19,7 +19,7 @@ da mesa; o MCP do Claude Desktop é só um cliente dele. Detalhes: `docs/lab/06-
 cd mixai
 npm install
 npm run build
-npm test        # 311 testes, todos devem passar
+npm test        # 335 testes, todos devem passar
 npm ci --prefix web && npm run build:web   # interface (E3)
 ```
 
@@ -94,6 +94,16 @@ Celulares: configure `server.lan` (no `config.local.yaml`) e abra `http://<ip-do
 Detalhes, capturas e testes: `docs/lab/07-E3-INTERFACE.md`.
 
 ![Mesa no Yoga](docs/lab/img/e3-yoga-mesa-pa.png)
+
+## Cenas do MixAI (E5)
+
+Na Mesa, o botão **Cenas** abre um painel para salvar o estado do LABORATÓRIO como cena (nome e
+descrição), duplicar, renomear, excluir, exportar/importar JSON e **comparar** com o estado atual.
+Carregar é sempre: comparar → pedir → **aprovar o cartão** (o mesmo das operações críticas); um
+toque em Desfazer volta a cena inteira. Cena do MixAI (arquivo em `data/scenes/`) **não é**
+snapshot da Soundcraft. Só o operador; só no laboratório. Detalhes: `docs/lab/10-E5-CENAS.md`.
+
+![Comparação de cena no Yoga](docs/lab/img/e5-yoga-cenas-comparacao.png)
 
 ## Assistente de texto (E4)
 

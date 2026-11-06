@@ -756,6 +756,63 @@ export class MixController {
     });
   }
 
+  /**
+   * Carrega uma CENA DO MIXAI (E5) — só no LABORATÓRIO, sempre com aprovação humana.
+   * - `targets`: só parâmetros aplicáveis (volume/mute de canais e AUX cadastrados, master),
+   *   já limitados aos tetos de segurança (a prévia mostrou exatamente estes valores);
+   * - `expect`: revisões usadas na comparação; se algo mudou desde a prévia → STATE_CHANGED;
+   * - sem confirmationId: cria a pendência (mecanismo da E2) presa às revisões de TODOS os
+   *   parâmetros da cena e ao conteúdo dela (`hash`); com confirmationId: confere e aplica;
+   * - aplica pela fila única, numa ordem segura (muta e abaixa antes de subir e abrir), e
+   *   registra UM item no desfazer. Parcial/indeterminado nunca vira sucesso completo.
+   * Nunca envia nada à mesa real.
+   */
+  async loadScene(req: {
+    sceneId: string;
+    sceneName: string;
+    hash: string;
+    targets: Array<{ key: ParamKey; label: string; to: ParamValue }>;
+    expect?: Expectation;
+    confirmationId?: string;
+    origin?: string;
+    actor?: string;
+  }): Promise<Result> {
+    return this.queue.run(async () => {
+      if (this.mixer.mode !== 'lab') {
+        return this.refuse('scene_load', 'MODE_MISMATCH', 'Cenas do MixAI só podem ser carregadas no LABORATÓRIO nesta etapa. Nada foi enviado à mesa.', { scene: req.sceneId });
+      }
+      const gate = this.writeGate();
+      if (gate) return gate;
+      const changed = this.checkExpectation(req.expect);
+      if (changed) {
+        return { ...changed, message: 'O estado da mesa mudou desde a comparação. Nada foi alterado: compare a cena de novo antes de carregar.' };
+      }
+      const changes: Change[] = [];
+      for (const t of req.targets) {
+        const cur = this.mixer.read(t.key);
+        if (!cur.known) return this.unknownState(t.label);
+        if (!sameValue(cur.value, t.to)) changes.push({ key: t.key, label: t.label, from: cur.value, to: t.to });
+      }
+      if (!changes.length) {
+        return { ok: true, code: 'OK', message: `A cena "${req.sceneName}" já está aplicada no laboratório. Nada mudou.`, data: { scene: req.sceneId, changed: 0 } };
+      }
+      const keys = req.targets.map((t) => t.key);
+      const command = { op: 'scene', id: req.sceneId, hash: req.hash };
+      const summary = `Carregar a cena do MixAI "${req.sceneName}" no LABORATÓRIO: ${changes.length} parâmetro(s) mudam.`;
+      const blocked = this.authorize(true, req.confirmationId, command, keys, summary, req.hash);
+      if (blocked) return blocked;
+
+      const applied = await this.applyChanges(orderForSafety(changes));
+      return this.finish(
+        'scene_load',
+        `Cena "${req.sceneName}" carregada no laboratório: ${applied.done.length} parâmetro(s)`,
+        applied,
+        { scene: req.sceneId, sceneName: req.sceneName, changed: applied.done.length },
+        { origin: req.origin, critical: true, actor: req.actor },
+      );
+    });
+  }
+
   // ---------- execução ----------
 
   /**
@@ -920,7 +977,7 @@ export class MixController {
 
   /** true = a pendência ainda pode ser confirmada. */
   isPendingOpen(id: string): boolean {
-    return this.pending.isOpen(id);
+    return this.pending.isOpen(id, (k) => this.tracker.revisionOf(k));
   }
 
   /** Recusa humana de uma pendência: ela deixa de valer. */
@@ -1082,4 +1139,16 @@ export class MixController {
     this.log.add({ action, ok: false, message, details: { ...details, code } });
     return { ok: false, code, message };
   }
+}
+
+/**
+ * Ordem segura para aplicar várias mudanças: primeiro o que DIMINUI o som (mutar, abaixar),
+ * depois o que aumenta (subir, desmutar). Evita um pico momentâneo no meio da troca de cena.
+ */
+function orderForSafety<T extends { key: ParamKey; from: ParamValue; to: ParamValue }>(changes: T[]): T[] {
+  const rank = (c: T) => {
+    if (typeof c.to === 'boolean') return c.to ? 0 : 3; // mutar primeiro, desmutar por último
+    return (c.to as number) < (c.from as number) ? 1 : 2; // abaixar antes de subir
+  };
+  return [...changes].sort((a, b) => rank(a) - rank(b));
 }

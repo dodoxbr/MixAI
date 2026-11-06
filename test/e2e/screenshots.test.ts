@@ -103,3 +103,45 @@ it('capturas do assistente (Yoga e celular)', async () => {
     await l.server.close();
   }
 }, 90_000);
+
+it('capturas das cenas (E5, Yoga)', async () => {
+  const out = join(PROJECT_ROOT, 'docs', 'lab', 'img');
+  const l = await startLab({ channels: bandChannels() });
+  const browser = await launch();
+  try {
+    const op = await l.login(OPERATOR_PIN);
+    const set = (command: Record<string, unknown>) => l.command(op, command);
+    await set({ type: 'set_level', channel: 'surdo', db: -12 });
+    await set({ type: 'set_level', channel: 'cavaco', db: -12 });
+    await set({ type: 'set_level', channel: 'voz fernando', aux: 'fones', db: -17 });
+    await set({ type: 'set_mute', channels: ['pandeiro'], muted: true });
+    await set({ type: 'scene_save', name: 'Roda de sábado', description: 'Surdo e voz do Fernando mais à frente; pandeiro fora do PA.' });
+    await set({ type: 'scene_save', name: 'Ensaio acústico', description: 'Base para ensaio em casa.' });
+    await set({ type: 'set_level', channel: 'surdo', db: -15 });
+    await set({ type: 'set_level', channel: 'cavaco', db: -10 });
+    await set({ type: 'set_level', channel: 'voz fernando', aux: 'fones', db: -20 });
+    await set({ type: 'set_mute', channels: ['pandeiro'], muted: false });
+
+    const yoga = await enter(browser, l.base, OPERATOR_PIN, YOGA);
+    const page = yoga.page;
+    await page.getByRole('button', { name: 'Cenas' }).click();
+    await page.locator('.scene-item', { hasText: 'Roda de sábado' }).click();
+    await page.locator('.scene-view tbody tr').first().waitFor();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(out, 'e5-yoga-cenas-lista.png') });
+    await page.getByRole('button', { name: 'Comparar' }).click();
+    await page.getByTestId('scene-compare').waitFor();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(out, 'e5-yoga-cenas-comparacao.png') });
+    await page.getByRole('button', { name: 'Carregar…' }).click();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(out, 'e5-yoga-cenas-confirmar.png') });
+    await page.getByRole('button', { name: 'Pedir carregamento' }).click();
+    await page.getByTestId('scene-load-card').waitFor();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(out, 'e5-yoga-cenas-aprovacao.png') });
+  } finally {
+    await browser.close();
+    await l.server.close();
+  }
+}, 60_000);
