@@ -116,6 +116,13 @@ snapshot da Soundcraft. Só o operador; só no laboratório. Detalhes: `docs/lab
 
 ![Comparação de cena no Yoga](docs/lab/img/e5-yoga-cenas-comparacao.png)
 
+## Comparação offline LAB × REAL (E8A)
+
+O [comparador somente leitura](docs/lab/16-E8A-READONLY-DIFF.md) recebe cenas/estados e
+retratos fornecidos (fixtures), classifica diferenças e exporta JSON/Markdown. Não abre
+conexão, não aplica valores e não valida EQ/HPF ou saídas físicas da Ui16. F0 físico/E6
+continuam pendentes. O documento inclui comandos para gerar relatório fictício sem mesa.
+
 ## Assistente de texto (E4)
 
 Na Mesa e na tela de Fones há um campo **"O que você deseja ajustar?"**. Exemplos: "aumenta um
