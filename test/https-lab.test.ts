@@ -52,7 +52,7 @@ it('isolates proxy authentication, preserves human permissions and rejects forei
   // Includes public/new handlers: a forgotten principalOf() cannot admit MCP credentials.
   for (const [path, body] of [
     ['/api/hello', undefined], ['/api/login', { pin: OPERATOR_PIN }], ['/api/logout', {}],
-    ['/api/command', {}], ['/api/pending', undefined], ['/api/pending/fake/approve', {}],
+    ['/api/command', {}], ['/api/assistant/diagnose', {}], ['/api/pending', undefined], ['/api/pending/fake/approve', {}],
     ['/api/pending/fake/reject', {}], ['/api/future-route', {}],
   ] as const) {
     expect((await request(path, agent, {}, body)).status, path).toBe(401);

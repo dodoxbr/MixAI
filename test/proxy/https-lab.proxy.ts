@@ -160,3 +160,50 @@ it('retains E2 approval over WSS with only the LAB simulator', async () => {
   expect((await client.next('result')).result.code).toBe('OK');
   expect((await http(`/api/pending/${id}/approve`, { token: operator, body: { requestId: 'cannot-reuse' } })).body.result.code).toBe('CONFIRMATION_USED');
 });
+
+it('diagnosis authenticates at ingress: proxy MCP 401, local MCP 403, operator HTTPS/WSS works', async () => {
+  const endpoint = '/api/assistant/diagnose';
+  const input = { symptom: 'estridente', channel: 1, destination: 'pa', evidence: [] };
+  const before = t!.controller.state.snapshot();
+  const agent = readFileSync(join(t!.dir, 'agent-lab.token'), 'utf8');
+  expect((await http(endpoint, { body: input })).status).toBe(401);
+  expect((await http(endpoint, { token: agent, body: input, headers: { 'x-forwarded-for': '127.0.0.1', forwarded: 'for=127.0.0.1' } })).status).toBe(401);
+  // Local MCP is authenticated; diagnosis authorization (operator only) remains 403.
+  expect((await t!.http('/api/state', { token: agent })).status).toBe(200);
+  expect((await t!.http(endpoint, { token: agent, body: input })).status).toBe(403);
+  const localAgent = await wsClient(t!.base, agent);
+  try {
+    expect((await localAgent.next(m => m.type === 'hello')).role).toBe('agent');
+    localAgent.send({ type: 'assistant_diagnose', requestId: 'local-agent-diagnose', input });
+    expect((await localAgent.next(m => m.type === 'assistant_reply' && m.requestId === 'local-agent-diagnose')).reply.code).toBe('FORBIDDEN');
+  } finally { localAgent.close(); }
+  const proxyAgent = await socket(agent);
+  expect(await proxyAgent.closed).toBe(4401);
+
+  expect((await http('/api/login', { body: { pin: 'invalid-operator-pin' } })).status).toBe(401);
+  const login = await http('/api/login', { body: { pin: OPERATOR_PIN } });
+  expect(login.body.role).toBe('operator');
+  const operator = login.body.token;
+  const result = await http(endpoint, { token: operator, body: input });
+  expect(result.status).toBe(200);
+  expect(result.body.reply.kind).toBe('diagnosis');
+  expect(result.body.reply.diagnosis.audioAnalysis).toBe('not_performed');
+  expect(result.body.reply.proposals).toBeUndefined();
+  const opSocket = await socket(operator);
+  expect((await opSocket.next('hello')).role).toBe('operator');
+  opSocket.ws.send(JSON.stringify({ type: 'assistant_diagnose', requestId: 'proxy-operator-diagnose', input }));
+  expect((await opSocket.next('assistant_reply')).reply).toEqual(result.body.reply);
+
+  const musicianLogin = await http('/api/login', { body: { pin: MUSICIAN_PIN } });
+  expect(musicianLogin.body.role).toBe('musician');
+  const musician = musicianLogin.body.token;
+  expect((await http(endpoint, { token: musician, body: input })).status).toBe(403);
+  const musicianSocket = await socket(musician);
+  expect((await musicianSocket.next('hello')).role).toBe('musician');
+  musicianSocket.ws.send(JSON.stringify({ type: 'assistant_diagnose', requestId: 'proxy-musician-diagnose', input }));
+  expect((await musicianSocket.next('assistant_reply')).reply.code).toBe('FORBIDDEN');
+  expect(t!.controller.state.snapshot()).toEqual(before);
+  await http('/api/logout', { token: operator, body: {} });
+  expect(await opSocket.closed).toBe(4401);
+  expect((await http(endpoint, { token: operator, body: input })).status).toBe(401);
+});

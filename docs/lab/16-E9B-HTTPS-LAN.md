@@ -35,6 +35,11 @@ revalida a sessão antes do uso. WebSocket usa o mesmo autenticador da entrada p
 o primeiro frame. A entrada local mantém autenticação MCP por loopback. A regra
 não depende de cada endpoint lembrar como o proxy autentica.
 
+A rota `POST /api/assistant/diagnose` usa esse mesmo contexto: token MCP pelo
+proxy recebe 401 antes do diagnóstico; token MCP local continua autenticado,
+mas recebe 403 pela autorização exclusiva do operador. Operador por PIN consulta
+por HTTPS/WSS; músico recebe 403. Não há mudança no diagnóstico ou comandos.
+
 O backend exige Host exatamente igual ao host:porta de `origin`; se houver Origin,
 exige correspondência exata, inclusive protocolo e porta. `null`/origens externas
 são recusadas antes do login ou Upgrade WS. Clientes nativos sem Origin continuam
