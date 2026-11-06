@@ -103,7 +103,7 @@ Get-NetTCPConnection -State Listen
 ```
 
 O script não requer privilégios de administrador. Retorna JSON por lista positiva:
-versão do Node (>=22), ifIndex/tipo aproximado/status/link, IPv4 locais, prefixos/next hop/
+versão do Node (>=22), quantidade de executáveis Node encontrados (usa o primeiro no PATH), ifIndex/tipo aproximado/status/link, IPv4 locais, prefixos/next hop/
 métricas, listeners das portas 8790/8791 e uma tentativa TCP **apenas** em 127.0.0.1:8790.
 Não faz HTTP nem consulta a mesa, internet, DNS ou destinos arbitrários. Não publica
 nomes personalizados, hostname, MAC, SSID, processos/PID, credenciais ou IP público.
@@ -238,3 +238,9 @@ Capturas E7A regeneradas pela regressão foram preservadas em `work/` e restaura
 na árvore versionada; não entram no PR. Testes TLS/Caddy continuam no job separado
 já existente da E9B; não foram executados localmente nesta rodada nem instalou-se CA.
 CI Windows/Linux e o preflight do runner são registrados no PR; não equivalem ao Yoga.
+
+O primeiro job Windows aprovou núcleo/web/builds e o smoke, mas identificou falha no
+preflight ao resolver Node. A seleção agora usa explicitamente o primeiro executável
+na precedência do PATH (a consulta pode retornar múltiplas instalações) e registra só
+a contagem, sem caminhos. O self-test também cobre versões válidas/inválidas e erro de
+execução. A correção não altera PATH, instalações ou privilégios. Resultado final no PR.

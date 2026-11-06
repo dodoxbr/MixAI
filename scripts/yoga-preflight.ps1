@@ -16,6 +16,14 @@ function Protect-Address([string]$Address) {
     return '[IPv4 publico omitido]'
 }
 
+function Convert-NodeVersion([string]$Version, [int]$ExitCode) {
+    $parsed = [regex]::Match($Version.Trim(), '^v(\d+)\.\d+\.\d+$')
+    if ($ExitCode -ne 0 -or -not $parsed.Success) {
+        return [pscustomobject]@{ version = $null; supported = $false }
+    }
+    return [pscustomobject]@{ version = $parsed.Value; supported = ([int]$parsed.Groups[1].Value -ge 22) }
+}
+
 if ($SelfTest) {
     foreach ($address in @('10.0.0.2', '172.16.0.1', '172.31.255.254', '192.168.1.2/24', '169.254.1.1', '127.0.0.1', '0.0.0.0/0')) {
         if ((Protect-Address $address) -ne $address) { throw 'Falha na sanitizacao de IPv4 local.' }
@@ -23,6 +31,13 @@ if ($SelfTest) {
     foreach ($address in @('8.8.8.8', '172.32.0.1', '200.1.1.2', '2001:db8::1', 'host-secreto')) {
         if ((Protect-Address $address) -eq $address) { throw 'Falha: endereco nao local exposto.' }
     }
+    foreach ($version in @('v22.0.0', 'v24.22.1')) {
+        if (-not (Convert-NodeVersion $version 0).supported) { throw 'Falha na versao suportada do Node.' }
+    }
+    foreach ($version in @('v20.0.0', 'invalid', 'v22.0.0-secret')) {
+        if ((Convert-NodeVersion $version 0).supported) { throw 'Falha na recusa de versao Node.' }
+    }
+    if ((Convert-NodeVersion 'v22.0.0' 1).supported) { throw 'Falha na recusa de erro do Node.' }
     Write-Output 'Preflight sanitization: PASS (sem consultas de rede)'
     exit 0
 }
@@ -35,6 +50,7 @@ $report = [ordered]@{
     schemaVersion = 1
     platform = 'Windows'
     nodeVersion = $null
+    nodeCandidates = 0
     nodeSupported = $false
     adapters = @()
     ipv4 = @()
@@ -45,13 +61,16 @@ $report = [ordered]@{
     manualPending = @('Identificar USB-C/RJ45 e Wi-Fi no Yoga', 'Conferir rotas/interfaces sem sobreposicao', 'Internet e celulares no Wi-Fi', 'F0 fisico somente leitura')
 }
 try {
-    $node = Get-Command node -CommandType Application
-    $version = (& $node.Source --version | Out-String).Trim()
-    if ($LASTEXITCODE -eq 0 -and $version -match '^v(\d+)\.\d+\.\d+$') {
-        $report.nodeVersion = $version
-        $report.nodeSupported = [int]$Matches[1] -ge 22
-    }
-} catch { $report.warnings += 'Node indisponivel; instalar manualmente Node >=22.' }
+    # Get-Command pode devolver mais de uma instalacao no PATH do Windows.
+    # Respeitar precedencia; nunca passar uma lista ao operador de invocacao.
+    $candidates = @(Get-Command node -CommandType Application)
+    $report.nodeCandidates = $candidates.Count
+    $node = $candidates | Select-Object -First 1
+    $rawVersion = (& $node.Path --version | Out-String).Trim()
+    $check = Convert-NodeVersion $rawVersion $LASTEXITCODE
+    $report.nodeVersion = $check.version
+    $report.nodeSupported = $check.supported
+} catch { $report.warnings += 'Falha ao consultar Node; conferir PATH e versao manualmente.' }
 try {
     $report.adapters = @(Get-NetAdapter | ForEach-Object {
         # Sem nome personalizado, descricao livre, MAC, hostname ou SSID.
