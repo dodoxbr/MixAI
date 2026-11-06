@@ -10,8 +10,9 @@ import { loadConfig, PROJECT_ROOT } from './core/config.js';
 import { equipmentLabel, OwnerLock, OwnerLockError, ownerLockFile } from './core/owner-lock.js';
 import type { Result } from './core/controller.js';
 import { HELP, parseCommand, runCommand } from './core/parser.js';
+import { allowedInReadOnlyConsole, READ_ONLY_HELP } from './core/readonly-console.js';
 
-function print(result: Result) {
+function print(result: Result, readOnly = false) {
   const mark = result.ok ? '✔' : result.needsConfirmation ? '?' : '✖';
   const summary = result.needsConfirmation ? (result.data?.summary as string | undefined) : undefined;
   console.log(`${mark} ${summary ? `${summary} Nada foi alterado ainda.` : result.message}`);
@@ -21,6 +22,7 @@ function print(result: Result) {
       const name = String(ch.name).padEnd(14);
       const mute = ch.muted === null ? '?' : ch.muted ? 'MUTE' : '';
       console.log(`   ${String(ch.channel).padStart(2)}  ${name} ${String(ch.level).padStart(11)}  ${mute}`);
+      if (readOnly) console.log(`       Nome observado na mesa: ${String(ch.mixerName ?? 'desconhecido')}`);
     }
     if (result.data?.master) console.log(`   Master            ${String(result.data.master).padStart(11)}`);
   } else if (
@@ -73,6 +75,7 @@ async function main() {
   // Um só dono da mesa (e do arquivo do laboratório): se o servidor estiver rodando, o console
   // não abre uma segunda conexão. Use o servidor (ou feche-o antes).
   const cfg = loadConfig();
+  const readOnly = process.argv.includes('--readonly');
   const lockMode = cfg.config.mixer.mode;
   const lockFile = ownerLockFile(lockMode, cfg.labFile);
   const equipment = lockMode === 'real' ? equipmentLabel(cfg.config.mixer) : `laboratório ${cfg.labFile}`;
@@ -85,23 +88,28 @@ async function main() {
     }
     throw err;
   }
-  const { loaded, mixer, controller } = await createApp(cfg);
+  const { loaded, mixer, controller } = await createApp(cfg, { readOnly });
   const rl = lineReader();
   const mode = loaded.config.mixer.mode;
   console.log(
     `MixAI console — ${mode === 'mock' ? 'mesa SIMULADA (memória)' : mode === 'lab' ? `LABORATÓRIO (${loaded.labFile})` : `mesa real em ${loaded.config.mixer.ip}`}`,
   );
   process.on('exit', () => mixer.flush?.());
-  print(await controller.ensureConnected());
+  if (readOnly) console.log(READ_ONLY_HELP);
+  print(await controller.ensureConnected(), readOnly);
   console.log('Digite "ajuda" para ver os comandos.');
 
   while (true) {
     const line = await rl.question('mixai> ');
     if (line === null) break; // entrada fechada (Ctrl+D)
     const cmd = parseCommand(line, controller.names);
+    if (readOnly && !allowedInReadOnlyConsole(cmd)) {
+      console.log('✖ F0_READ_ONLY: comando bloqueado antes da execução; nada enviado.');
+      continue;
+    }
     if (cmd.kind === 'quit') break;
     if (cmd.kind === 'help') {
-      console.log(HELP);
+      console.log(readOnly ? READ_ONLY_HELP : HELP);
       continue;
     }
     if (cmd.kind === 'empty') continue;
@@ -112,7 +120,7 @@ async function main() {
     try {
       let result = await runCommand(controller, cmd);
       if (!result) continue;
-      print(result);
+      print(result, readOnly);
       if (result.needsConfirmation && result.pendingId) {
         const answer = ((await rl.question('Confirmar? (s/n) ')) ?? '').trim().toLowerCase();
         if (answer === 's' || answer === 'sim') {

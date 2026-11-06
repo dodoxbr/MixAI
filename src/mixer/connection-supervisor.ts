@@ -25,6 +25,8 @@ export interface GenerationGate {
 }
 
 export interface SupervisorOptions {
+  /** F0: bloqueia alterações permanentemente, inclusive em READY e após reconexão. */
+  readOnly?: boolean;
   /** Cria uma instância NOVA da biblioteca (nunca reaproveitada entre gerações). */
   createUi: (gate: GenerationGate) => SoundcraftUI;
   /** Duração da vigilância por status das instâncias descartadas (padrão 30 s). */
@@ -159,6 +161,7 @@ export class ConnectionSupervisor {
 
   /** Escreve um parâmetro. Lança LinkUnavailableError (nada enviado) fora de READY. */
   write(key: ParamKey, value: ParamValue): void {
+    this.assertWritable();
     if (this.state !== 'READY' || !this.gen) throw new LinkUnavailableError(this.state);
     const g = this.gen;
     // Defesa em profundidade: a instância precisa estar aberta neste exato momento.
@@ -180,6 +183,7 @@ export class ConnectionSupervisor {
 
   /** Executa uma ação na instância atual, só em READY. */
   withReadyUi<T>(fn: (ui: SoundcraftUI) => T): T {
+    this.assertWritable();
     if (this.state !== 'READY' || !this.gen) throw new LinkUnavailableError(this.state);
     if (this.gen.ui.conn.status !== ConnectionStatus.Open) {
       this.lost(this.gen.id, 'portão de envio: conexão não está aberta');
@@ -429,6 +433,10 @@ export class ConnectionSupervisor {
   }
 
   // ---------- utilitários ----------
+
+  private assertWritable() {
+    if (this.opts.readOnly) throw new Error('F0_READ_ONLY: alterações bloqueadas; nada enviado');
+  }
 
   private isCurrent(id: number) {
     return this.gen !== undefined && this.gen.id === id;

@@ -22,7 +22,7 @@ estimada, bypass, reset e desfazer. Tudo é simulado; veja [E7A](docs/lab/11-E7A
 cd mixai
 npm install
 npm run build
-npm test        # 335 testes, todos devem passar
+npm test        # 368 testes, todos devem passar
 npm ci --prefix web && npm run build:web   # interface (E3)
 ```
 
@@ -156,19 +156,20 @@ Reinicie o Claude Desktop e peça, por exemplo: *"como está a mix?"* ou
 for reaberto. Para a mesa real, troque por `"real"` (e, se precisar, acrescente
 `"MIXAI_IP": "10.10.1.1"`).
 
-## Primeiro teste na mesa real (Fase 0)
+## Primeiro teste na mesa real (F0 somente leitura)
 
-Faça num ensaio ou com o PA desligado, nunca no meio de um evento.
+A mesa ainda não chegou. A preparação offline e o roteiro Windows/Yoga estão em
+[13-F0-PREFLIGHT-READONLY.md](docs/lab/13-F0-PREFLIGHT-READONLY.md), com
+[formulário de evidências](docs/lab/14-F0-EVIDENCIAS-MODELO.md).
 
-1. Ligue o notebook na mesa (cabo de rede ou Wi-Fi da mesa).
-2. Abra a interface da mesa no navegador e confirme o IP.
-3. Rode `npm run console` (ou `node dist/console.js --real`).
-4. `status` → deve mostrar "Conectado à mesa em ...".
-5. `estado` → os volumes devem bater com a tela da mesa.
-6. `desce voz 1` → o fader da Voz 1 tem que descer 2 dB na tela da mesa.
-7. `desfazer` → volta ao que era.
+Sem hardware: `node dist/console.js --mock --readonly`. Só quando a Ui16 chegar,
+com PA/fones desconectados e IP Ethernet confirmado, usar `npm run console:f0`.
+Esse script fixa REAL **somente leitura**, bloqueando ajustes e snapshots mesmo em
+READY e após reconexão. Usar apenas `status`, `estado`, `estado @ fones`, `nomes`,
+`snapshots`, `ajuda` e `sair`. O console REAL comum e `serve:real` não são o modo F0.
 
-Se os passos 4 a 7 funcionarem, a Fase 0 está fechada.
+Não executar os passos antigos de mover fader/desfazer. Simulações não concluem F0
+físico nem autorizam E6 ou escrita real.
 
 ## Nomes da banda
 

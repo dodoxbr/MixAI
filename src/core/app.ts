@@ -40,7 +40,7 @@ export function keysFor(names: ChannelMap): { required: ParamKey[]; watched: Par
  * Monta mesa (real, laboratório ou simulada) + controlador. O modo é decidido UMA vez, aqui.
  * Nos modos lab e mock o código da mesa real nem é carregado (import dinâmico).
  */
-export async function createApp(loaded: LoadedConfig = loadConfig()): Promise<App> {
+export async function createApp(loaded: LoadedConfig = loadConfig(), options: { readOnly?: boolean } = {}): Promise<App> {
   const { config } = loaded;
   const caps = MODEL_CAPS[config.mixer.model];
   const names = new ChannelMap(loaded.channels, caps, { allowUnmapped: config.naming.allowUnmapped });
@@ -51,6 +51,7 @@ export async function createApp(loaded: LoadedConfig = loadConfig()): Promise<Ap
     const keys = keysFor(names);
     const c = config.mixer.connection;
     mixer = new RealMixer({
+      readOnly: options.readOnly,
       ip: config.mixer.ip,
       model: config.mixer.model,
       requiredKeys: keys.required,
