@@ -53,6 +53,39 @@ const CARD = {
 };
 
 describe('assistente na tela', () => {
+  it('consulta técnica mostra fontes e esclarece por consulta, sem botão de aplicar', async () => {
+    const { ws, el, say, settle } = await boot();
+    const req = await say('Meu cavaco está estridente. O que podemos fazer?');
+    const input = { symptom: 'estridente', channel: 1, destination: 'pa', evidence: [] };
+    ws.receive({ type: 'assistant_reply', requestId: req['requestId'], reply: {
+      kind: 'diagnosis', source: 'local', text: 'Não ouvi o som. Confiança baixa. No PA ou nos FONES?',
+      references: [{ title: 'Manual Ui16', url: 'https://www.soundcraft.com/', locator: '5.2' }],
+      diagnosticOptions: [{ label: 'PA', input }],
+      proposals: [CARD], // diagnóstico nunca desenha cartões, mesmo com campo indevido
+    } });
+    await settle();
+    expect(el.textContent).toContain('Conhecimento técnico · somente leitura');
+    expect(el.querySelector('.technical-text')?.textContent).toContain('Não ouvi o som');
+    expect(el.querySelector('.technical-references a')?.getAttribute('href')).toBe('https://www.soundcraft.com/');
+    expect(el.querySelector('.proposal')).toBeNull();
+    expect(el.querySelector('.assist-feedback')).toBeNull();
+    (el.querySelector('.diagnostic-options button') as HTMLButtonElement).click();
+    await settle();
+    expect(ws.last('assistant_diagnose')).toMatchObject({ type: 'assistant_diagnose', input });
+    expect(ws.last('proposal_apply')).toBeUndefined();
+    expect(ws.sent.filter(m => m['type'] === 'command' && ['set_level', 'set_mute', 'set_lab_eq'].includes((m['command'] as {type: string})?.type))).toEqual([]);
+  });
+
+  it('resposta de consulta atrasada não aparece depois de trocar de sessão', async () => {
+    const { ws, el, say, settle } = await boot();
+    const req = await say('Meu cavaco está estridente no PA');
+    TestBed.inject(SessionService).token.set('outra-sessao');
+    await settle();
+    ws.receive({ type: 'assistant_reply', requestId: req['requestId'], reply: { kind: 'diagnosis', source: 'local', text: 'Relato privado anterior' } });
+    await settle();
+    expect(el.textContent).not.toContain('Relato privado anterior');
+  });
+
   afterEach(() => vi.unstubAllGlobals());
 
   it('envia o texto e mostra o cartão de proposta (sem alterar nada)', async () => {
@@ -155,7 +188,7 @@ describe('assistente na tela', () => {
 
   it('IA indisponível: mostra o aviso e a mesa continua utilizável', async () => {
     const { ws, el, say, settle } = await boot();
-    const req = await say('tá embolado');
+    const req = await say('preciso organizar melhor a mix');
     expect(el.querySelector('.assist-thinking')).not.toBeNull();
     // enquanto espera, os controles da mesa seguem ativos
     expect((el.querySelector('.mute') as HTMLButtonElement).disabled).toBe(false);
@@ -215,7 +248,7 @@ describe('assistente na tela', () => {
 
   it('esperando resposta: botão desabilitado com motivo; conexão cai → erro visível e o pedido NÃO é repetido', async () => {
     const { ws, el, say, settle } = await boot();
-    await say('tá embolado');
+    await say('preciso organizar melhor a mix');
     expect((el.querySelector('.mx-assistant-input button[type=submit]') as HTMLButtonElement).disabled).toBe(true);
     expect(el.querySelector('[data-testid=assist-hint]')!.textContent).toContain('Esperando a resposta');
     ws.close(1006);

@@ -305,7 +305,7 @@ describe('orçamento da IA no servidor: duas sessões ao mesmo tempo perto do te
     for (let round = 0; round < 2; round++) {
       const { t, ask } = await boot();
       expect((await ask('sobe o surdo no PA')).kind).toBe('proposals'); // parser local
-      const vague = await ask('tá embolado o som');
+      const vague = await ask('preciso organizar melhor a mix');
       expect(vague.code).toBe('AI_BUDGET');
       expect(vague).toMatchObject({ kind: 'error', source: 'ai' });
       expect(vague.text).toContain('ilegível');
@@ -332,7 +332,7 @@ describe('orçamento da IA no servidor: duas sessões ao mesmo tempo perto do te
     };
     const a = await open();
     const b = await open();
-    a.send({ type: 'assistant', requestId: 'qa', text: 'tá embolado o som' });
+    a.send({ type: 'assistant', requestId: 'qa', text: 'preciso organizar melhor a mix' });
     b.send({ type: 'assistant', requestId: 'qb', text: 'tá estranho o retorno' });
     const rb = (await b.next((m) => m.type === 'assistant_reply' && m.requestId === 'qb')).reply;
     expect(rb.code).toBe('AI_BUDGET');

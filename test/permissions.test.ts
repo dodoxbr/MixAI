@@ -279,14 +279,14 @@ describe('pa_without_master: assistente', () => {
       );
     }) as typeof fetch;
     const t = await start('pa_without_master', { ai: { enabled: true }, aiKey: 'k', aiFetch });
-    await (await screen(t, MUSICIAN_PIN)).ask('tá embolado o som');
+    await (await screen(t, MUSICIAN_PIN)).ask('preciso organizar melhor a mix');
     const system = JSON.parse(bodies[0]!).system as string;
     expect(system).toContain('canais do PA');
     expect(system).toContain('9 Surdo: PA −10.0 dB');
     expect(system).not.toContain('Master:');
 
     const t2 = await start('fones_only', { ai: { enabled: true }, aiKey: 'k', aiFetch });
-    await (await screen(t2, MUSICIAN_PIN)).ask('tá embolado o som');
+    await (await screen(t2, MUSICIAN_PIN)).ask('preciso organizar melhor a mix');
     const system2 = JSON.parse(bodies[1]!).system as string;
     expect(system2).toContain('só pode mexer nos FONES');
     expect(system2).not.toContain('PA −10.0 dB');

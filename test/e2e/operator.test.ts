@@ -141,7 +141,7 @@ describe('operador: conexão e sessão', () => {
       },
     });
     const { page } = await operator(l);
-    await field(page).fill('tá embolado o som');
+    await field(page).fill('preciso organizar melhor a mix');
     await sendButton(page).click();
     await page.locator('.assist-thinking').waitFor();
     await expect(page.getByTestId('assist-hint').textContent()).resolves.toContain('Esperando a resposta');

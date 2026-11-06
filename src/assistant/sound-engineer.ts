@@ -1,0 +1,131 @@
+import { z } from 'zod';
+import { words, type ChannelMap } from '../core/channels.js';
+import {
+  diagnose, diagnosticInputSchema, instrumentSchema, sources, symptomSchema,
+  type Diagnosis, type Instrument, type Reference, type Symptom,
+} from '../knowledge/sound-engineer/index.js';
+import { findChannels } from './nl-parser.js';
+
+/** Consulta explícita, jamais aceita comando, Intent, confirmação ou aprovação. */
+export const consultationSchema = diagnosticInputSchema.extend({
+  symptom: symptomSchema.optional(),
+  channel: z.number().int().positive().optional(),
+  evidence: diagnosticInputSchema.shape.evidence.max(20).default([]),
+}).superRefine((input, ctx) => {
+  if (JSON.stringify(input).length > 16_000) ctx.addIssue({ code: 'custom', message: 'Consulta longa demais.' });
+});
+export type ConsultationInput = z.infer<typeof consultationSchema>;
+export interface ConsultationChoice { label: string; input: ConsultationInput }
+export interface ConsultationReply {
+  kind: 'diagnosis';
+  source: 'local';
+  text: string;
+  diagnosis?: Diagnosis;
+  references: Array<{ title: string; url: string; locator: string }>;
+  diagnosticOptions: ConsultationChoice[];
+}
+
+const vocabulary: Record<Symptom, string[]> = {
+  embolado: ['embolado', 'embolada', 'embolados', 'emboladas'],
+  estridente: ['estridente', 'estridentes', 'agressivo', 'agressiva', 'sibilante'],
+  abafado: ['abafado', 'abafada', 'abafados', 'abafadas'],
+  magro: ['magro', 'magra', 'sem corpo'],
+  desequilibrio: ['desequilibrio', 'desequilibrado', 'desequilibrada', 'sumindo', 'encobrindo', 'dominando'],
+};
+const instrumentTerms: Record<Instrument, string[]> = {
+  cavaco: ['cavaco', 'cavaquinho', 'cava'], violao: ['violao', 'viola', '7 cordas'],
+  surdo: ['surdo', 'surdao'], tanta: ['tanta', 'tantan', 'tan tan'],
+  pandeiro: ['pandeiro', 'pandeirista'], vozes: ['voz', 'vozes', 'vocal', 'vocais'],
+};
+const has = (text: string, phrase: string) => ` ${text} `.includes(` ${phrase} `);
+const normalized = (text: string) => words(text).join(' ');
+
+function instrumentFor(channel: number, names: ChannelMap): Instrument | undefined {
+  const terms = names.inputs.terms().filter(term => term.number === channel);
+  const matches = instrumentSchema.options.filter(instrument => terms.some(term => instrumentTerms[instrument].some(t => has(term.phrase, t))));
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** Vocabulário fechado. Desconhecido/ambíguo fica ausente; nunca se adivinha destino ou canal. */
+export function parseConsultation(raw: string, names: ChannelMap): ConsultationInput | undefined {
+  const text = normalized(raw);
+  const symptoms = symptomSchema.options.filter(s => vocabulary[s].some(term => has(text, term)));
+  if (!symptoms.length && !/\b(diagnostico|diagnosticar)\b|consulta tecnica|o que (podemos|posso) fazer|como (melhorar|resolver)/.test(text)) return undefined;
+  const channels = findChannels(raw, names);
+  const numericChannels = [...text.matchAll(/\b(?:canal|ch) (\d+)\b/g)].map(m => Number(m[1]));
+  const invalidChannel = numericChannels.some(n => !names.inputs.configured().includes(n));
+  const channel = channels.length === 1 && !invalidChannel ? channels[0] : undefined;
+  const pa = /\b(pa|publico|plateia)\b/.test(text);
+  const fones = /\b(fone|fones|retorno|retornos|monitor)\b|\baux 1\b/.test(text);
+  const unsupportedAux = [...text.matchAll(/\baux (\d+)\b/g)].some(m => Number(m[1]) !== 1);
+  const destination = pa !== fones && !unsupportedAux ? (pa ? 'pa' : 'fones') : undefined;
+  // Só afirmações explícitas viram relato. Perguntas conceituais/negações não comprovam queixa.
+  const asserted = /\b(esta|estao|ta|tao|ficou|ficaram|soa|soando)\b/.test(text)
+    && !/\b(nao|se|hipoteticamente)\b|o que (e|significa)/.test(text);
+  return {
+    symptom: symptoms.length === 1 ? symptoms[0] : undefined,
+    channel, instrument: channel ? instrumentFor(channel, names) : undefined, destination,
+    evidence: asserted ? symptoms.map(symptom => ({ id: `chat-${symptom}`, kind: 'operator_report' as const, symptom, detail: raw })) : [],
+  };
+}
+
+/** Só conhece o diretório de nomes, nunca o mixer, estado, histórico, fila ou propostas. */
+export function consult(input: ConsultationInput, names: ChannelMap, fonesAux: number): ConsultationReply {
+  if (input.channel !== undefined && !names.inputs.configured().includes(input.channel)) throw new Error('Canal não cadastrado na banda.');
+  if (input.destination === 'fones' && fonesAux !== 1) throw new Error('A base descreve FONES no AUX 1; confirme o mapeamento antes de consultar outro AUX.');
+  const inferred = input.channel ? instrumentFor(input.channel, names) : undefined;
+  if (inferred && input.instrument && inferred !== input.instrument) throw new Error('O instrumento informado não corresponde ao canal cadastrado.');
+  const context = { ...input, instrument: input.instrument ?? inferred };
+  const choices: ConsultationChoice[] = [];
+  const missing: string[] = [];
+  if (!context.symptom) {
+    missing.push('Qual sintoma você deseja investigar?');
+    for (const symptom of symptomSchema.options) choices.push({ label: symptom, input: { ...context, symptom } });
+  } else if (!context.channel) {
+    missing.push('Qual canal/fonte da banda apresenta a queixa? Escolha um de cada vez.');
+    for (const channel of names.inputs.list()) choices.push({ label: channel.name, input: { ...context, channel: channel.number, instrument: undefined } });
+  } else if (!context.instrument) {
+    missing.push('Qual instrumento está ligado a esse canal? O cadastro não identifica um guia com segurança.');
+    for (const instrument of instrumentSchema.options) choices.push({ label: instrument, input: { ...context, instrument } });
+  } else if (!context.destination) {
+    missing.push('No PA (som do público) ou nos FONES (AUX 1 compartilhado por todos)?');
+    for (const destination of ['pa', 'fones'] as const) choices.push({ label: destination === 'pa' ? 'PA' : 'Fones', input: { ...context, destination } });
+  }
+  // Não apresentar ensaio teórico se a fonte ainda estiver ambígua, mesmo com instrumento genérico.
+  const diagnosis = context.symptom ? diagnose({
+    symptom: context.symptom, instrument: context.channel ? context.instrument : undefined,
+    destination: context.destination, evidence: context.evidence,
+  }) : undefined;
+  const lines = [
+    'Consulta técnica — somente leitura, offline.',
+    'Não ouvi o som. Esta orientação usa conhecimento técnico e relatos do operador; não é medição real.',
+    `Fonte: ${context.channel ? `${names.inputs.nameOf(context.channel)} (canal ${context.channel})` : 'a confirmar'}. Destino: ${context.destination === 'pa' ? 'PA' : context.destination === 'fones' ? 'FONES — AUX 1 compartilhado: todos ouvem a mesma mix' : 'a confirmar'}.`,
+    ...missing,
+  ];
+  const refs: Reference[] = [];
+  if (diagnosis) {
+    const confidence = diagnosis.confidence.level === 'low' ? 'baixa' : 'insuficiente';
+    lines.push(`Confiança ${confidence}: ${diagnosis.confidence.rationale}`, 'Hipóteses alternativas (não confirmadas):');
+    for (const h of diagnosis.hypotheses) {
+      lines.push(`• ${h.explanation} Base: ${h.supportingEvidenceIds.length ? 'relato do operador' : 'sem relato compatível'}.`);
+      refs.push(...h.references);
+    }
+    lines.push('Perguntas para investigar:', ...diagnosis.questions.map(q => `• ${q}`));
+    for (const r of diagnosis.recommendations) {
+      lines.push(`${r.kind === 'inspection' ? 'Inspeção' : 'Ensaio teórico para revisão humana'}: ${r.instruction}`, `Por quê: ${r.hypothesisIds.map(id => diagnosis.hypotheses.find(h => h.id === id)?.explanation).join(' ')}`, `Antes: ${r.preconditions.join(' ')}`, `Observar: ${r.expectedObservation}`, `Parar/rever: ${r.stopOrRevert}`);
+      refs.push(...r.references);
+    }
+    const guide = diagnosis.instrumentGuide;
+    if (guide) {
+      lines.push(`Guia de samba/pagode (não validado em ensaio): ${guide.role}`, ...guide.captureChecks.map(t => `• ${t}`), ...guide.conditionalAdvice.map(t => `• ${t}`), `Cuidado: ${guide.avoid}`);
+      refs.push(...guide.references);
+    }
+    lines.push('Limitações:', ...diagnosis.limitations.map(l => `• ${l}`));
+  }
+  lines.push('Nenhum ajuste foi criado ou aplicado. Esta consulta não gera proposta, botão Aplicar ou aprovação. Para nova informação, reformule o relato completo ou use as opções de consulta.');
+  return {
+    kind: 'diagnosis', source: 'local', text: lines.join('\n'), diagnosis,
+    references: [...new Map(refs.map(ref => [`${ref.source}:${ref.locator}`, { title: sources[ref.source].title, url: sources[ref.source].url, locator: ref.locator }])).values()],
+    diagnosticOptions: choices,
+  };
+}

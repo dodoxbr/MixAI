@@ -257,7 +257,7 @@ describe('envio bloqueado com o celular deitado (correção da E4 preservada)', 
     const l = await startLab({ channels: bandChannels(), ai: { enabled: true }, aiKey: 'k', aiFetch: () => new Promise((r) => pending.push(r)) });
     labs.push(l);
     const { page } = await open(l, OPERATOR_PIN, LANDSCAPE);
-    await page.getByPlaceholder('O que você deseja ajustar?').fill('tá embolado o som');
+    await page.getByPlaceholder('O que você deseja ajustar?').fill('preciso organizar melhor a mix');
     await page.locator('.mx-assistant-input button[type=submit]').click();
     const hint = page.getByTestId('assist-hint');
     await hint.waitFor({ state: 'visible' });

@@ -1580,3 +1580,10 @@ mx-root {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* B3A: referências e escolhas são consulta, sem ações de aplicação. */
+.technical-references { padding-left: 1.2rem; overflow-wrap: anywhere; }
+.technical-references a { color: var(--accent, #7dbbff); }
+.diagnostic-options { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+
+.technical-text { white-space: pre-wrap; overflow-wrap: anywhere; }

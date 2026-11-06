@@ -84,7 +84,7 @@ it('capturas do assistente (Yoga e celular)', async () => {
     await yoga.page.locator('.proposal').waitFor();
     await yoga.page.locator('.proposal').last().getByRole('button', { name: 'Aplicar' }).click();
     await yoga.page.locator('.assist-feedback').waitFor();
-    await ask(yoga.page, 'não tô ouvindo o cavaco, tá embolado');
+    await ask(yoga.page, 'preciso organizar melhor o cavaco na mix');
     await yoga.page.locator('.proposal .assist-src').waitFor();
     await yoga.page.waitForTimeout(500);
     await yoga.page.screenshot({ path: join(out, 'e4-yoga-assistente.png') });
