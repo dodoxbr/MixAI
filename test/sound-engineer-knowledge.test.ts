@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { DEVICE_CAPABILITIES } from 'soundcraft-ui-connection';
 import { describe, expect, it } from 'vitest';
 import {
@@ -115,16 +115,17 @@ describe('proveniência e limites de capacidade', () => {
     expect(capabilities.every(c => !c.hardwareVerified)).toBe(true);
   });
 
-  it('base não importa camadas de controle e produção não importa a base', () => {
+  it('base continua isolada e somente a consulta B3A importa conhecimento em produção', () => {
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(item =>
       item.isDirectory() ? files(join(dir, item.name)) : [join(dir, item.name)]);
     for (const file of files('src').filter(f => f.endsWith('.ts'))) {
       const source = readFileSync(file, 'utf8');
-      if (file.startsWith('src/knowledge/sound-engineer/')) {
+      const normalizedFile = file.split(sep).join('/');
+      if (normalizedFile.startsWith('src/knowledge/sound-engineer/')) {
         // Importações locais ou zod são a única dependência permitida da base.
         const imports = [...source.matchAll(/(?:from\s+|import\s*\()(['"])([^'"]+)\1/g)].map(m => m[2]);
         expect(imports.every(path => path === 'zod' || /^\.\/[\w-]+\.js$/.test(path)), file).toBe(true);
-      } else {
+      } else if (normalizedFile !== 'src/assistant/sound-engineer.ts') {
         expect(source, file).not.toMatch(/(?:from\s+|import\s*\()['"][^'"]*knowledge/);
       }
     }

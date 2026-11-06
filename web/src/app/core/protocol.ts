@@ -215,7 +215,9 @@ export interface ProposalCard {
 }
 
 export interface AssistantReply {
-  kind: 'proposals' | 'clarify' | 'answer' | 'error';
+  kind: 'proposals' | 'clarify' | 'answer' | 'error' | 'diagnosis';
+  references?: Array<{ title: string; url: string; locator: string }>;
+  diagnosticOptions?: Array<{ label: string; input: Record<string, unknown> }>;
   source: 'local' | 'ai' | 'feedback';
   text?: string;
   proposals?: ProposalCard[];

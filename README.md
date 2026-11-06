@@ -128,6 +128,14 @@ Opcional: com uma chave da API da Anthropic no servidor (`config/secrets.yaml` �
 vão para o Claude, com teto de gasto diário. Detalhes, modelos e custos:
 `docs/lab/08-E4-ASSISTENTE.md`.
 
+## Consulta técnica Sound Engineer (B3A)
+
+O operador pode perguntar no chat: **"Meu cavaco está estridente. O que podemos fazer?"**.
+A consulta funciona offline, usa a base especializada e pede fonte/destino quando
+necessário. Mostra hipóteses, justificativas e referências, sem ouvir áudio nem criar
+ajustes ou cartões de aplicação. Músicos continuam usando os comandos autorizados.
+Detalhes e exemplos: [Sound Engineer no chat](docs/sound-engineer/CHAT-READONLY.md).
+
 ## Ligar no Claude Desktop
 
 **Antes:** deixe o servidor rodando (`npm run serve:lab`). Sem ele, o assistente responde que o

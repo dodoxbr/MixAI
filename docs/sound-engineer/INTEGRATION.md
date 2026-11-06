@@ -1,18 +1,22 @@
 # Integração futura ao assistente do MixAI
 
-Este documento é um plano. B3/B4 não estão implementadas e só devem começar após
+A etapa B3A de consulta, sem propostas nem escrita, está implementada em
+[Sound Engineer no chat](CHAT-READONLY.md). As etapas de aplicação e aquisição de
+dados reais abaixo continuam futuras; este documento preserva o plano do PR #18.
+
+Este documento é um plano. As demais partes de B3 e B4 não estão implementadas e só devem começar após
 E7A e validação das dependências indicadas na Issue #13.
 
 ## Fronteiras
 
 A base atual depende apenas de seus módulos locais e Zod. Não importa adaptador,
-controlador, parser, serviço de IA ou servidor. O teste de isolamento verifica que
-código de produção não a importa. Não foram criados endpoints, tools MCP, novos
-comandos ou chamadas de provedor. A função pura não recebe uma mesa e não tem
-como aplicar recomendações.
+controlador, parser, serviço de IA ou servidor. O teste de isolamento restringe
+as importações em produção ao adaptador de consulta B3A. Essa consulta usa o
+servidor existente; não cria comandos, tools MCP ou chamadas de provedor. A função
+pura não recebe uma mesa e não tem como aplicar recomendações.
 
-No futuro, um serviço de consulta poderá consumir `Diagnosis` como conteúdo,
-preservando `schemaVersion`, `knowledgeVersion`, referências e limitações. Ele
+A consulta B3A consome `Diagnosis` como conteúdo,
+preservando `schemaVersion`, `knowledgeVersion`, referências e limitações. O conteúdo
 poderá ser usado por parser local, Claude, OpenAI ou modelo offline. Nenhuma regra
 de permissão pode depender do provedor ou de uma instrução em prompt.
 

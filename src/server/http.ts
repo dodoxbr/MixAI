@@ -118,6 +118,15 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
     return sendCommand(core, reply, await core.execute(p, (req.body ?? {}) as object));
   });
 
+  // Consulta B3A: mesmo servidor e autenticação, sem caminho de comandos.
+  app.post('/api/assistant/diagnose', async (req, reply) => {
+    const p = principalOf(core, req, reply);
+    if (!p) return reply;
+    if (!core.assistant) return reply.code(503).send({ serverId: core.serverId, reply: { kind: 'error', source: 'local', code: 'NOT_CONFIGURED', text: 'Assistente indisponível.' } });
+    const answer = core.assistant.diagnose(p, req.body);
+    return reply.code(answer.code === 'FORBIDDEN' ? 403 : answer.code === 'INVALID' ? 400 : 200).send({ serverId: core.serverId, reply: answer });
+  });
+
   app.get('/api/pending', async (req, reply) => {
     const p = principalOf(core, req, reply);
     if (!p) return reply;
@@ -268,6 +277,11 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
         const a = core.assistant;
         if (!a) return send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply: { kind: 'error', source: 'local', text: 'Assistente indisponível.' } });
         return void a.ask(p, msg.text).then((reply) => send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply }));
+      }
+      case 'assistant_diagnose': {
+        const a = core.assistant;
+        const reply = a ? a.diagnose(p, msg.input) : { kind: 'error', source: 'local', text: 'Assistente indisponível.' };
+        return send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply });
       }
       case 'proposal_apply': {
         const a = core.assistant;

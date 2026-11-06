@@ -22,20 +22,37 @@ const STATE_TEXT: Record<CardState, string> = {
   template: `
     <header class="assist-head">
       <h2>Assistente</h2>
-      <span class="assist-mode" [class.on]="assistant.aiOn()" [title]="assistant.aiOn() ? 'Pedidos que o modo local não entende vão para o Claude' : 'Só comandos diretos (sem IA)'">{{ assistant.aiOn() ? 'IA ligada' : 'sem IA' }}</span>
+      <span class="assist-mode" [class.on]="assistant.aiOn()" [title]="assistant.aiOn() ? 'Pedidos que o modo local não entende vão para o Claude' : 'Comandos diretos e consulta técnica do operador, offline'">{{ assistant.aiOn() ? 'IA ligada' : 'sem IA' }}</span>
       <span class="spacer"></span>
       <button type="button" class="btn btn-ghost btn-small" (click)="assistant.open.set(false)" aria-label="Recolher o assistente">Recolher</button>
     </header>
     <ol class="assist-log" aria-live="polite" #log>
       @for (item of assistant.items(); track item.id) {
         <li class="assist-item" [class.from-user]="item.from === 'user'" [class.tone-error]="item.tone === 'error'" [class.tone-ok]="item.tone === 'ok'">
+          @if (item.diagnostic) {
+            <strong class="assist-src">Conhecimento técnico · somente leitura</strong>
+          }
           @if (item.text) {
-            <p class="assist-text">
+            <p class="assist-text" [class.technical-text]="item.diagnostic">
               @if (item.source === 'ai') {
                 <span class="assist-src">IA</span>
               }
               {{ item.text }}
             </p>
+          }
+          @if (item.references?.length) {
+            <ul class="technical-references" aria-label="Referências técnicas">
+              @for (ref of item.references; track ref.url + ref.locator) {
+                <li><a [href]="ref.url" target="_blank" rel="noopener noreferrer">{{ ref.title }}</a> — {{ ref.locator }}</li>
+              }
+            </ul>
+          }
+          @if (item.diagnosticOptions?.length) {
+            <div class="diagnostic-options" aria-label="Esclarecer consulta técnica">
+              @for (option of item.diagnosticOptions; track option.label) {
+                <button type="button" class="btn chip" [disabled]="!!assistant.blockedReason()" (click)="assistant.consult(option)">{{ option.label }}</button>
+              }
+            </div>
           }
           @for (card of item.cards ?? []; track card.id) {
             <article class="proposal" [class.is-done]="assistant.state(card.id) !== 'open' && assistant.state(card.id) !== 'applying'">
@@ -91,7 +108,7 @@ const STATE_TEXT: Record<CardState, string> = {
           }
         </li>
       } @empty {
-        <li class="assist-empty">Escreva um pedido, por exemplo: "aumenta um pouco o surdo no PA" ou "sobe o cavaco nos fones".</li>
+        <li class="assist-empty">Escreva um pedido, por exemplo: "aumenta um pouco o surdo no PA" ou "sobe o cavaco nos fones". Operador: "Meu cavaco está estridente. O que podemos fazer?" consulta a base técnica sem ajustes.</li>
       }
       @if (assistant.thinking()) {
         <li class="assist-item assist-thinking">Pensando… a mesa continua funcionando.</li>

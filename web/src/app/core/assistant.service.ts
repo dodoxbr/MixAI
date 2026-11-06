@@ -10,6 +10,9 @@ export interface ChatItem {
   from: 'user' | 'assistant';
   text?: string;
   cards?: ProposalCard[];
+  diagnostic?: boolean;
+  references?: AssistantReply['references'];
+  diagnosticOptions?: AssistantReply['diagnosticOptions'];
   options?: Array<{ label: string; text: string }>;
   /** Pergunta "Melhorou?" sobre esta proposta aplicada. */
   feedbackFor?: string;
@@ -70,16 +73,35 @@ export class AssistantUiService {
   async send(text: string): Promise<boolean> {
     const t = text.trim();
     if (!t || this.blockedReason()) return false;
+    const sessionToken = this.session.token();
     this.open.set(true);
     this.push({ from: 'user', text: t });
     this.thinking.set(true);
     try {
       const r = await this.live.assistant({ type: 'assistant', text: t });
+      if (this.session.token() !== sessionToken) return true;
       if (!r.ok) this.push({ from: 'assistant', tone: 'error', text: r.why === 'offline' ? NOT_SENT : LOST_ASK });
       else this.showReply(r.msg['reply'] as AssistantReply | undefined);
       return true;
     } finally {
-      this.thinking.set(false);
+      if (this.session.token() === sessionToken) this.thinking.set(false);
+    }
+  }
+
+  /** Opção contextual de consulta: não passa por proposal_apply nem por command. */
+  async consult(option: NonNullable<AssistantReply['diagnosticOptions']>[number]): Promise<void> {
+    if (this.blockedReason()) return;
+    const sessionToken = this.session.token();
+    this.open.set(true);
+    this.push({ from: 'user', text: `Consulta técnica: ${option.label}` });
+    this.thinking.set(true);
+    try {
+      const r = await this.live.assistant({ type: 'assistant_diagnose', input: option.input });
+      if (this.session.token() !== sessionToken) return;
+      if (!r.ok) this.push({ from: 'assistant', tone: 'error', text: r.why === 'offline' ? NOT_SENT : LOST_ASK });
+      else this.showReply(r.msg['reply'] as AssistantReply | undefined);
+    } finally {
+      if (this.session.token() === sessionToken) this.thinking.set(false);
     }
   }
 
@@ -145,6 +167,9 @@ export class AssistantUiService {
     if (!r || typeof r !== 'object') {
       // Resposta fora do formato: avisa em vez de ficar em silêncio.
       return this.push({ from: 'assistant', tone: 'error', text: 'O servidor respondeu num formato que esta tela não entende. Recarregue a página (pode ser uma versão antiga em cache).' });
+    }
+    if (r.kind === 'diagnosis') {
+      return this.push({ from: 'assistant', source: 'local', diagnostic: true, text: r.text, references: r.references, diagnosticOptions: r.diagnosticOptions });
     }
     if (r.kind === 'proposals' && !r.proposals?.length) {
       return this.push({ from: 'assistant', source: r.source, text: r.text || 'Nada a ajustar.' });
