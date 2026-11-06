@@ -34,6 +34,8 @@ function http(path: string, opts: { trust?: boolean; token?: string; body?: obje
       method: opts.body ? 'POST' : 'GET',
       headers: { ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}), ...(opts.body ? { 'content-type': 'application/json' } : {}), ...opts.headers },
     }, res => {
+      // Decodificar no stream preserva caracteres UTF-8 divididos entre chunks TLS.
+      res.setEncoding('utf8');
       let body = '';
       res.on('data', chunk => { body += String(chunk); });
       res.on('end', () => { let parsed: unknown; try { parsed = JSON.parse(body); } catch { parsed = body; } resolveResponse({ status: res.statusCode!, headers: res.headers, body: parsed }); });

@@ -172,6 +172,7 @@ Validação local em Linux/Node.js v24.22.1 (06/11/2026):
 | `npm run test:web` | 84 testes, 10 arquivos; 3 novos testes de projeção, revisão e sessão |
 | `npm run build:web` | Passou |
 | E2E com Chromium | 67 testes, 10 arquivos; 5 novos cenários contextuais |
+| `npm run test:https-lab` com Caddy verificado | 6 testes HTTPS/WSS passaram, com CA descartável |
 | Inspeção visual | Assunto, pergunta e cancelamento legíveis no Yoga e no celular |
 | `git diff --check` | Passou |
 
@@ -186,3 +187,13 @@ executado. Hardware, áudio real, provedores pagos e Windows local não foram
 validados; o workflow existente executa Ubuntu e Windows. Não há bloqueio local
 remanescente. Persistência, compartilhamento entre instâncias e conversa livre
 sobre inspeções ficam fora desta entrega.
+
+
+Na primeira CI, o teste de equivalência HTTP/WSS encontrou `presen��a` no leitor
+HTTP do próprio teste: ele convertia cada Buffer isoladamente, corrompendo um `ç`
+dividido entre chunks. A reprodução determinística com dois Buffers confirmou o
+problema. O helper de teste agora usa `res.setEncoding('utf8')`; nenhuma asserção,
+verificação de certificados ou configuração TLS/rede de produção foi alterada.
+A suíte dedicada de 6 testes passou localmente com Caddy 2.10.2 validado por
+SHA-512. A CA/chaves de teste foram temporárias, removidas pelo teardown, sem
+instalação de confiança no sistema nem publicação de artefatos.
