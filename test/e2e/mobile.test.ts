@@ -42,7 +42,7 @@ async function open(l: Lab, pin: string, device: object) {
     ws.on('framesent', (f) => {
       try {
         const m = JSON.parse(String(f.payload)) as Record<string, unknown>;
-        if (['command', 'fader', 'approve', 'reject', 'proposal_apply'].includes(String(m['type']))) sent.push(m);
+        if (['command', 'fader', 'approve', 'reject', 'proposal_apply', 'assistant'].includes(String(m['type']))) sent.push(m);
       } catch {
         /* ignora */
       }
@@ -199,6 +199,70 @@ describe('Mesa do operador no celular Android', () => {
     await page.waitForTimeout(300);
     expect(writes(sent).length).toBe(before);
     expect(v(l, paramKey.level(1, MASTER))).toBe(-10);
+  });
+});
+
+describe('envio bloqueado com o celular deitado (correção da E4 preservada)', () => {
+  it('conexão cai: o MOTIVO aparece na tela, o texto digitado fica e nenhum pedido sai; ao voltar, a barra é uma linha', async () => {
+    const l = await lab();
+    const { page, sent, errors } = await open(l, OPERATOR_PIN, LANDSCAPE);
+    const bar = await box(page, '.toolbar');
+    expect(bar.height, 'barra compacta numa linha').toBeLessThanOrEqual(64);
+    expect(await page.getByTestId('assist-hint').count()).toBe(0);
+
+    const field = page.getByPlaceholder('O que você deseja ajustar?');
+    await field.fill('sobe o surdo no PA');
+    const assistantBefore = sent.filter((m) => m['type'] === 'assistant').length;
+    const ws = (l.server.https[0] as unknown as { websocketServer: { clients: Set<{ terminate(): void }> } }).websocketServer;
+    for (const c of ws.clients) c.terminate();
+
+    // o motivo aparece de verdade (não só em title/aria): visível, dentro da tela, com tamanho legível
+    const hint = page.getByTestId('assist-hint');
+    await hint.waitFor({ state: 'visible' });
+    expect(await hint.textContent()).toContain('Sem conexão');
+    const h = (await hint.boundingBox())!;
+    expect(h.width).toBeGreaterThan(200);
+    expect(h.height).toBeGreaterThan(10);
+    expect(h.x).toBeGreaterThanOrEqual(0);
+    expect(h.x + h.width).toBeLessThanOrEqual(LANDSCAPE.viewport!.width + 1);
+    expect(h.y).toBeGreaterThanOrEqual(0);
+    expect(h.y + h.height).toBeLessThanOrEqual(LANDSCAPE.viewport!.height);
+    expect(await hint.evaluate((el) => getComputedStyle(el).visibility === 'visible' && Number(getComputedStyle(el).opacity) > 0.5)).toBe(true);
+    // fica logo abaixo do campo e do botão (que continuam na tela)
+    const send = page.locator('.mx-assistant-input button[type=submit]');
+    expect(await send.isDisabled()).toBe(true);
+    expect(h.y).toBeGreaterThan((await send.boundingBox())!.y);
+    // faders continuam inteiros com o motivo à vista
+    await expectFadersUsable(page);
+
+    // tentar enviar: nada sai, o texto fica
+    await field.press('Enter');
+    await send.click({ force: true });
+    await page.waitForTimeout(300);
+    expect(await field.inputValue()).toBe('sobe o surdo no PA');
+
+    // reconecta sozinho (mesma sessão): o motivo some, a barra volta a uma linha e o pedido sai UMA vez
+    await hint.waitFor({ state: 'detached', timeout: 8000 });
+    expect(sent.filter((m) => m['type'] === 'assistant').length).toBe(assistantBefore); // nada foi enviado offline
+    expect((await box(page, '.toolbar')).height).toBeLessThanOrEqual(64);
+    await send.click();
+    await page.locator('.proposal').last().waitFor();
+    expect(sent.filter((m) => m['type'] === 'assistant').length).toBe(assistantBefore + 1);
+    expect(v(l, paramKey.level(9, MASTER))).toBe(-10); // só proposta; nada aplicado
+    expect(errors).toEqual([]);
+  });
+
+  it('esperando a resposta anterior: o motivo também aparece deitado', async () => {
+    const pending: Array<(r: Response) => void> = [];
+    const l = await startLab({ channels: bandChannels(), ai: { enabled: true }, aiKey: 'k', aiFetch: () => new Promise((r) => pending.push(r)) });
+    labs.push(l);
+    const { page } = await open(l, OPERATOR_PIN, LANDSCAPE);
+    await page.getByPlaceholder('O que você deseja ajustar?').fill('tá embolado o som');
+    await page.locator('.mx-assistant-input button[type=submit]').click();
+    const hint = page.getByTestId('assist-hint');
+    await hint.waitFor({ state: 'visible' });
+    expect(await hint.textContent()).toContain('Esperando a resposta');
+    expect((await hint.boundingBox())!.width).toBeGreaterThan(200);
   });
 });
 

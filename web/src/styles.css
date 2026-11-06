@@ -1312,13 +1312,16 @@ mx-root {
     min-height: 36px;
   }
   .mx-mesa .toolbar {
-    flex-wrap: nowrap;
+    /* uma linha só; quebra apenas para mostrar o motivo do envio bloqueado (ver abaixo) */
+    flex-wrap: wrap;
+    row-gap: 2px;
     overflow-x: auto;
     gap: 6px;
     padding: 4px 10px;
     scrollbar-width: thin;
   }
-  .mx-mesa .toolbar > * {
+  .mx-mesa .toolbar > *,
+  .mx-mesa .toolbar .mx-assistant-input form > * {
     flex-shrink: 0;
   }
   .mx-mesa .toolbar .spacer {
@@ -1341,12 +1344,12 @@ mx-root {
     font-size: 0.8rem;
     padding: 4px 8px;
   }
-  .mx-mesa .toolbar .mx-assistant-input {
-    order: 0;
-    width: auto;
-  }
+  /* Campo, Enviar e o motivo viram itens da própria barra: o campo e o botão ficam na linha,
+     e o MOTIVO do envio bloqueado (sem conexão, esperando resposta, campo vazio) aparece numa
+     linha própria logo abaixo, visível — nunca só em title/aria (tela de toque). */
+  .mx-mesa .toolbar .mx-assistant-input,
   .mx-mesa .toolbar .mx-assistant-input form {
-    flex-wrap: nowrap;
+    display: contents;
   }
   .mx-mesa .toolbar .mx-assistant-input input {
     width: 130px;
@@ -1356,7 +1359,13 @@ mx-root {
     padding: 0 10px;
   }
   .mx-mesa .toolbar .assist-hint {
-    display: none; /* o motivo continua no title/aria do botão e no banner de conexão */
+    order: 99;
+    flex: 0 0 100%;
+    margin: 0;
+    padding: 2px 4px 0;
+    font-size: 0.85rem;
+    line-height: 1.2;
+    white-space: normal;
   }
   .mx-mesa .offline-banner {
     margin: 0 10px 4px;
