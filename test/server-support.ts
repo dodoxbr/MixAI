@@ -9,6 +9,7 @@ import { ActionLog } from '../src/core/log.js';
 import { LabMixer } from '../src/mixer/lab.js';
 import { MockMixer } from '../src/mixer/mock.js';
 import { hashPin } from '../src/server/pin.js';
+import type { FileSpeechRecognizer } from '../src/speech/whisper-file.js';
 import { startServer } from '../src/server/start.js';
 import { fixtureChannels } from './helpers.js';
 
@@ -19,6 +20,7 @@ const pinHashes = () => (hashes ??= { operatorPinHash: hashPin(OPERATOR_PIN), mu
 
 export interface TestServerOptions {
   mode?: 'lab' | 'mock';
+  pttRecognizer?: FileSpeechRecognizer;
   safety?: Partial<SafetyConfig>;
   dir?: string;
   port?: number;
@@ -68,7 +70,7 @@ export async function startTestServer(opts: TestServerOptions = {}) {
     (async () => {
       throw new Error('teste tentou chamar a API real da Anthropic');
     });
-  const server = await startServer(loaded, { port: opts.port ?? 0, clock: clock.now, app: { loaded, mixer, controller, log }, aiFetch });
+  const server = await startServer(loaded, { port: opts.port ?? 0, clock: clock.now, app: { loaded, mixer, controller, log }, aiFetch, pttRecognizer: opts.pttRecognizer });
   const base = server.urls[0]!;
 
   const http = async (path: string, init: { method?: string; token?: string; body?: unknown } = {}) => {

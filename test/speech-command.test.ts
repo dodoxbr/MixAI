@@ -73,7 +73,7 @@ it('keeps offline code isolated from network, parser, mixer and web; no installe
   for (const file of files) {
     const source = readFileSync(file, 'utf8');
     const imports = [...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1]!);
-    expect(imports.every(path => path.startsWith('./') || ['node:fs', 'node:fs/promises', 'node:path', 'node:os', 'node:child_process', 'node:perf_hooks', 'node:util'].includes(path)), file).toBe(true);
+    expect(imports.every(path => path.startsWith('./') || ['node:crypto', 'node:fs', 'node:fs/promises', 'node:path', 'node:os', 'node:child_process', 'node:perf_hooks', 'node:util'].includes(path)), file).toBe(true);
     expect(source, file).not.toMatch(/\b(?:fetch|WebSocket)\s*\(|import\s*\(/);
   }
   expect(readFileSync('web/src/app/speech/speech-spike.component.ts', 'utf8')).toContain('factory: () => false');
