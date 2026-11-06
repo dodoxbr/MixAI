@@ -33,14 +33,15 @@ const UNKNOWN: StateValue = { status: 'unknown' };
   imports: [EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
   host: { class: 'mx-view mx-mesa' },
   template: `
-    <mx-status-bar />
+    <mx-status-bar>
+      @if (live.hello()?.mode === 'lab' && live.hello()?.role === 'operator') {
+        <button status-action type="button" class="btn" (click)="showEq.set(true)" [attr.aria-expanded]="showEq()">EQ LAB</button>
+      }
+    </mx-status-bar>
     <div class="toolbar">
       <div class="segmented" role="tablist" aria-label="Mix">
         <button type="button" role="tab" [attr.aria-selected]="bus() === 'pa'" [class.on]="bus() === 'pa'" (click)="bus.set('pa')">PA</button>
         <button type="button" role="tab" [attr.aria-selected]="bus() === 'fones'" [class.on]="bus() === 'fones'" (click)="bus.set('fones')">FONES</button>
-        @if (live.hello()?.mode === 'lab' && live.hello()?.role === 'operator') {
-          <button type="button" (click)="showEq.set(true)">EQ LAB</button>
-        }
       </div>
       @if (bus() === 'fones') {
         <span class="shared-warning">{{ auxName() }}: muda o fone de TODOS</span>

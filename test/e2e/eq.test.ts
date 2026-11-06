@@ -75,6 +75,7 @@ for (const [name, device] of [
   ['yoga', YOGA],
   ['android-portrait', PHONE],
   ['android-landscape', { ...PHONE, viewport: { width: 915, height: 412 } }],
+  ['android-landscape-780', { ...PHONE, viewport: { width: 780, height: 360 } }],
 ] as const) {
   it(`EQ edit, bypass, drag, reset and undo; screenshot ${name}`, async () => {
     const l = await startLab({ channels: bandChannels() });
@@ -82,6 +83,19 @@ for (const [name, device] of [
     const { page } = await enter(browser, l.base, OPERATOR_PIN, device);
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
+    await page.locator('.strips .meter-sim').first().waitFor();
+    expect(await page.getByRole('tablist', { name: 'Mix' }).getByRole('button').count()).toBe(0);
+    const eqButton = page.getByRole('button', { name: 'EQ LAB', exact: true });
+    expect(await eqButton.evaluate(el => el.closest('mx-status-bar') !== null)).toBe(true);
+    const eqBox = (await eqButton.boundingBox())!;
+    expect(eqBox.x + eqBox.width).toBeLessThanOrEqual(device.viewport!.width);
+    for (const selector of ['[data-testid=mode]', '[data-testid=link]', '.mx-status-bar button:last-child']) {
+      const other = (await page.locator(selector).boundingBox())!;
+      const overlap = eqBox.x < other.x + other.width && other.x < eqBox.x + eqBox.width && eqBox.y < other.y + other.height && other.y < eqBox.y + eqBox.height;
+      expect(overlap, `EQ LAB não sobrepõe ${selector}`).toBe(false);
+    }
+    mkdirSync('docs/lab/screenshots/e7a', { recursive: true });
+    await page.screenshot({ path: `docs/lab/screenshots/e7a/${name}-mesa.png`, fullPage: true });
     await page.getByRole('button', { name: 'EQ LAB', exact: true }).click();
     await page.getByText('SIMULADO — somente laboratório. Curva estimada, não medida na Ui16 real.').waitFor();
     const gain = page.getByRole('spinbutton', { name: 'Banda 1 ganho', exact: true });
@@ -104,6 +118,9 @@ for (const [name, device] of [
     await dot.focus();
     await dot.press('ArrowUp');
     await expect.poll(() => value(l, 'ch.1.eq.b1.gain')).toBe(6.5);
+    // Raw mouse events do not wait for aria-disabled like locator actions do.
+    // The keyboard command can already reach the adapter while its WS result is pending.
+    await dot.click({ trial: true });
     const box = await dot.boundingBox();
     await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
     await page.mouse.down();

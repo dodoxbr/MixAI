@@ -61,6 +61,24 @@ describe('aplicação', () => {
     expect(ws!.last('meters')).toEqual({ type: 'meters', on: true, hz: 12 });
   });
 
+  it('EQ LAB é uma ação da faixa de estado; o seletor contém somente PA e FONES', async () => {
+    const { el, fixture } = await boot('operator');
+    expect([...el.querySelectorAll('.segmented button')].map(b => b.textContent!.trim())).toEqual(['PA', 'FONES']);
+    expect(el.querySelector('.toolbar [status-action]')).toBeNull();
+    const eq = el.querySelector('mx-status-bar [status-action]') as HTMLButtonElement;
+    expect(eq.textContent!.trim()).toBe('EQ LAB');
+    eq.click(); fixture.detectChanges();
+    expect(el.querySelector('mx-eq')).not.toBeNull();
+  });
+
+  it('a faixa de estado do operador não oferece EQ fora do LAB', async () => {
+    const { el, live, fixture } = await boot('operator');
+    expect(el.querySelector('[status-action]')).not.toBeNull();
+    live.hello.update(h => h ? { ...h, mode: 'real', role: 'operator' } : h);
+    fixture.detectChanges();
+    expect(el.querySelector('[status-action]')).toBeNull();
+  });
+
   it('PA ↔ FONES troca o que é mostrado sem mandar nenhum comando', async () => {
     const { el, ws, fixture } = await boot('operator');
     const sentBefore = ws!.sent.length;
@@ -78,6 +96,7 @@ describe('aplicação', () => {
 
   it('músico: só a tela de Fones, com aviso de retorno compartilhado e sem master', async () => {
     const { el } = await boot('musician');
+    expect(el.querySelector('[status-action]')).toBeNull();
     expect(el.querySelector('mx-fones')).not.toBeNull();
     expect(el.querySelector('mx-mesa')).toBeNull();
     expect(el.textContent).not.toContain('MASTER');

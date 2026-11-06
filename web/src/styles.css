@@ -1576,11 +1576,6 @@ mx-root {
 }
 /* tela estreita demais para 4 botões de 48 px: 2 × 2, sem sobreposição */
 @media (max-width: 239px) and (min-height: 561px) {
-  .mx-mesa .toolbar .segmented button {
-    min-width: 48px;
-    padding: 0 4px;
-    font-size: 0.78rem;
-  }
   .mx-mesa .toolbar .toolbar-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

@@ -1,6 +1,6 @@
 # E7A — Equalizador visual do laboratório
 
-Escopo: [Issue #12](https://github.com/dodoxbr/MixAI/issues/12), incremento visual da E7. Abra **EQ LAB** na Mesa como operador e escolha um canal. Há quatro bandas paramétricas, HPF, bypass e reset do canal. Frequência, Q e ganho também podem ser digitados; arraste os pontos para frequência/ganho ou use as setas com o ponto focado. A prévia acompanha o gesto; soltar aplica um único comando. Cancelar o ponteiro descarta a prévia.
+Escopo: [Issue #12](https://github.com/dodoxbr/MixAI/issues/12), incremento visual da E7. Abra **EQ LAB** na faixa superior de estado da Mesa como operador e escolha um canal. O botão é independente do seletor PA/FONES e da barra de ações, preservando a barra compacta de uma linha no celular horizontal. Há quatro bandas paramétricas, HPF, bypass e reset do canal. Frequência, Q e ganho também podem ser digitados; arraste os pontos para frequência/ganho ou use as setas com o ponto focado. A prévia acompanha o gesto; soltar aplica um único comando. Cancelar o ponteiro descarta a prévia.
 
 **SIMULADO — somente laboratório. Curva estimada, não medida na Ui16 real.**
 
@@ -37,5 +37,18 @@ Capturas em Chromium com emulação touch; não equivalem a teste físico de um 
 - [Android paisagem, 915×412](screenshots/e7a/android-landscape.png)
 
 Os arquivos com sufixo `-controls.png` mostram o fim do painel rolável, incluindo as bandas 3/4 e HPF nos celulares.
+
+### Correção da barra móvel no PR #14
+
+O botão EQ LAB foi movido do seletor PA/FONES para uma ação projetada na faixa de estado. O seletor volta a conter apenas as duas abas; a barra do celular horizontal mantém o limite original de 64 px. Ações, campo do assistente, faders e MASTER mantêm sua estrutura. A faixa de estado continua podendo quebrar linha no celular em retrato. Não houve mudança de limites dos testes, cálculo ou permissões do EQ.
+
+O teste de EQ também verifica a posição e ausência de sobreposição do novo acesso, incluindo 780×360, e abre/edita o painel em todos os tamanhos. Capturas da Mesa com o acesso independente:
+
+- [Yoga](screenshots/e7a/yoga-mesa.png)
+- [Android retrato](screenshots/e7a/android-portrait-mesa.png)
+- [Android paisagem 915×412](screenshots/e7a/android-landscape-mesa.png)
+- [Android paisagem 780×360](screenshots/e7a/android-landscape-780-mesa.png)
+
+Validação local da correção: 348 testes de núcleo, 55 de interface e 60 E2E passaram, assim como build, build web e typecheck. A execução completa encontrou uma corrida no teste de arraste: o teclado já havia alterado o adaptador, mas o ponto ainda estava bloqueado aguardando a resposta WS. O teste passou a aguardar a disponibilidade do ponto antes dos eventos brutos de mouse. Nenhuma falha local restante.
 
 No ambiente Windows restrito, a suíte multiprocessos de `owner-lock` precisou ser executada fora do sandbox: `os.userInfo` dos processos filhos falhava com `uv_os_get_passwd/ENOMEM`. Fora dele, a suíte completa passou. Nenhum teste usa a mesa física.
