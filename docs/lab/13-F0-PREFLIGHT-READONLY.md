@@ -6,6 +6,9 @@ os passos antigos de mover fader/desfazer no README e no plano F0. E6 e E7A não
 parte desta entrega. Passar neste roteiro não autoriza escrita nem encerra a validação
 física de controle da mesa.
 
+Antes da chegada da mesa, usar [F0B — ensaio integrado no Yoga](17-F0B-YOGA-REHEARSAL.md)
+e `npm run smoke:yoga`. O smoke não executa este roteiro físico nem abre REAL.
+
 ## 1. Topologia e materiais
 
 ```text

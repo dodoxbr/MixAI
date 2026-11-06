@@ -1,4 +1,4 @@
-# MixAI — estado atual (05/11/2026, v0.7 / E5)
+# MixAI — estado atual (06/11/2026, v0.7 / LAB integrado)
 
 Controle da mesa **Soundcraft Ui16** por IA, para uma banda de samba/pagode amadora que toca em roda.
 O músico pede em português ("mais Fred no fone", "abaixa o surdo") e o Claude ajusta a mesa,
@@ -9,6 +9,13 @@ F0 físico permanece pendente. A Issue #15 prepara rede Windows/Yoga, console pr
 somente leitura, simulações de perda/recuperação e formulário de evidências em
 [13-F0-PREFLIGHT-READONLY.md](docs/lab/13-F0-PREFLIGHT-READONLY.md).
 Não há autorização de escrita REAL ou implementação de E6 nesta preparação.
+
+Entregas já incorporadas à main: E5 cenas; E7A EQ/HPF visual simulado; E9A voz experimental
+OFF; base técnica e consulta ao técnico B3A somente leitura (#25); E8A diff por retratos
+fornecidos/fixtures (#24); HTTPS/WSS LAB privado opcional, OFF (#23). F0B prepara
+`npm run smoke:yoga` e diagnóstico Windows somente consulta:
+[roteiro e evidências](docs/lab/17-F0B-YOGA-REHEARSAL.md). Nenhuma dessas entregas valida
+hardware, ativa voz ou autoriza escrita REAL. E6 permanece pendente.
 
 ---
 
@@ -94,8 +101,8 @@ src/
 config/
   config.yaml         modo, IP, travas
   channels.yaml       nomes da banda
-test/                 335 testes (Vitest) + 55 de integração com navegador (test/e2e)
-web/                  interface Angular (49 testes unitários)
+test/                 núcleo, contratos e integração com navegador (Vitest)
+web/                  interface Angular (testes unitários próprios)
 ```
 
 ---
@@ -132,16 +139,18 @@ web/                  interface Angular (49 testes unitários)
 | Comandos por segundo | 5 |
 | Canal todo abaixado (-∞) em ajuste relativo | tratado como -60 dB (abrir = mudança grande) |
 
-"Pedir confirmação" nunca altera nada: a tool devolve `NEEDS_CONFIRMATION` com um `pendingId`, e a IA
-precisa perguntar ao usuário e repetir o mesmo comando com `confirmation_id` (uso único, 60 s,
-invalidado se a mesa mudar antes). Tudo vai para o log (`logs/acoes-AAAA-MM-DD.jsonl`) e para
-a pilha de desfazer (até 50 ações).
+"Pedir confirmação" nunca altera nada: devolve `NEEDS_CONFIRMATION` e cria uma pendência
+com uso único, validade e revisões vinculadas. Somente operador autenticado aprova pelo
+servidor/tela. O agente não aprova nem repete uma ação com `confirmation_id` para executá-la;
+essa tentativa é recusada. Ações/recusas têm log e desfazer conforme revisões/segurança.
 
 ---
 
 ## 5. Testes
 
-368 testes do servidor + 55 da interface + 60 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+461 testes do núcleo + 81 da interface + 63 de integração com navegador passaram nesta rodada Linux.
+O smoke Yoga inclui dois cenários (um E8A reutilizado), não somados como testes distintos.
+A CI executa núcleo/web e smoke em Linux/Windows; resultados e limites no PR F0B. Inclui, além dos 40 originais:
 
 - **F0 (Issue #15):** console somente leitura, bloqueio no supervisor, quedas repetidas
   sem replay e formulário físico pendente; [validação offline](docs/lab/15-F0-VALIDACAO-OFFLINE.md);
@@ -182,21 +191,25 @@ a pilha de desfazer (até 50 ações).
 ## 6. Decisões tomadas
 
 - Conexão notebook ↔ mesa por **cabo Ethernet**; Wi-Fi do notebook para internet.
-- **IA híbrida:** com internet, Claude via API; sem internet, modo local só com comandos diretos
-  (Ollama ou regras — ainda não decidido).
-- **Voz (futuro):** botão "segure e fale" no celular; transcrição local com Whisper. Sem escuta contínua.
-- Fases 0 e 1 usam o Claude Desktop; app próprio a partir da Fase 2.
+- **IA híbrida:** parser determinístico e consulta técnica offline; API Anthropic opcional,
+  com orçamento. A IA não captura nem analisa áudio.
+- **Voz:** spike push-to-talk isolado, desativado por padrão; sem STT em produção.
+- Interface web/MCP já usam o servidor único; somente operador autenticado aprova pendências.
 
-## 7. Próximas fases
+## 7. Entregas e portões pendentes
 
-| Fase | Conteúdo | Portão |
-| --- | --- | --- |
-| 0 | Preparação offline e teste somente leitura (Issue #15) | leitura física pendente; escrita suspensa |
-| 2 | App web no celular (servido pelo notebook) + acesso exclusivo à mesa | ensaio inteiro só por texto |
-| 3 | Skill "técnico de som": EQ, HPF, ciclo de ajuste ("tá embolado") | um evento sem mexer à mão |
-| 4 | Voz (Whisper local) + memória da banda | banda aprova os ajustes |
+| Etapa | Situação |
+| --- | --- |
+| E5 | Cenas no LAB com comparação, aprovação e desfazer |
+| E7A | EQ/HPF visual e curva estimada somente LAB |
+| Base técnica / B3A | Conhecimento referenciado e consulta somente leitura (#18/#25) |
+| E8A | Comparação de retratos fornecidos/fixtures, sem aplicação (#24) |
+| E9A / E9B | Voz experimental OFF; infraestrutura HTTPS LAB opcional OFF (#19/#23) |
+| F0B | Ensaio integrado reproduzível e preflight Windows somente consulta (#27) |
+| F0 físico / E6 | Pendentes da Ui16 e de validação específica; escrita não autorizada |
 
-A biblioteca já suporta EQ de 4 bandas e HPF na Ui16, então a Fase 3 é viável.
+EQ/HPF da E7A são simulações. A base técnica documenta limites de slope/bypass na Ui16;
+valores LAB não comprovam equivalência física. Qualquer etapa REAL depende de F0/E6.
 
 ## 8. Pontos abertos / onde sugestões ajudam
 
