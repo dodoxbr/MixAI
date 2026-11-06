@@ -101,3 +101,11 @@ Preencher a partir da execução atual (não copiar um resultado antigo).
 - Pendências físicas e divergências a investigar:
 - Escrita real, áudio e E6 continuam fora deste aceite; nenhuma autorização inferida.
 - Nome do operador e data da revisão:
+
+## Anexo opcional F0C — observação da UI oficial
+
+Usar [o roteiro e esquema F0C](18-F0C-READONLY-OBSERVER.md), somente com PA/HA800/fones
+desconectados e operador supervisionando. Registrar fader/MUTE alterados manualmente
+na UI oficial, eventos relativos correspondentes, perda/recuperação e motivo de término.
+Anexar apenas JSON/Markdown sanitizados e validados. Não anexar o formulário de rede bruto
+com IPs. Estado inicial: **PENDENTE — nenhum ensaio físico executado nesta entrega**.

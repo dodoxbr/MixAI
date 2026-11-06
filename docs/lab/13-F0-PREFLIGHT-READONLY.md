@@ -9,6 +9,10 @@ física de controle da mesa.
 Antes da chegada da mesa, usar [F0B — ensaio integrado no Yoga](17-F0B-YOGA-REHEARSAL.md)
 e `npm run smoke:yoga`. O smoke não executa este roteiro físico nem abre REAL.
 
+Para observar mudanças feitas **manualmente na UI oficial**, após os portões de segurança,
+usar [F0C — observador somente leitura](18-F0C-READONLY-OBSERVER.md). O MixAI permanece
+sem escrita; esse ensaio supervisionado não é executado pelo F0B/CI nem conclui F0 sozinho.
+
 ## 1. Topologia e materiais
 
 ```text

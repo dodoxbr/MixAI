@@ -76,7 +76,7 @@ export interface RealMixerOptions {
   indeterminateWindowMs?: number;
   reconnectBaseMs?: number;
   reconnectMaxDelayMs?: number;
-  /** Só para testes: troca o WebSocket usado pela biblioteca. */
+  /** Construtor injetado: WebSocket falso nos testes ou gate de transporte do F0C. */
   webSocketCtor?: unknown;
   onTrace?: (event: string) => void;
 }
