@@ -28,12 +28,21 @@ function bearer(req: FastifyRequest): string | undefined {
   return h?.startsWith('Bearer ') ? h.slice(7).trim() : undefined;
 }
 
-function principalOf(core: ServerCore, req: FastifyRequest, reply: FastifyReply, proxy = false): Principal | undefined {
-  const p = core.auth.authenticate(bearer(req), proxy ? undefined : req.socket.remoteAddress);
-  if (!p) {
-    void reply.code(401).send({ serverId: core.serverId, result: fail('UNAUTHORIZED', 'Sessão inválida ou servidor reiniciado. Entre de novo com o PIN.') });
-  }
-  return p;
+/** Set only by the entry's root hook; routes cannot opt into local MCP authentication. */
+const requestAuthentication = new WeakMap<FastifyRequest, {
+  principal: Principal | undefined;
+  authenticate(token: unknown): Principal | undefined;
+}>();
+
+function unauthorized(core: ServerCore, reply: FastifyReply) {
+  return reply.code(401).send({ serverId: core.serverId, result: fail('UNAUTHORIZED', 'Sessão inválida ou servidor reiniciado. Entre de novo com o PIN.') });
+}
+
+function principalOf(core: ServerCore, req: FastifyRequest, reply: FastifyReply): Principal | undefined {
+  const p = requestAuthentication.get(req)?.principal;
+  if (p && core.auth.isActive(p)) return p;
+  void unauthorized(core, reply);
+  return undefined;
 }
 
 function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) {
@@ -62,6 +71,18 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
       }
     });
   }
+
+  // Applies to EVERY route (including future routes and public endpoints with credentials).
+  // Never let a handler reinterpret a proxy connection as a local MCP connection.
+  app.addHook('onRequest', async (req, reply) => {
+    const ip = proxy ? undefined : req.socket.remoteAddress;
+    const authenticate = (token: unknown) => core.auth.authenticate(token, ip);
+    const principal = authenticate(bearer(req));
+    requestAuthentication.set(req, { principal, authenticate });
+    if (proxy && req.headers.authorization !== undefined && !principal) {
+      return unauthorized(core, reply);
+    }
+  });
 
   // Cabeçalhos de segurança da interface: só carrega código e conexões do próprio servidor.
   app.addHook('onSend', async (req, reply, payload) => {
@@ -120,19 +141,19 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
   app.post('/api/logout', async (req) => ({ ok: core.auth.logout(bearer(req)) }));
 
   app.get('/api/state', async (req, reply) => {
-    const p = principalOf(core, req, reply, proxy);
+    const p = principalOf(core, req, reply);
     if (!p) return reply;
     return { serverId: core.serverId, role: p.role, snapshot: core.snapshotFor(p.role) };
   });
 
   app.post('/api/command', async (req, reply) => {
-    const p = principalOf(core, req, reply, proxy);
+    const p = principalOf(core, req, reply);
     if (!p) return reply;
     return sendCommand(core, reply, await core.execute(p, (req.body ?? {}) as object));
   });
 
   app.get('/api/pending', async (req, reply) => {
-    const p = principalOf(core, req, reply, proxy);
+    const p = principalOf(core, req, reply);
     if (!p) return reply;
     const r = core.listPending(p);
     if (!r.ok) return reply.code(403).send({ serverId: core.serverId, result: r.result });
@@ -141,7 +162,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
 
   for (const action of ['approve', 'reject'] as const) {
     app.post<{ Params: { id: string } }>(`/api/pending/:id/${action}`, async (req, reply) => {
-      const p = principalOf(core, req, reply, proxy);
+      const p = principalOf(core, req, reply);
       if (!p) return reply;
       const body = (req.body ?? {}) as { requestId?: unknown; serverId?: unknown };
       const r =
@@ -152,7 +173,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
     });
   }
 
-  app.get('/ws', { websocket: true }, (socket, req) => wsSession(core, socket, proxy ? undefined : req.socket.remoteAddress));
+  app.get('/ws', { websocket: true }, (socket, req) => wsSession(core, socket, token => requestAuthentication.get(req)?.authenticate(token)));
 
   return app;
 }
@@ -164,7 +185,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
  *     mesmo ciclo, então nenhum evento escapa entre o snapshot e a assinatura;
  *  3. eventos levam fromRevision/revision; se o cliente notar um buraco, manda {type:"resync"}.
  */
-function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) {
+function wsSession(core: ServerCore, socket: WebSocket, authenticate: (token: unknown) => Principal | undefined) {
   let principal: Principal | undefined;
   const cleanups: Array<() => void> = [];
   let meterTimer: NodeJS.Timeout | undefined;
@@ -242,7 +263,7 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
     }
     if (!principal) {
       if (msg.type !== 'auth') return close(WS_CLOSE.UNAUTHORIZED, 'A primeira mensagem deve ser {type:"auth", token}.', 'no_auth');
-      const p = core.auth.authenticate(msg.token, ip);
+      const p = authenticate(msg.token);
       if (!p) return close(WS_CLOSE.UNAUTHORIZED, 'Sessão inválida ou servidor reiniciado. Entre de novo com o PIN.', 'unknown_session');
       return start(p);
     }

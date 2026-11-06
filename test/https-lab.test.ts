@@ -27,6 +27,8 @@ it('isolates proxy authentication, preserves human permissions and rejects forei
   cleanups.push(() => t.server.close());
   const ingress = await buildHttp(t.server.core, { labProxyOrigin: origin });
   cleanups.push(() => ingress.close());
+  const futureHandler = { called: false };
+  ingress.post('/api/future-route', async () => { futureHandler.called = true; return { ok: true }; });
   await ingress.listen({ host: '127.0.0.1', port: 0 });
   const address = ingress.server.address() as { port: number };
   const request = (path: string, token?: string, headers: Record<string, string> = {}, body?: object) => new Promise<{ status: number; json(): Promise<any>; headers: Headers }>((resolve, reject) => {
@@ -47,6 +49,15 @@ it('isolates proxy authentication, preserves human permissions and rejects forei
   const agent = readFileSync(join(t.dir, 'agent-lab.token'), 'utf8');
   expect((await t.http('/api/state', { token: agent })).status).toBe(200);
   expect((await request('/api/state', agent, { 'x-forwarded-for': '127.0.0.1', forwarded: 'for=127.0.0.1' })).status).toBe(401);
+  // Includes public/new handlers: a forgotten principalOf() cannot admit MCP credentials.
+  for (const [path, body] of [
+    ['/api/hello', undefined], ['/api/login', { pin: OPERATOR_PIN }], ['/api/logout', {}],
+    ['/api/command', {}], ['/api/pending', undefined], ['/api/pending/fake/approve', {}],
+    ['/api/pending/fake/reject', {}], ['/api/future-route', {}],
+  ] as const) {
+    expect((await request(path, agent, {}, body)).status, path).toBe(401);
+  }
+  expect(futureHandler.called).toBe(false);
   const op = await t.login(OPERATOR_PIN);
   const musician = await t.login(MUSICIAN_PIN);
   expect((await request('/api/state', op, { origin })).status).toBe(200);

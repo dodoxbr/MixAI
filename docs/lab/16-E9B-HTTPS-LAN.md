@@ -27,6 +27,14 @@ original preserva o MCP. Não apontar o proxy para 8790, 8791, o IP da Ui16 ou o
 serviço. A habilitação é recusada em REAL/mock, antes da criação/conexão do mixer;
 `--real` sobrepondo LAB também falha. Recusa LAN HTTP simultânea (`server.lan.enabled`).
 
+A política de autenticação é vinculada à entrada por um hook global, antes dos
+handlers: qualquer credencial HTTP inválida nessa entrada (inclusive token MCP)
+recebe 401, mesmo em rota pública ou adicionada no futuro. As rotas leem somente o
+principal autenticado pelo hook; `principalOf()` não recebe flags de segurança e
+revalida a sessão antes do uso. WebSocket usa o mesmo autenticador da entrada para
+o primeiro frame. A entrada local mantém autenticação MCP por loopback. A regra
+não depende de cada endpoint lembrar como o proxy autentica.
+
 O backend exige Host exatamente igual ao host:porta de `origin`; se houver Origin,
 exige correspondência exata, inclusive protocolo e porta. `null`/origens externas
 são recusadas antes do login ou Upgrade WS. Clientes nativos sem Origin continuam
