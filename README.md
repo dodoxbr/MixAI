@@ -305,3 +305,6 @@ test/                 testes (Vitest)
 
 Experimento de voz E9A (desativado por padrão, somente LAB, sem execução de comandos):
 [arquitetura, HTTPS/WSS e avaliação de provedores](docs/E9A-SPEECH-SPIKE.md).
+
+HTTPS/WSS privado opcional para LAB (Yoga + Android, voz continua OFF):
+[instalação manual e validação E9B](docs/lab/16-E9B-HTTPS-LAN.md).

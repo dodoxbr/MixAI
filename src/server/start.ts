@@ -12,6 +12,7 @@ import { Auth } from './auth.js';
 import { ServerCore } from './core.js';
 import { buildHttp } from './http.js';
 import { listenHosts } from './listen.js';
+import { httpsLabOptions } from './https-lab.js';
 import { SimulatedMeters } from './meters.js';
 import { ClaudeClient } from '../ai/claude.js';
 import { UsageTracker } from '../ai/usage.js';
@@ -40,6 +41,7 @@ export async function startServer(
   const { config } = loaded;
   const mode = config.mixer.mode;
   const dataDir = loaded.dataDir ?? join(process.cwd(), 'data');
+  const proxy = httpsLabOptions(config); // valida antes de criar/conectar qualquer mixer
   const hosts = listenHosts(config); // valida a rede ANTES de tocar na mesa
   const port = opts.port ?? serverPort(config);
 
@@ -107,6 +109,13 @@ export async function startServer(
       await http.listen({ host, port: boundPort });
       const addr = http.server.address();
       if (addr && typeof addr === 'object') boundPort = addr.port; // porta 0 nos testes
+    }
+    if (proxy) {
+      if (proxy.port === boundPort) throw new Error('HTTPS LAB: porta do proxy deve diferir da porta HTTP local.');
+      const ingress = await buildHttp(core, { labProxyOrigin: proxy.origin, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      https.push(ingress);
+      await ingress.listen({ host: '127.0.0.1', port: proxy.port });
+      opts.log?.(`HTTPS LAB: entrada do proxy em 127.0.0.1:${proxy.port}; origem HTTPS privada esperada: ${proxy.origin}`);
     }
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(tokenFile, agentToken, { mode: 0o600 });

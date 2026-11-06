@@ -28,12 +28,21 @@ function bearer(req: FastifyRequest): string | undefined {
   return h?.startsWith('Bearer ') ? h.slice(7).trim() : undefined;
 }
 
+/** Set only by the entry's root hook; routes cannot opt into local MCP authentication. */
+const requestAuthentication = new WeakMap<FastifyRequest, {
+  principal: Principal | undefined;
+  authenticate(token: unknown): Principal | undefined;
+}>();
+
+function unauthorized(core: ServerCore, reply: FastifyReply) {
+  return reply.code(401).send({ serverId: core.serverId, result: fail('UNAUTHORIZED', 'Sessão inválida ou servidor reiniciado. Entre de novo com o PIN.') });
+}
+
 function principalOf(core: ServerCore, req: FastifyRequest, reply: FastifyReply): Principal | undefined {
-  const p = core.auth.authenticate(bearer(req), req.socket.remoteAddress);
-  if (!p) {
-    void reply.code(401).send({ serverId: core.serverId, result: fail('UNAUTHORIZED', 'Sessão inválida ou servidor reiniciado. Entre de novo com o PIN.') });
-  }
-  return p;
+  const p = requestAuthentication.get(req)?.principal;
+  if (p && core.auth.isActive(p)) return p;
+  void unauthorized(core, reply);
+  return undefined;
 }
 
 function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) {
@@ -45,14 +54,39 @@ function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) 
  * instância por endereço de escuta: 127.0.0.1 e, se configurado, o IP do Wi-Fi), sempre com o
  * MESMO core: um só controlador, um só estado, uma só fila.
  */
-export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string } = {}): Promise<FastifyInstance> {
+export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string; labProxyOrigin?: string } = {}): Promise<FastifyInstance> {
   // forceCloseConnections: ao desligar, encerra TODAS as conexões na hora. Sem isso, conexões
   // abertas pelo navegador sem requisição (pré-conexão) seguram o desligamento por até 60 s.
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 512 * 1024, forceCloseConnections: true });
   await app.register(websocket, { options: { maxPayload: 512 * 1024 } });
 
+  const proxy = opts.labProxyOrigin !== undefined;
+  if (proxy) {
+    if (core.mode !== 'lab') throw new Error('HTTPS LAB exige modo lab.');
+    const origin = new URL(opts.labProxyOrigin!);
+    app.addHook('onRequest', async (req, reply) => {
+      // Não confiar em Forwarded/X-Forwarded-* nem transformar visitantes em MCP local.
+      if (req.headers.host !== origin.host || (req.headers.origin !== undefined && req.headers.origin !== origin.origin)) {
+        return reply.code(403).send({ result: fail('FORBIDDEN', 'Host ou origem inválida para HTTPS LAB.') });
+      }
+    });
+  }
+
+  // Applies to EVERY route (including future routes and public endpoints with credentials).
+  // Never let a handler reinterpret a proxy connection as a local MCP connection.
+  app.addHook('onRequest', async (req, reply) => {
+    const ip = proxy ? undefined : req.socket.remoteAddress;
+    const authenticate = (token: unknown) => core.auth.authenticate(token, ip);
+    const principal = authenticate(bearer(req));
+    requestAuthentication.set(req, { principal, authenticate });
+    if (proxy && req.headers.authorization !== undefined && !principal) {
+      return unauthorized(core, reply);
+    }
+  });
+
   // Cabeçalhos de segurança da interface: só carrega código e conexões do próprio servidor.
   app.addHook('onSend', async (req, reply, payload) => {
+    if (proxy) void reply.header('cache-control', 'no-store');
     void reply.header('x-content-type-options', 'nosniff');
     void reply.header('referrer-policy', 'no-referrer');
     if (!req.url.startsWith('/api/')) {
@@ -88,7 +122,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
 
   app.post('/api/login', async (req, reply) => {
     const body = (req.body ?? {}) as { pin?: unknown };
-    const ip = req.socket.remoteAddress ?? '?';
+    const ip = proxy ? 'https-lab-proxy' : req.socket.remoteAddress ?? '?';
     const r = core.auth.login(body.pin, ip);
     if (!r.ok) {
       core.audit(undefined, 'login_failed', r.message, { ip, code: r.code });
@@ -148,7 +182,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
     });
   }
 
-  app.get('/ws', { websocket: true }, (socket, req) => wsSession(core, socket, req.socket.remoteAddress));
+  app.get('/ws', { websocket: true }, (socket, req) => wsSession(core, socket, token => requestAuthentication.get(req)?.authenticate(token)));
 
   return app;
 }
@@ -160,7 +194,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
  *     mesmo ciclo, então nenhum evento escapa entre o snapshot e a assinatura;
  *  3. eventos levam fromRevision/revision; se o cliente notar um buraco, manda {type:"resync"}.
  */
-function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) {
+function wsSession(core: ServerCore, socket: WebSocket, authenticate: (token: unknown) => Principal | undefined) {
   let principal: Principal | undefined;
   const cleanups: Array<() => void> = [];
   let meterTimer: NodeJS.Timeout | undefined;
@@ -238,7 +272,7 @@ function wsSession(core: ServerCore, socket: WebSocket, ip: string | undefined) 
     }
     if (!principal) {
       if (msg.type !== 'auth') return close(WS_CLOSE.UNAUTHORIZED, 'A primeira mensagem deve ser {type:"auth", token}.', 'no_auth');
-      const p = core.auth.authenticate(msg.token, ip);
+      const p = authenticate(msg.token);
       if (!p) return close(WS_CLOSE.UNAUTHORIZED, 'Sessão inválida ou servidor reiniciado. Entre de novo com o PIN.', 'unknown_session');
       return start(p);
     }
