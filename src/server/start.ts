@@ -13,6 +13,8 @@ import { ServerCore } from './core.js';
 import { buildHttp } from './http.js';
 import { listenHosts } from './listen.js';
 import { httpsLabOptions } from './https-lab.js';
+import { PrivatePtt } from '../speech/private-ptt.js';
+import type { FileSpeechRecognizer } from '../speech/whisper-file.js';
 import { SimulatedMeters } from './meters.js';
 import { ClaudeClient } from '../ai/claude.js';
 import { UsageTracker } from '../ai/usage.js';
@@ -36,12 +38,13 @@ export interface RunningServer {
  */
 export async function startServer(
   loaded: LoadedConfig,
-  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch } = {},
+  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer } = {},
 ): Promise<RunningServer> {
   const { config } = loaded;
   const mode = config.mixer.mode;
   const dataDir = loaded.dataDir ?? join(process.cwd(), 'data');
   const proxy = httpsLabOptions(config); // valida antes de criar/conectar qualquer mixer
+  if (config.server.privatePtt.enabled && (!proxy || mode !== 'lab')) throw new Error('privatePtt exige modo LAB e entrada HTTPS LAB configurada.');
   const hosts = listenHosts(config); // valida a rede ANTES de tocar na mesa
   const port = opts.port ?? serverPort(config);
 
@@ -112,7 +115,7 @@ export async function startServer(
     }
     if (proxy) {
       if (proxy.port === boundPort) throw new Error('HTTPS LAB: porta do proxy deve diferir da porta HTTP local.');
-      const ingress = await buildHttp(core, { labProxyOrigin: proxy.origin, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const ingress = await buildHttp(core, { labProxyOrigin: proxy.origin, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(ingress);
       await ingress.listen({ host: '127.0.0.1', port: proxy.port });
       opts.log?.(`HTTPS LAB: entrada do proxy em 127.0.0.1:${proxy.port}; origem HTTPS privada esperada: ${proxy.origin}`);

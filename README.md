@@ -325,3 +325,6 @@ HTTPS/WSS privado opcional para LAB (Yoga + Android, voz continua OFF):
 
 Bancada offline de STT E9C (whisper.cpp configurado manualmente, sem execução de comandos):
 [guia Windows, WAV autorizado, demo simulada e métricas](docs/lab/17-E9C-OFFLINE-STT.md).
+
+Push-to-talk privado E9D (opt-in server-side, operador em HTTPS LAB, prévia sem comandos):
+[configuração e validação Yoga/Android](docs/lab/18-E9D-PRIVATE-PTT-LAB.md).

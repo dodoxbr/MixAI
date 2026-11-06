@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { LiveService } from './core/live.service';
 import { SessionService } from './core/session.service';
+import { PrivatePttComponent } from './speech/private-ptt.component';
 import { SpeechSpikeComponent } from './speech/speech-spike.component';
 import { FonesComponent } from './views/fones.component';
 import { LoginComponent } from './views/login.component';
@@ -10,13 +11,14 @@ import { MesaComponent } from './views/mesa.component';
 @Component({
   selector: 'mx-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LoginComponent, MesaComponent, FonesComponent, SpeechSpikeComponent],
+  imports: [LoginComponent, MesaComponent, FonesComponent, SpeechSpikeComponent, PrivatePttComponent],
   template: `
     @if (!session.token()) {
       <mx-login />
     } @else if (session.role() === 'operator') {
       <mx-mesa />
       <mx-speech-spike />
+      <mx-private-ptt />
     } @else {
       <mx-fones />
     }

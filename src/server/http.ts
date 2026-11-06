@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import type { PrivatePtt } from '../speech/private-ptt.js';
+import { privatePttRoutes } from './private-ptt-routes.js';
 import type { WebSocket } from 'ws';
 import type { Result } from '../core/controller.js';
 import type { Principal, RevokeReason } from './auth.js';
@@ -59,7 +61,7 @@ function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) 
  * instância por endereço de escuta: 127.0.0.1 e, se configurado, o IP do Wi-Fi), sempre com o
  * MESMO core: um só controlador, um só estado, uma só fila.
  */
-export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string; labProxyOrigin?: string } = {}): Promise<FastifyInstance> {
+export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string; labProxyOrigin?: string; privatePtt?: PrivatePtt } = {}): Promise<FastifyInstance> {
   // forceCloseConnections: ao desligar, encerra TODAS as conexões na hora. Sem isso, conexões
   // abertas pelo navegador sem requisição (pré-conexão) seguram o desligamento por até 60 s.
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 512 * 1024, forceCloseConnections: true });
@@ -121,6 +123,14 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
         .type('text/plain; charset=utf-8')
         .send('Interface web não encontrada. Rode "npm run build:web" e reinicie o servidor. A API está em /api/hello.'),
     );
+  }
+
+  if (proxy && opts.privatePtt) {
+    await app.register(privatePttRoutes, { service: opts.privatePtt, origin: opts.labProxyOrigin!,
+      principal: (req: FastifyRequest, reply: FastifyReply) => principalOf(core, req, reply),
+      active: (p: Principal) => core.auth.isActive(p),
+      onRevoke: (callback: (session: string) => void) => core.auth.onRevoke(id => callback(id)),
+    });
   }
 
   app.get('/api/hello', async () => core.hello());
@@ -195,7 +205,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
     });
   }
 
-  app.get('/ws', { websocket: true }, (socket, req) => wsSession(core, socket, token => requestAuthentication.get(req)?.authenticate(token)));
+  app.get('/ws', { websocket: true }, (socket, req) => wsSession(core, socket, token => requestAuthentication.get(req)?.authenticate(token), p => opts.privatePtt?.cancel(p.id)));
 
   return app;
 }
@@ -207,7 +217,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
  *     mesmo ciclo, então nenhum evento escapa entre o snapshot e a assinatura;
  *  3. eventos levam fromRevision/revision; se o cliente notar um buraco, manda {type:"resync"}.
  */
-function wsSession(core: ServerCore, socket: WebSocket, authenticate: (token: unknown) => Principal | undefined) {
+function wsSession(core: ServerCore, socket: WebSocket, authenticate: (token: unknown) => Principal | undefined, onDisconnect?: (p: Principal) => void) {
   let principal: Principal | undefined;
   const cleanups: Array<() => void> = [];
   let meterTimer: NodeJS.Timeout | undefined;
@@ -384,6 +394,7 @@ function wsSession(core: ServerCore, socket: WebSocket, authenticate: (token: un
   });
 
   socket.on('close', () => {
+    if (principal) onDisconnect?.(principal);
     clearTimeout(authTimer);
     stopAll();
     if (principal && gestures.size) void core.endFaders(principal, [...gestures]);

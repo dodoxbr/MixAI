@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 import WebSocket from 'ws';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { silentWav } from '../support/speech-fixtures.js';
 import { MUSICIAN_PIN, OPERATOR_PIN, startTestServer, wsClient } from '../server-support.js';
 
 let dir: string;
@@ -32,7 +33,7 @@ function http(path: string, opts: { trust?: boolean; token?: string; body?: obje
     const req = request(`${origin}${path}`, {
       ca: opts.trust === false ? undefined : ca,
       method: opts.body ? 'POST' : 'GET',
-      headers: { ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}), ...(opts.body ? { 'content-type': 'application/json' } : {}), ...opts.headers },
+      headers: { ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}), ...(opts.body ? { 'content-type': Buffer.isBuffer(opts.body) ? 'audio/wav' : 'application/json' } : {}), ...opts.headers },
     }, res => {
       // Decodificar no stream preserva caracteres UTF-8 divididos entre chunks TLS.
       res.setEncoding('utf8');
@@ -42,7 +43,7 @@ function http(path: string, opts: { trust?: boolean; token?: string; body?: obje
     });
     req.on('error', reject);
     req.setTimeout(3000, () => req.destroy(new Error('HTTPS timeout')));
-    req.end(opts.body ? JSON.stringify(opts.body) : undefined);
+    req.end(Buffer.isBuffer(opts.body) ? opts.body : opts.body ? JSON.stringify(opts.body) : undefined);
   });
 }
 async function socket(token: string) {
@@ -76,7 +77,7 @@ beforeAll(async () => {
   const upstreamPort = await port();
   const tlsPort = await port();
   origin = `https://localhost:${tlsPort}`;
-  t = await startTestServer({ server: { httpsLab: { enabled: true, origin, port: upstreamPort } } });
+  t = await startTestServer({ server: { httpsLab: { enabled: true, origin, port: upstreamPort }, privatePtt: { enabled: true } }, pttRecognizer: { recognize: async () => ({ provider: 'whisper.cpp', language: 'pt-BR', text: 'Prévia simulada: não altere nada.', processingMs: 1, audioSeconds: 0.1, realTimeFactor: 0.01, cpuMs: null, peakRssBytes: null }) } });
   const env = { ...process.env, MIXAI_HTTPS_HOST: 'localhost', MIXAI_HTTPS_BIND: '127.0.0.1', MIXAI_HTTPS_PORT: String(tlsPort), MIXAI_HTTPS_UPSTREAM_PORT: String(upstreamPort), MIXAI_HTTPS_CERT: join(dir, 'leaf.pem'), MIXAI_HTTPS_KEY: join(dir, 'leaf.key'), XDG_DATA_HOME: dir, XDG_CONFIG_HOME: dir };
   caddy = spawn(resolve(process.env['CADDY_BIN']), ['run', '--config', resolve('config/https-lab/Caddyfile.example'), '--adapter', 'caddyfile'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   caddy.stdout?.on('data', chunk => { diagnostics += String(chunk); });
@@ -208,4 +209,23 @@ it('diagnosis authenticates at ingress: proxy MCP 401, local MCP 403, operator H
   await http('/api/logout', { token: operator, body: {} });
   expect(await opSocket.closed).toBe(4401);
   expect((await http(endpoint, { token: operator, body: input })).status).toBe(401);
+});
+
+it('transports bounded PCM through verified TLS only for the LAB operator, without replay or commands', async () => {
+  const before = t!.controller.state.snapshot();
+  const token = (await http('/api/login', { body: { pin: OPERATOR_PIN } })).body.token;
+  const musician = (await http('/api/login', { body: { pin: MUSICIAN_PIN } })).body.token;
+  const agent = readFileSync(join(t!.dir, 'agent-lab.token'), 'utf8');
+  expect((await t!.http('/api/speech/status', { token })).status).toBe(404);
+  expect((await http('/api/speech/status', { token: agent })).status).toBe(401);
+  expect((await http('/api/speech/status', { token: musician })).status).toBe(403);
+  expect((await http('/api/speech/status', { token })).body.configured).toBe(true);
+  expect((await http('/api/speech/ticket', { token, body: {}, headers: { origin: 'null' } })).status).toBe(403);
+  const ticket = (await http('/api/speech/ticket', { token, body: {}, headers: { origin } })).body.ticket;
+  const result = await http('/api/speech/transcribe', { token, body: silentWav(), headers: { origin, 'x-ptt-ticket': ticket } });
+  expect(result.status).toBe(200); expect(result.body).toEqual({ text: 'Prévia simulada: não altere nada.', preview: true, simulated: true });
+  expect(result.headers['cache-control']).toBe('no-store');
+  expect((await http('/api/speech/transcribe', { token, body: silentWav(), headers: { origin, 'x-ptt-ticket': ticket } })).status).toBe(409);
+  expect(t!.controller.state.snapshot()).toEqual(before);
+  expect(diagnostics).not.toContain('Prévia simulada'); expect(diagnostics).not.toContain(ticket);
 });

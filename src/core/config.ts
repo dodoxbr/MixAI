@@ -71,6 +71,12 @@ const ConfigSchema = z.object({
         origin: z.string().default(''),
         port: z.number().int().min(1024).max(65535).default(8792),
       }).strict().prefault({}),
+      /** E9D: opt-in exclusivo da entrada HTTPS LAB. Caminhos locais, nunca públicos. */
+      privatePtt: z.object({
+        enabled: z.boolean().default(false),
+        executable: z.string().optional(),
+        model: z.string().optional(),
+      }).strict().prefault({}),
       /** AUX que os músicos podem ajustar (o retorno compartilhado dos fones). */
       musicianAux: z.number().int().min(1).default(1),
       /**
