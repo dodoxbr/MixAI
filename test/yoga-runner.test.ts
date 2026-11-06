@@ -6,7 +6,7 @@ it('ensaio ignora overrides REAL, credenciais e caminhos da máquina do operador
     MIXAI_LAB_FILE: 'ensaio-do-operador', MIXAI_LAN_HOST: 'rede', MIXAI_OPERATOR_PIN_HASH: 'secreto',
     ANTHROPIC_API_KEY: 'segredo', OPENAI_API_KEY: 'segredo', CADDY_BIN: 'proxy' };
   const before = { ...original };
-  expect(smokeEnvironment(original, 'temporario')).toEqual({ PATH: 'path', MIXAI_MODE: 'lab', MIXAI_SMOKE_DIR: 'temporario' });
+  expect(smokeEnvironment(original, 'temporario')).toEqual({ PATH: 'path', MIXAI_MODE: 'lab', MIXAI_SMOKE_DIR: 'temporario', NG_CLI_ANALYTICS: 'false', CI: 'true' });
   expect(original).toEqual(before);
 });
 it('nenhum argumento permite escolher REAL, IP, rede ou desabilitar os testes', () => {

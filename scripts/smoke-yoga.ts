@@ -10,7 +10,7 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export function smokeEnvironment(env: NodeJS.ProcessEnv, dir: string): NodeJS.ProcessEnv {
   const clean = Object.fromEntries(Object.entries(env).filter(([key]) =>
     !/^(MIXAI_|ANTHROPIC_|OPENAI_|CADDY_|VITE_|NG_)/i.test(key)));
-  return { ...clean, MIXAI_MODE: 'lab', MIXAI_SMOKE_DIR: dir };
+  return { ...clean, MIXAI_MODE: 'lab', MIXAI_SMOKE_DIR: dir, NG_CLI_ANALYTICS: 'false', CI: 'true' };
 }
 export function smokeOptions(args: string[]) {
   if (args.some((a) => a !== '--built') || args.length > 1) throw new Error('Uso: npm run smoke:yoga [-- --built]. Nenhuma opção REAL/rede é aceita.');

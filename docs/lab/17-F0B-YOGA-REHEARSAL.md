@@ -44,6 +44,7 @@ código 0 = aprovado, código diferente de zero = falha/interrupção.
   Não imprimir ou publicar esses valores. AI externa e proxy HTTPS ficam OFF.
 - Remove overrides `MIXAI_*` e variáveis de credenciais de provedores do ambiente dos
   filhos, sem alterar o ambiente do terminal. Não reutiliza `data/`, cenas ou logs locais.
+  Desativa analytics/prompts de build por variáveis dos filhos, sem configurar Angular global.
 - Reutiliza `startLab`/`startTestServer`, `enter`, `wsClient`, StateSync e a fixture E8A.
   O teste falha se `RealMixer` for carregado. HTTP/WS são limitados ao loopback nos clientes
   Node e navegador. O endereço rejeitado `targetMode: real` é apenas envelope recusado
