@@ -60,7 +60,12 @@ async function open(l: Lab, pin: string, device: object) {
 const writes = (sent: Array<Record<string, unknown>>) =>
   sent.filter((m) => m['type'] !== 'command' || !['list_names', 'history', 'mix_state', 'scene_list'].includes((m['command'] as { type: string }).type));
 const v = (l: Lab, key: string) => (l.mixer.read(key as never) as { value?: unknown }).value;
-const box = async (page: Page, selector: string) => (await page.locator(selector).first().boundingBox())!;
+/** Mede um elemento depois que ele existe e está visível (os canais chegam depois do login). */
+const box = async (page: Page, selector: string) => {
+  const loc = page.locator(selector).first();
+  await loc.waitFor({ state: 'visible' });
+  return (await loc.boundingBox())!;
+};
 
 /** Rotação sem recarregar: muda o tamanho da janela e avisa a página como o Android faz. */
 async function rotate(page: Page, to: { viewport: { width: number; height: number } }) {
@@ -74,6 +79,9 @@ async function rotate(page: Page, to: { viewport: { width: number; height: numbe
 
 /** Faders utilizáveis: inteiros dentro da fileira de canais (nada cortado) e altos o bastante. */
 async function expectFadersUsable(page: Page) {
+  // espera os canais e os valores reais (não "desconhecido") antes de medir
+  await expect.poll(() => page.locator('.strips .strip-value').first().textContent(), { timeout: 5000 }).toContain('dB');
+  await page.waitForTimeout(150); // um quadro de layout depois da última mudança de tamanho
   const strips = await box(page, '.strips');
   const fader = await box(page, '.strips mx-fader');
   const mute = await box(page, '.strips .mx-strip .mute');
