@@ -32,7 +32,7 @@
 
 | Etapa | Entrega | Compl. | Depende de | Usa a mesa real? |
 | --- | --- | --- | --- | --- |
-| **F0** | Teste na mesa real (roteiro do README), sem código novo | P | mesa chegar | **sim** (supervisionado) |
+| **F0** | Preparação offline + leitura física (Issue #15) | P | mesa chegar | **sim** (supervisionado) |
 | **E0** | Endurecer o núcleo | P/M | — | não |
 | **E1** | Estado observável + `LabMixer` persistente | M | E0 | não |
 | **E2** | Servidor único (HTTP + WS) e MCP como cliente | M | E1 | não |
@@ -50,17 +50,15 @@ Ordem sugerida: **F0** (sábado), **E0 → E1 → E2 → E3** (primeira entrega 
 
 ## F0 — Teste na mesa real
 
-- **Objetivo:** provar que conectar, ler, mover um fader e desfazer funcionam na Ui16 de vocês.
-- **Funcionalidades:** nenhuma nova. Usa o console (`npm run console`) com o roteiro do README.
-- **Arquivos:** nenhum.
-- **Dependências:** a mesa, um cabo de rede e o notebook.
-- **Riscos:** firmware diferente do esperado pela biblioteca; IP diferente de 10.10.1.1.
-- **Testes:**
-  - sem PA nem fones ligados: `status`, `estado`, `desce voz 1`, `desfazer`;
-  - conferir na interface oficial se o fader mexeu;
-  - registrar a versão de firmware, o IP e quantos AUX aparecem.
-- **Aceite:** fader e mute mudam na tela oficial; o desfazer volta; o log registra.
-- **Extra recomendado:** desligar o cabo no meio, dar um comando, religar e confirmar que **nada** foi reenviado (valida o achado 4.1 em hardware).
+**Escopo atualizado pela Issue #15:** preparar offline e depois observar a Ui16
+somente em leitura, com PA/fones desconectados. Roteiro executável e diagnóstico
+Windows em [13-F0-PREFLIGHT-READONLY.md](13-F0-PREFLIGHT-READONLY.md);
+[formulário de evidências](14-F0-EVIDENCIAS-MODELO.md).
+
+O procedimento antigo de mover fader, mute e desfazer fica suspenso. A preparação
+reutiliza console, RealMixer e supervisor; simula queda, recuperação e ausência de
+replay com WebSocket falso. O teste físico depende da chegada da mesa e não é
+substituído por CI. Escrita real e E6 não são autorizadas por este aceite.
 
 ## E0 — Correção e fortalecimento do núcleo
 

@@ -61,6 +61,8 @@ export function gatedSocketCtor(Base: SocketCtor, gate: GenerationGate): SocketC
 }
 
 export interface RealMixerOptions {
+  /** Diagnóstico F0: nunca permite escrita, mesmo com sincronização completa. */
+  readOnly?: boolean;
   ip: string;
   model?: 'ui12' | 'ui16' | 'ui24';
   /** Parâmetros obrigatórios para liberar escrita (canais do channels.yaml + master). */
@@ -89,6 +91,7 @@ export class RealMixer implements MixerAdapter {
     const c = DEVICE_CAPABILITIES[opts.model ?? 'ui16'];
     this.caps = { model: c.model, inputs: c.input, aux: c.aux };
     this.supervisor = new ConnectionSupervisor({
+      readOnly: opts.readOnly,
       createUi: (gate) => {
         const Base = (opts.webSocketCtor ?? (globalThis as { WebSocket?: unknown }).WebSocket) as SocketCtor | undefined;
         if (!Base) throw new Error('WebSocket indisponível neste Node (use Node 22 ou mais novo)');
@@ -127,7 +130,7 @@ export class RealMixer implements MixerAdapter {
     const ip = this.opts.ip;
     switch (this.supervisor.link()) {
       case 'READY':
-        return `Conectado à mesa em ${ip}`;
+        return `Conectado à mesa em ${ip}${this.opts.readOnly ? ' — F0 SOMENTE LEITURA' : ''}`;
       case 'CONNECTING':
         return `Conectando à mesa em ${ip}...`;
       case 'SYNCING':

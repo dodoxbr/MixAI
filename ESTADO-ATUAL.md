@@ -4,8 +4,11 @@ Controle da mesa **Soundcraft Ui16** por IA, para uma banda de samba/pagode amad
 O músico pede em português ("mais Fred no fone", "abaixa o surdo") e o Claude ajusta a mesa,
 sempre passando por travas de segurança.
 
-**Status:** Fases 0 e 1 prontas e testadas com a mesa **simulada**. Ainda não foi testado
-na mesa real (a mesa não chegou).
+**Status:** testes existentes validados com mesa **simulada**. A Ui16 ainda não chegou:
+F0 físico permanece pendente. A Issue #15 prepara rede Windows/Yoga, console protegido
+somente leitura, simulações de perda/recuperação e formulário de evidências em
+[13-F0-PREFLIGHT-READONLY.md](docs/lab/13-F0-PREFLIGHT-READONLY.md).
+Não há autorização de escrita REAL ou implementação de E6 nesta preparação.
 
 ---
 
@@ -138,8 +141,10 @@ a pilha de desfazer (até 50 ações).
 
 ## 5. Testes
 
-335 testes do servidor + 49 da interface + 55 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
+368 testes do servidor + 55 da interface + 60 de integração com navegador passando (Linux; o CI roda também em Windows). Inclui, além dos 40 originais:
 
+- **F0 (Issue #15):** console somente leitura, bloqueio no supervisor, quedas repetidas
+  sem replay e formulário físico pendente; [validação offline](docs/lab/15-F0-VALIDACAO-OFFLINE.md);
 - nomes da banda (acentos, apelidos, "canal 9", "retorno do ...", limites da Ui16);
 - travas (teto, passo máximo, confirmação, rate limit, sem conexão);
 - **E1:** laboratório persistente (gravação atômica, backup, recuperação), registro central de
@@ -186,7 +191,7 @@ a pilha de desfazer (até 50 ações).
 
 | Fase | Conteúdo | Portão |
 | --- | --- | --- |
-| 0 | Teste na mesa real (conectar, ler, mover fader, desfazer) | fader mexe na mesa real |
+| 0 | Preparação offline e teste somente leitura (Issue #15) | leitura física pendente; escrita suspensa |
 | 2 | App web no celular (servido pelo notebook) + acesso exclusivo à mesa | ensaio inteiro só por texto |
 | 3 | Skill "técnico de som": EQ, HPF, ciclo de ajuste ("tá embolado") | um evento sem mexer à mão |
 | 4 | Voz (Whisper local) + memória da banda | banda aprova os ajustes |

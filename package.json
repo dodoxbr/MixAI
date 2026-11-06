@@ -8,6 +8,7 @@
     "test": "vitest run",
     "start": "node dist/index.js",
     "console": "node dist/console.js",
+    "console:f0": "node dist/console.js --real --readonly",
     "console:mock": "node dist/console.js --mock",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.test.json",
     "start:mock": "node dist/index.js --mock",
