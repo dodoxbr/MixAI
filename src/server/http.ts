@@ -28,8 +28,8 @@ function bearer(req: FastifyRequest): string | undefined {
   return h?.startsWith('Bearer ') ? h.slice(7).trim() : undefined;
 }
 
-function principalOf(core: ServerCore, req: FastifyRequest, reply: FastifyReply): Principal | undefined {
-  const p = core.auth.authenticate(bearer(req), req.socket.remoteAddress);
+function principalOf(core: ServerCore, req: FastifyRequest, reply: FastifyReply, proxy = false): Principal | undefined {
+  const p = core.auth.authenticate(bearer(req), proxy ? undefined : req.socket.remoteAddress);
   if (!p) {
     void reply.code(401).send({ serverId: core.serverId, result: fail('UNAUTHORIZED', 'Sessão inválida ou servidor reiniciado. Entre de novo com o PIN.') });
   }
@@ -45,14 +45,27 @@ function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) 
  * instância por endereço de escuta: 127.0.0.1 e, se configurado, o IP do Wi-Fi), sempre com o
  * MESMO core: um só controlador, um só estado, uma só fila.
  */
-export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string } = {}): Promise<FastifyInstance> {
+export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string; labProxyOrigin?: string } = {}): Promise<FastifyInstance> {
   // forceCloseConnections: ao desligar, encerra TODAS as conexões na hora. Sem isso, conexões
   // abertas pelo navegador sem requisição (pré-conexão) seguram o desligamento por até 60 s.
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 512 * 1024, forceCloseConnections: true });
   await app.register(websocket, { options: { maxPayload: 512 * 1024 } });
 
+  const proxy = opts.labProxyOrigin !== undefined;
+  if (proxy) {
+    if (core.mode !== 'lab') throw new Error('HTTPS LAB exige modo lab.');
+    const origin = new URL(opts.labProxyOrigin!);
+    app.addHook('onRequest', async (req, reply) => {
+      // Não confiar em Forwarded/X-Forwarded-* nem transformar visitantes em MCP local.
+      if (req.headers.host !== origin.host || (req.headers.origin !== undefined && req.headers.origin !== origin.origin)) {
+        return reply.code(403).send({ result: fail('FORBIDDEN', 'Host ou origem inválida para HTTPS LAB.') });
+      }
+    });
+  }
+
   // Cabeçalhos de segurança da interface: só carrega código e conexões do próprio servidor.
   app.addHook('onSend', async (req, reply, payload) => {
+    if (proxy) void reply.header('cache-control', 'no-store');
     void reply.header('x-content-type-options', 'nosniff');
     void reply.header('referrer-policy', 'no-referrer');
     if (!req.url.startsWith('/api/')) {
@@ -88,7 +101,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
 
   app.post('/api/login', async (req, reply) => {
     const body = (req.body ?? {}) as { pin?: unknown };
-    const ip = req.socket.remoteAddress ?? '?';
+    const ip = proxy ? 'https-lab-proxy' : req.socket.remoteAddress ?? '?';
     const r = core.auth.login(body.pin, ip);
     if (!r.ok) {
       core.audit(undefined, 'login_failed', r.message, { ip, code: r.code });
@@ -107,19 +120,19 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
   app.post('/api/logout', async (req) => ({ ok: core.auth.logout(bearer(req)) }));
 
   app.get('/api/state', async (req, reply) => {
-    const p = principalOf(core, req, reply);
+    const p = principalOf(core, req, reply, proxy);
     if (!p) return reply;
     return { serverId: core.serverId, role: p.role, snapshot: core.snapshotFor(p.role) };
   });
 
   app.post('/api/command', async (req, reply) => {
-    const p = principalOf(core, req, reply);
+    const p = principalOf(core, req, reply, proxy);
     if (!p) return reply;
     return sendCommand(core, reply, await core.execute(p, (req.body ?? {}) as object));
   });
 
   app.get('/api/pending', async (req, reply) => {
-    const p = principalOf(core, req, reply);
+    const p = principalOf(core, req, reply, proxy);
     if (!p) return reply;
     const r = core.listPending(p);
     if (!r.ok) return reply.code(403).send({ serverId: core.serverId, result: r.result });
@@ -128,7 +141,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
 
   for (const action of ['approve', 'reject'] as const) {
     app.post<{ Params: { id: string } }>(`/api/pending/:id/${action}`, async (req, reply) => {
-      const p = principalOf(core, req, reply);
+      const p = principalOf(core, req, reply, proxy);
       if (!p) return reply;
       const body = (req.body ?? {}) as { requestId?: unknown; serverId?: unknown };
       const r =
@@ -139,7 +152,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
     });
   }
 
-  app.get('/ws', { websocket: true }, (socket, req) => wsSession(core, socket, req.socket.remoteAddress));
+  app.get('/ws', { websocket: true }, (socket, req) => wsSession(core, socket, proxy ? undefined : req.socket.remoteAddress));
 
   return app;
 }

@@ -28,7 +28,7 @@ async function main() {
   const auth = server.core.auth.configured();
   if (!auth.operator) info('ATENÇÃO: PIN do operador não configurado. Rode "npm run pin -- operador".');
   if (!auth.musician) info('PIN dos músicos não configurado (opcional). Rode "npm run pin -- musico".');
-  if (server.urls.length === 1) info('acesso só neste notebook (para os celulares, configure server.lan no config/config.local.yaml).');
+  if (server.urls.length === 1 && !loaded.config.server.httpsLab.enabled) info('acesso só neste notebook (para os celulares, configure server.lan no config/config.local.yaml).');
 
   const shutdown = async () => {
     info('desligando...');

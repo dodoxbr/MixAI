@@ -140,3 +140,6 @@ dispositivo indisponível, autorização/flag, release, permissão/transcrição
 limite de tempo e lifecycle do painel. Não requerem microfone físico. O resultado
 real de comandos/builds e limitações do executor está registrado no PR; isso não
 substitui a matriz Android/Windows e HTTPS acima.
+
+Infraestrutura opcional de proxy LAB implementada na E9B:
+[guia HTTPS/WSS privado no Yoga](lab/16-E9B-HTTPS-LAN.md). A flag de voz segue OFF.

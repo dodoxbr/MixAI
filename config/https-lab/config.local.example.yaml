@@ -1,0 +1,13 @@
+# Incorporar manualmente ao config/config.local.yaml existente; não sobrescrever PINs/dados.
+# Este arquivo não é carregado automaticamente. Backend HTTP permanece em loopback.
+mixer:
+  mode: lab
+server:
+  lan:
+    enabled: false
+  httpsLab:
+    enabled: true
+    origin: https://mixai.home.arpa:8443
+    port: 8792
+ai:
+  enabled: false

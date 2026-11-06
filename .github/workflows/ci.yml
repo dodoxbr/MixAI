@@ -44,3 +44,26 @@ jobs:
       - name: Testes de integração da interface
         if: runner.os == 'Linux'
         run: npm run test:e2e
+
+  https-lab:
+    name: HTTPS LAB proxy (Caddy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Download and verify optional test proxy
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/mixai-caddy"
+          cd "$RUNNER_TEMP/mixai-caddy"
+          curl --fail --location --silent --show-error https://github.com/caddyserver/caddy/releases/download/v2.10.2/caddy_2.10.2_linux_amd64.tar.gz -o caddy_2.10.2_linux_amd64.tar.gz
+          curl --fail --location --silent --show-error https://github.com/caddyserver/caddy/releases/download/v2.10.2/caddy_2.10.2_checksums.txt -o checksums.txt
+          sha512sum --check --ignore-missing checksums.txt
+          tar -xzf caddy_2.10.2_linux_amd64.tar.gz caddy
+      - name: HTTPS/WSS with disposable test CA (never uploaded)
+        shell: bash
+        run: CADDY_BIN="$RUNNER_TEMP/mixai-caddy/caddy" npm run test:https-lab

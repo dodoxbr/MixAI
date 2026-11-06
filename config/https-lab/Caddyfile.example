@@ -1,0 +1,24 @@
+# Opt-in manual. Ler docs/lab/16-E9B-HTTPS-LAN.md antes de usar.
+# Não usar tls internal/ACME: certificados confiáveis devem ser fornecidos manualmente.
+{
+	admin off
+	auto_https off
+	servers {
+		protocols h1 h2
+	}
+	persist_config off
+}
+
+https://{$MIXAI_HTTPS_HOST}:{$MIXAI_HTTPS_PORT:8443} {
+	# IPv4 específico do Wi-Fi do YOGA, nunca 0.0.0.0, IP da Ui16 ou Ethernet.
+	bind {$MIXAI_HTTPS_BIND}
+	tls "{$MIXAI_HTTPS_CERT}" "{$MIXAI_HTTPS_KEY}"
+	# Sem access log (PIN, headers e frames não devem ir a logs).
+	reverse_proxy 127.0.0.1:{$MIXAI_HTTPS_UPSTREAM_PORT:8792} {
+		# O backend valida Host/Origin e ignora identidade encaminhada.
+		header_up -Forwarded
+		header_up -X-Forwarded-For
+		header_up -X-Forwarded-Host
+		header_up -X-Forwarded-Proto
+	}
+}

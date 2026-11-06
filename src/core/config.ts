@@ -65,6 +65,12 @@ const ConfigSchema = z.object({
           host: z.string().default(''),
         })
         .prefault({}),
+      /** Entrada loopback exclusiva do proxy HTTPS LAB. Nunca recebe o token MCP. */
+      httpsLab: z.object({
+        enabled: z.boolean().default(false),
+        origin: z.string().default(''),
+        port: z.number().int().min(1024).max(65535).default(8792),
+      }).strict().prefault({}),
       /** AUX que os músicos podem ajustar (o retorno compartilhado dos fones). */
       musicianAux: z.number().int().min(1).default(1),
       /**
