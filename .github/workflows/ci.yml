@@ -44,6 +44,18 @@ jobs:
       - name: Testes de integração da interface
         if: runner.os == 'Linux'
         run: npm run test:e2e
+      # O smoke nunca instala browser: o provisionamento do runner é explícito aqui.
+      - name: Instalar Chromium para ensaio Windows
+        if: runner.os == 'Windows'
+        run: npx playwright install chromium
+      - name: Ensaio Yoga LAB (loopback, descartável, sem hardware)
+        run: npm run smoke:yoga -- --built
+      - name: Preflight Windows somente consulta e sanitização
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/yoga-preflight.ps1 -SelfTest
+          ./scripts/yoga-preflight.ps1
 
   https-lab:
     name: HTTPS LAB proxy (Caddy)

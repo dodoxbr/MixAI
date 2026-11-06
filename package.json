@@ -23,6 +23,7 @@
     "test:web": "npm --prefix web test",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "screenshots": "vitest run --config vitest.screens.config.ts",
+    "smoke:yoga": "tsx scripts/smoke-yoga.ts",
     "test:https-lab": "vitest run --config vitest.proxy.config.ts"
   },
   "author": "",
