@@ -123,6 +123,7 @@ export class ServerCore {
   }
 
   stop(): void {
+    this.assistant?.stop();
     if (this.sweepTimer) clearInterval(this.sweepTimer);
     this.sweepTimer = undefined;
   }
@@ -453,6 +454,7 @@ export class ServerCore {
 
   /** Fecha pendências vencidas ou invalidadas (ex.: reset, mudança na mesa) e avisa as telas. */
   sweep(): void {
+    this.assistant?.sweep();
     void this.controller.sweepGestures(3000);
     const now = this.now();
     for (const [id, rec] of this.pendings) {

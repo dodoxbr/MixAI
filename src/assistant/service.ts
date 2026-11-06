@@ -1,4 +1,5 @@
-import { consult, consultationSchema, parseConsultation, type ConsultationReply } from './sound-engineer.js';
+import { DiagnosticContexts, conversationSchema, contextStampSchema, type DiagnosticContextView } from './diagnostic-context.js';
+import { consult, isShortConsultationAnswer, consultationSchema, parseConsultation, type ConsultationReply } from './sound-engineer.js';
 import type { AiContext, AiTurn, AiUsage, ClaudeClient } from '../ai/claude.js';
 import type { NamedEntry } from '../core/config.js';
 import type { Result } from '../core/controller.js';
@@ -9,12 +10,13 @@ import type { Principal } from '../server/auth.js';
 import { musicianHasPA } from '../server/policy.js';
 import type { ServerCore } from '../server/core.js';
 import type { ClarifyOption, ParseOutcome } from './intent.js';
-import { parseRequest, type StepSizes } from './nl-parser.js';
+import { isExplicitMixRequest, parseRequest, type StepSizes } from './nl-parser.js';
 import { fmtDb, ProposalBuilder, type Proposal, type ProposalCard } from './proposals.js';
 
 export interface AssistantReply {
   kind: 'proposals' | 'clarify' | 'answer' | 'error' | 'diagnosis';
   diagnosis?: ConsultationReply['diagnosis'];
+  diagnosticContext?: DiagnosticContextView | null;
   references?: ConsultationReply['references'];
   diagnosticOptions?: ConsultationReply['diagnosticOptions'];
   source: 'local' | 'ai' | 'feedback';
@@ -52,6 +54,8 @@ export class AssistantService {
   private history = new Map<string, AiTurn[]>();
   private aiBusy = new Set<string>();
   readonly builder: ProposalBuilder;
+  readonly diagnosticContexts: DiagnosticContexts;
+  private removeRevokeListener: () => void;
 
   constructor(
     private core: ServerCore,
@@ -65,6 +69,8 @@ export class AssistantService {
     },
   ) {
     this.builder = new ProposalBuilder(core.controller, core.policy, opts.ttlMs, opts.clock);
+    this.diagnosticContexts = new DiagnosticContexts(core.controller.names, core.policy.musicianAux, { clock: opts.clock });
+    this.removeRevokeListener = core.auth.onRevoke(id => this.diagnosticContexts.revoke(id));
   }
 
   aiAvailable(): boolean {
@@ -75,16 +81,31 @@ export class AssistantService {
     return (this.opts.clock ?? Date.now)();
   }
 
-  async ask(p: Principal, raw: unknown): Promise<AssistantReply> {
+  async ask(p: Principal, raw: unknown, stamp?: unknown): Promise<AssistantReply> {
+    if (!this.core.auth.isActive(p)) return error('UNAUTHORIZED', 'Sessão encerrada ou expirada.');
     if (p.role === 'agent') return error('FORBIDDEN', 'O assistente da tela é para pessoas; o Claude Desktop usa as ferramentas MCP.');
     const text = typeof raw === 'string' ? raw.trim() : '';
     if (!text) return error('INVALID', 'Escreva o que você deseja ajustar.');
     if (text.length > MAX_TEXT) return error('INVALID', `Pedido longo demais (máximo ${MAX_TEXT} caracteres).`);
     const consultation = parseConsultation(text, this.core.controller.names);
-    if (consultation) return this.diagnose(p, consultation);
-    this.prune();
-
     const local = parseRequest(text, { names: this.core.controller.names, role: p.role, steps: this.opts.steps, musicianPA: musicianHasPA(this.core.policy) });
+    const explicitCommand = isExplicitMixRequest(text);
+    if (explicitCommand && !consultation && local.kind !== 'unknown') {
+      this.diagnosticContexts.clear(p.id);
+      this.prune();
+      return { ...this.render(p, local, 'local'), diagnosticContext: null };
+    }
+    if (explicitCommand && consultation) return { kind: 'answer', source: 'local', text: 'A mensagem mistura comando e diagnóstico. Reformule como comando direto ou como queixa técnica; nada foi ajustado.', code: 'DIAGNOSIS_AMBIGUOUS' };
+    if (p.role === 'operator') {
+      const parsedStamp = contextStampSchema.optional().safeParse(stamp);
+      if (!parsedStamp.success) return error('INVALID', 'Referência de esclarecimento inválida.');
+      const technical = this.diagnosticContexts.handle(p.id, text, parsedStamp.data);
+      if (technical) return technical;
+    } else if (consultation || stamp !== undefined) {
+      return error('FORBIDDEN', 'A consulta técnica é exclusiva do operador autenticado.');
+    }
+    if (isShortConsultationAnswer(text, this.core.controller.names)) return { kind: 'answer', source: 'local', code: 'DIAGNOSIS_CONTEXT_REQUIRED', text: 'Não há esclarecimento técnico autorizado pendente. Descreva uma queixa completa ou um comando direto.' };
+    this.prune();
     if (local.kind !== 'unknown') return this.render(p, local, 'local');
 
     const ai = this.opts.ai;
@@ -122,8 +143,28 @@ export class AssistantService {
     return reply;
   }
 
+  /** Endpoint explicitamente de conversa técnica: comandos nunca viram propostas aqui. */
+  conversation(p: Principal, raw: unknown): AssistantReply {
+    if (!this.core.auth.isActive(p)) return error('UNAUTHORIZED', 'Sessão encerrada ou expirada.');
+    if (p.role !== 'operator') return error('FORBIDDEN', 'A consulta técnica é exclusiva do operador autenticado.');
+    const parsed = conversationSchema.safeParse(raw);
+    if (!parsed.success) return error('INVALID', 'Conversa inválida: use texto de até 500 caracteres e a revisão opcional do esclarecimento.');
+    if (isExplicitMixRequest(parsed.data.text)) return error('INVALID', 'Este endpoint aceita somente consulta; envie comandos diretos pelo chat de comandos.');
+    return this.diagnosticContexts.handle(p.id, parsed.data.text, parsed.data.context)
+      ?? error('INVALID', 'Descreva uma queixa técnica ou responda a um esclarecimento pendente.');
+  }
+
+  sweep(): void {
+    this.diagnosticContexts.sweep(id => this.core.auth.isActive({ id, role: 'operator', label: 'operador' }));
+  }
+  stop(): void {
+    this.removeRevokeListener();
+    this.diagnosticContexts.stop();
+  }
+
   /** B3A: autorização e validação comuns a chat, HTTP e WS. Nunca cria propostas. */
   diagnose(p: Principal, raw: unknown): AssistantReply {
+    if (!this.core.auth.isActive(p)) return error('UNAUTHORIZED', 'Sessão encerrada ou expirada.');
     if (p.role !== 'operator') return error('FORBIDDEN', 'A consulta técnica é exclusiva do operador autenticado.');
     const parsed = consultationSchema.safeParse(raw);
     if (!parsed.success) return error('INVALID', 'Consulta inválida: informe sintoma, canal/fonte, destino e evidências com origem, sem comandos ou aprovações.');

@@ -71,7 +71,7 @@ describe('B3A: consulta autorizada, offline e sem escrita', () => {
     const answer = await ask({ type: 'assistant_diagnose', input: fones.input });
     expect(answer.diagnosis.status).toBe('theoretical_guidance');
     expect(answer.text).toContain('AUX 1 compartilhado');
-    expect(answer.diagnosis.evidence[0].detail).toBe('Meu cavaco está estridente. O que podemos fazer?');
+    expect(answer.diagnosis.evidence[0].detail).toBe('Meu cavaco está estridente.');
     expect((t.mixer as MockMixer).writes).toEqual([]);
   });
 

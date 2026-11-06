@@ -214,7 +214,13 @@ export interface ProposalCard {
   expiresAt: string;
 }
 
+export interface DiagnosticContext {
+  id: string; revision: number; expiresAt: string; subject: string; question: string;
+  field: 'symptom' | 'channel' | 'instrument' | 'destination';
+}
+
 export interface AssistantReply {
+  diagnosticContext?: DiagnosticContext | null;
   kind: 'proposals' | 'clarify' | 'answer' | 'error' | 'diagnosis';
   references?: Array<{ title: string; url: string; locator: string }>;
   diagnosticOptions?: Array<{ label: string; input: Record<string, unknown> }>;

@@ -1,5 +1,9 @@
 # B3A — Sound Engineer no chat, somente leitura (Issue #20)
 
+A continuação por sessão com respostas curtas está disponível na
+[B3B — conversa contextual](CONTEXT.md). Os exemplos sem memória abaixo registram
+o comportamento original da B3A; a rota estruturada B3A continua sem estado.
+
 O operador pode consultar a base do PR #18 no chat existente, mesmo com IA externa
 desligada ou indisponível. Queixas reconhecidas seguem uma consulta determinística;
 comandos diretos continuam no caminho E4/E2. Não existe integração das recomendações

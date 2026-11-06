@@ -23,6 +23,7 @@ export interface ConsultationReply {
   diagnosis?: Diagnosis;
   references: Array<{ title: string; url: string; locator: string }>;
   diagnosticOptions: ConsultationChoice[];
+  clarification?: { field: 'symptom' | 'channel' | 'instrument' | 'destination'; question: string };
 }
 
 const vocabulary: Record<Symptom, string[]> = {
@@ -59,13 +60,19 @@ export function parseConsultation(raw: string, names: ChannelMap): ConsultationI
   const fones = /\b(fone|fones|retorno|retornos|monitor)\b|\baux 1\b/.test(text);
   const unsupportedAux = [...text.matchAll(/\baux (\d+)\b/g)].some(m => Number(m[1]) !== 1);
   const destination = pa !== fones && !unsupportedAux ? (pa ? 'pa' : 'fones') : undefined;
-  // Só afirmações explícitas viram relato. Perguntas conceituais/negações não comprovam queixa.
-  const asserted = /\b(esta|estao|ta|tao|ficou|ficaram|soa|soando)\b/.test(text)
-    && !/\b(nao|se|hipoteticamente)\b|o que (e|significa)/.test(text);
+  // Só a frase afirmativa referente ao sintoma vira evidência; não guarda perguntas ou turnos alheios.
+  const observations = (raw.match(/[^.!?]+[.!?]?/g) ?? []).filter(sentence => {
+    const clause = normalized(sentence);
+    return !sentence.trim().endsWith('?') && !/^(?:por que|porque|como|quando|onde|qual|quais|o que|sera que)\b/.test(clause) && /\b(esta|estao|ta|tao|ficou|ficaram|soa|soando)\b/.test(clause)
+      && !/\b(nao|se|hipoteticamente|sera|talvez)\b|o que (e|significa)/.test(clause);
+  });
   return {
     symptom: symptoms.length === 1 ? symptoms[0] : undefined,
     channel, instrument: channel ? instrumentFor(channel, names) : undefined, destination,
-    evidence: asserted ? symptoms.map(symptom => ({ id: `chat-${symptom}`, kind: 'operator_report' as const, symptom, detail: raw })) : [],
+    evidence: symptoms.flatMap(symptom => {
+      const observed = observations.filter(sentence => vocabulary[symptom].some(term => has(normalized(sentence), term)));
+      return observed.length ? [{ id: `chat-${symptom}`, kind: 'operator_report' as const, symptom, detail: observed.join(' ').replace(/[\u0000-\u001f\u007f]/g, ' ').trim() }] : [];
+    }),
   };
 }
 
@@ -78,16 +85,21 @@ export function consult(input: ConsultationInput, names: ChannelMap, fonesAux: n
   const context = { ...input, instrument: input.instrument ?? inferred };
   const choices: ConsultationChoice[] = [];
   const missing: string[] = [];
+  let field: NonNullable<ConsultationReply['clarification']>['field'] | undefined;
   if (!context.symptom) {
+    field = 'symptom';
     missing.push('Qual sintoma você deseja investigar?');
     for (const symptom of symptomSchema.options) choices.push({ label: symptom, input: { ...context, symptom } });
   } else if (!context.channel) {
+    field = 'channel';
     missing.push('Qual canal/fonte da banda apresenta a queixa? Escolha um de cada vez.');
     for (const channel of names.inputs.list()) choices.push({ label: channel.name, input: { ...context, channel: channel.number, instrument: undefined } });
   } else if (!context.instrument) {
+    field = 'instrument';
     missing.push('Qual instrumento está ligado a esse canal? O cadastro não identifica um guia com segurança.');
     for (const instrument of instrumentSchema.options) choices.push({ label: instrument, input: { ...context, instrument } });
   } else if (!context.destination) {
+    field = 'destination';
     missing.push('No PA (som do público) ou nos FONES (AUX 1 compartilhado por todos)?');
     for (const destination of ['pa', 'fones'] as const) choices.push({ label: destination === 'pa' ? 'PA' : 'Fones', input: { ...context, destination } });
   }
@@ -122,10 +134,36 @@ export function consult(input: ConsultationInput, names: ChannelMap, fonesAux: n
     }
     lines.push('Limitações:', ...diagnosis.limitations.map(l => `• ${l}`));
   }
-  lines.push('Nenhum ajuste foi criado ou aplicado. Esta consulta não gera proposta, botão Aplicar ou aprovação. Para nova informação, reformule o relato completo ou use as opções de consulta.');
+  lines.push('Nenhum ajuste foi criado ou aplicado. Esta consulta não gera proposta, botão Aplicar ou aprovação. Responda ao esclarecimento pendente no chat ou use as opções de consulta.');
   return {
     kind: 'diagnosis', source: 'local', text: lines.join('\n'), diagnosis,
     references: [...new Map(refs.map(ref => [`${ref.source}:${ref.locator}`, { title: sources[ref.source].title, url: sources[ref.source].url, locator: ref.locator }])).values()],
     diagnosticOptions: choices,
+    clarification: field ? { field, question: missing[0]! } : undefined,
   };
+}
+
+
+/** Uma resposta curta só pode selecionar o campo que o servidor está perguntando. */
+export function matchConsultationChoice(raw: string, reply: ConsultationReply, names: ChannelMap): ConsultationChoice | undefined {
+  const text = normalized(raw).replace(/^(?:(?:no|nos|na|nas|e|eh|o|a|esta|ta) )+/, '');
+  const exact = reply.diagnosticOptions.filter(choice => normalized(choice.label) === text);
+  if (exact.length === 1) return exact[0];
+  if (reply.clarification?.field === 'channel') {
+    const channel = names.inputs.list().find(ch => String(ch.number) === text || `canal ${ch.number}` === text);
+    const terms = names.inputs.terms().filter(term => term.phrase === text);
+    const numbers = new Set(channel ? [channel.number] : terms.map(term => term.number));
+    if (numbers.size === 1) return reply.diagnosticOptions.find(choice => choice.input.channel === [...numbers][0]);
+  }
+  if (reply.clarification?.field === 'destination') {
+    if (['fone', 'fones', 'retorno', 'aux 1'].includes(text)) return reply.diagnosticOptions.find(choice => choice.input.destination === 'fones');
+  }
+  return undefined;
+}
+
+export function isShortConsultationAnswer(raw: string, names: ChannelMap): boolean {
+  const text = normalized(raw);
+  return /^(?:(?:no|nos) )?(?:pa|fone|fones|retorno|aux 1)$/.test(text)
+    || /^(?:sim|sim por favor|nao|ok|isso|isso mesmo|pode ser|confirmo|confirmar|aplicar|aprovar|[+-]?\d+(?:[.,]\d+)?(?: db)?|canal \d+)$/.test(text)
+    || names.inputs.terms().some(term => term.phrase === text);
 }

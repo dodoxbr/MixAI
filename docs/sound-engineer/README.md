@@ -1,5 +1,6 @@
 # MixAI Sound Engineer — primeira entrega da Issue #13
 
+A continuação temporária por sessão está em [B3B — contexto](CONTEXT.md).
 A integração de consulta ao chat está documentada em [B3A — somente leitura](CHAT-READONLY.md).
 O texto abaixo registra o escopo original da base do PR #18.
 

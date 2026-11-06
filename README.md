@@ -149,7 +149,10 @@ O operador pode perguntar no chat: **"Meu cavaco está estridente. O que podemos
 A consulta funciona offline, usa a base especializada e pede fonte/destino quando
 necessário. Mostra hipóteses, justificativas e referências, sem ouvir áudio nem criar
 ajustes ou cartões de aplicação. Músicos continuam usando os comandos autorizados.
-Detalhes e exemplos: [Sound Engineer no chat](docs/sound-engineer/CHAT-READONLY.md).
+Após a pergunta PA/FONES, basta responder **"PA"** ou **"Fones"**. O contexto é
+temporário, isolado por sessão e pode ser cancelado; não cria ajustes.
+Detalhes: [consulta técnica](docs/sound-engineer/CHAT-READONLY.md) e
+[conversa contextual](docs/sound-engineer/CONTEXT.md).
 
 ## Ligar no Claude Desktop
 

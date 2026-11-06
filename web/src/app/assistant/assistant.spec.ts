@@ -53,6 +53,57 @@ const CARD = {
 };
 
 describe('assistente na tela', () => {
+  it('contexto pendente mostra assunto acessível, envia PA com revisão e desabilita opções antigas', async () => {
+    const { ws, el, say, settle } = await boot();
+    const req = await say('Meu cavaco está estridente');
+    const context = { id: 'd599a8db-b6ef-4d42-b0f7-a6f3b55ce891', revision: 1, expiresAt: new Date(Date.now() + 300000).toISOString(), subject: 'Cavaco · estridente · Destino a confirmar', field: 'destination', question: 'No PA ou nos FONES?' };
+    ws.receive({ type: 'assistant_reply', requestId: req['requestId'], reply: { kind: 'diagnosis', source: 'local', text: 'Não ouvi o som.', diagnosticContext: context, diagnosticOptions: [{ label: 'Fones', input: { evidence: ['não reenviar dado privado'] } }] } });
+    await settle();
+    expect(el.querySelector('[aria-label="Diagnóstico pendente"]')?.textContent).toContain('Cavaco');
+    const next = await say('PA');
+    expect(next).toMatchObject({ type: 'assistant', text: 'PA', context: { id: context.id, revision: 1 } });
+    ws.receive({ type: 'assistant_reply', requestId: next['requestId'], reply: { kind: 'diagnosis', source: 'local', text: 'Destino: PA. Sem ajustes.', diagnosticContext: null } });
+    await settle();
+    expect(el.querySelector('[aria-label="Diagnóstico pendente"]')).toBeNull();
+    expect((el.querySelector('.diagnostic-options button') as HTMLButtonElement).disabled).toBe(true);
+    expect(ws.last('proposal_apply')).toBeUndefined();
+  });
+
+  it('opções contextuais enviam apenas resposta e revisão; cancelar limpa o assunto', async () => {
+    const { ws, el, say, settle } = await boot();
+    const req = await say('Meu cavaco está estridente');
+    const context = { id: 'd599a8db-b6ef-4d42-b0f7-a6f3b55ce891', revision: 1, expiresAt: new Date(Date.now() + 300000).toISOString(), subject: 'Cavaco · estridente', field: 'destination', question: 'PA ou FONES?' };
+    ws.receive({ type: 'assistant_reply', requestId: req['requestId'], reply: { kind: 'diagnosis', source: 'local', text: 'Consulta', diagnosticContext: context, diagnosticOptions: [{ label: 'Fones', input: { detail: 'dado privado que não é autoridade do cliente' } }] } });
+    await settle();
+    (el.querySelector('.diagnostic-options button') as HTMLButtonElement).click(); await settle();
+    const sent = ws.last('assistant_conversation')!;
+    expect(sent).toMatchObject({ input: { text: 'Fones', context: { id: context.id, revision: 1 } } });
+    expect(JSON.stringify(sent)).not.toContain('dado privado');
+    ws.receive({ type: 'assistant_reply', requestId: sent['requestId'], reply: { kind: 'answer', source: 'local', text: 'Esclareça', diagnosticContext: context } });
+    await settle();
+    (el.querySelector('.diagnostic-context button') as HTMLButtonElement).click(); await settle();
+    const cancel = ws.last('assistant')!;
+    expect(cancel).toMatchObject({ text: 'cancelar diagnóstico', context: { id: context.id, revision: 1 } });
+    ws.receive({ type: 'assistant_reply', requestId: cancel['requestId'], reply: { kind: 'answer', source: 'local', text: 'Diagnóstico encerrado', diagnosticContext: null } });
+    await settle();
+    expect(el.querySelector('.diagnostic-context')).toBeNull();
+  });
+
+  it('projeção expirada e troca de sessão eliminam o assunto, inclusive resposta atrasada', async () => {
+    const { ws, el, say, settle } = await boot();
+    const req = await say('Meu cavaco está estridente');
+    const context = { id: 'd599a8db-b6ef-4d42-b0f7-a6f3b55ce891', revision: 1, expiresAt: new Date(Date.now() - 1).toISOString(), subject: 'Cavaco', field: 'destination', question: 'PA ou FONES?' };
+    ws.receive({ type: 'assistant_reply', requestId: req['requestId'], reply: { kind: 'diagnosis', source: 'local', text: 'Consulta expirada', diagnosticContext: context } });
+    await settle();
+    expect(el.querySelector('.diagnostic-context')).toBeNull();
+    const pending = await say('Minha voz está abafada');
+    TestBed.inject(SessionService).token.set('sessao-nova'); await settle();
+    ws.receive({ type: 'assistant_reply', requestId: pending['requestId'], reply: { kind: 'diagnosis', source: 'local', text: 'Relato privado anterior', diagnosticContext: { ...context, expiresAt: new Date(Date.now() + 300000).toISOString() } } });
+    await settle();
+    expect(el.querySelector('.diagnostic-context')).toBeNull();
+    expect(el.textContent).not.toContain('Relato privado anterior');
+  });
+
   it('consulta técnica mostra fontes e esclarece por consulta, sem botão de aplicar', async () => {
     const { ws, el, say, settle } = await boot();
     const req = await say('Meu cavaco está estridente. O que podemos fazer?');
