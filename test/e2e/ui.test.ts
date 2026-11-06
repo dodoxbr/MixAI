@@ -224,7 +224,7 @@ describe('interface E3 (LAB, navegador real)', () => {
 
     const phoneMus = await open(l, MUSICIAN_PIN, PHONE);
     const sizes = await phoneMus.locator('.step').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
-    expect(sizes.length).toBe(22);
+    expect(sizes.length).toBe(33); // 11 canais × (MUTE, −, +)
     expect(Math.min(...sizes)).toBeGreaterThanOrEqual(48);
   });
 });

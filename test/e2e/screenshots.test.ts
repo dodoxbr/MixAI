@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { it } from 'vitest';
+import { devices } from 'playwright';
 import { PROJECT_ROOT } from '../../src/core/config.js';
 import { bandChannels, enter, launch, MUSICIAN_PIN, OPERATOR_PIN, PHONE, startLab, YOGA } from './harness.js';
 
@@ -145,3 +146,39 @@ it('capturas das cenas (E5, Yoga)', async () => {
     await l.server.close();
   }
 }, 60_000);
+
+it('capturas do celular em retrato e deitado (operador e músico)', async () => {
+  const out = join(PROJECT_ROOT, 'docs', 'lab', 'img');
+  const l = await startLab({ channels: bandChannels(), server: { musicianAccess: 'pa_without_master' } });
+  const browser = await launch();
+  try {
+    const op = await l.login(OPERATOR_PIN);
+    const mix: Array<[number, number]> = [[1, -6], [2, -9], [3, -4], [4, -5], [5, -7], [6, -3], [7, -12], [8, -14], [9, -8], [10, -16]];
+    for (const [ch, db] of mix) await l.command(op, { type: 'set_level', channel: ch, db });
+    await l.command(op, { type: 'set_mute', channels: [7], aux: 1, muted: true });
+    await l.command(op, { type: 'set_mute', channels: [8], muted: true });
+    const shot = async (pin: string, device: object, file: string, prepare?: (p: import('playwright').Page) => Promise<void>) => {
+      const s = await enter(browser, l.base, pin, device);
+      await s.page.evaluate(() => scrollTo(0, 0));
+      if (prepare) await prepare(s.page);
+      await s.page.waitForTimeout(500);
+      await s.page.screenshot({ path: join(out, file) });
+      await s.ctx.close();
+    };
+    const portrait = devices['Galaxy S24']!;
+    const landscape = devices['Galaxy S24 landscape']!;
+    await shot(OPERATOR_PIN, portrait, 'mobile-operador-retrato.png');
+    await shot(OPERATOR_PIN, landscape, 'mobile-operador-deitado.png');
+    await shot(OPERATOR_PIN, landscape, 'mobile-operador-deitado-rolado.png', async (p) => {
+      await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+    });
+    await shot(MUSICIAN_PIN, portrait, 'mobile-musico-fones-retrato.png');
+    await shot(MUSICIAN_PIN, landscape, 'mobile-musico-fones-deitado.png');
+    await shot(MUSICIAN_PIN, landscape, 'mobile-musico-pa-deitado.png', async (p) => {
+      await p.getByRole('tab', { name: 'PA' }).click();
+    });
+  } finally {
+    await browser.close();
+    await l.server.close();
+  }
+}, 90_000);

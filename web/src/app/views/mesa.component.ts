@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { ActionsService } from '../core/actions.service';
 import { LiveService } from '../core/live.service';
 import { keys, type StateValue } from '../core/protocol';
@@ -59,7 +59,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       @if (bus() === 'fones' && narrow()) {
         <mx-fones-list />
       } @else {
-        <div class="strips" [class.is-fones]="bus() === 'fones'">
+        <div class="strips" #stripRow [class.is-fones]="bus() === 'fones'" (scroll)="rememberScroll()">
           @for (s of strips(); track s.number) {
             <mx-strip
               [name]="s.name"
@@ -165,7 +165,39 @@ export class MesaComponent {
     return 'A mesa não está pronta para comandos. Os controles voltam quando ela estiver.';
   });
 
+  private readonly stripsEl = viewChild<ElementRef<HTMLElement>>('stripRow');
+  /** Primeiro canal visível na rolagem horizontal (para manter ao girar a tela). */
+  private firstVisible = 0;
+  private restoring = false;
+
+  /** Guarda qual canal está à esquerda. Só leitura de layout: nada é enviado ao servidor. */
+  rememberScroll(): void {
+    if (this.restoring) return;
+    const el = this.stripsEl()?.nativeElement;
+    if (!el) return;
+    const kids = [...el.children] as HTMLElement[];
+    const i = kids.findIndex((k) => k.offsetLeft + k.offsetWidth / 2 >= el.scrollLeft);
+    this.firstVisible = Math.max(0, i);
+  }
+
   constructor() {
+    // Girar a tela muda o tamanho da área dos canais: volta a mostrar o mesmo canal à esquerda.
+    effect((onCleanup) => {
+      const el = this.stripsEl()?.nativeElement;
+      if (!el || typeof ResizeObserver !== 'function') return;
+      let last = el.clientWidth;
+      const ro = new ResizeObserver(() => {
+        if (el.clientWidth === last) return;
+        last = el.clientWidth;
+        const target = el.children[this.firstVisible] as HTMLElement | undefined;
+        if (!target) return;
+        this.restoring = true;
+        el.scrollLeft = Math.max(0, target.offsetLeft - el.offsetLeft);
+        requestAnimationFrame(() => (this.restoring = false));
+      });
+      ro.observe(el);
+      onCleanup(() => ro.disconnect());
+    });
     const mq = typeof matchMedia === 'function' ? matchMedia('(max-width: 720px)') : null;
     if (mq) {
       this.narrow.set(mq.matches);

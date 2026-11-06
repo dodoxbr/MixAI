@@ -40,7 +40,7 @@ const EMIT_MS = 33;
       (pointerdown)="down($event)"
       (pointermove)="move($event)"
       (pointerup)="up($event)"
-      (pointercancel)="up($event)"
+      (pointercancel)="cancel($event)"
       (lostpointercapture)="up($event)"
       (keydown)="key($event)"
     >
@@ -140,6 +140,21 @@ export class FaderComponent {
     const db = this.local();
     this.dragging.set(false);
     if (db !== null) this.moved.emit({ db, final: true });
+  }
+
+  /**
+   * O sistema cancelou o toque (girou a tela, rolagem do navegador, notificação...). Não é um
+   * "soltou": NADA é enviado. A tela volta a mostrar o valor do servidor; se o gesto já tinha
+   * enviado valores, o servidor fecha o gesto sozinho (um item no desfazer), como quando a
+   * conexão cai no meio de um arraste.
+   */
+  cancel(e: PointerEvent): void {
+    if (e.pointerId !== this.pointerId) return;
+    this.pointerId = null;
+    clearTimeout(this.pendingEmit);
+    this.pendingEmit = undefined;
+    this.dragging.set(false);
+    this.local.set(null);
   }
 
   key(e: KeyboardEvent): void {
