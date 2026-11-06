@@ -24,8 +24,9 @@ export async function startLab(opts: Parameters<typeof startTestServer>[0] = {})
 }
 
 /** Abre a tela e entra com o PIN pelo teclado numérico (como uma pessoa faria). */
-export async function enter(browser: Browser, base: string, pin: string, device: object = YOGA): Promise<{ ctx: BrowserContext; page: Page }> {
+export async function enter(browser: Browser, base: string, pin: string, device: object = YOGA, prepare?: (ctx: BrowserContext) => Promise<void>): Promise<{ ctx: BrowserContext; page: Page }> {
   const ctx = await browser.newContext({ ...device, baseURL: base });
+  await prepare?.(ctx);
   const page = await ctx.newPage();
   await page.goto('/');
   for (const d of pin) await page.getByRole('button', { name: d, exact: true }).click();

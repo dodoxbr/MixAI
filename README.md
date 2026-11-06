@@ -22,9 +22,17 @@ estimada, bypass, reset e desfazer. Tudo é simulado; veja [E7A](docs/lab/11-E7A
 cd mixai
 npm install
 npm run build
-npm test        # 368 testes, todos devem passar
+npm test        # testes do núcleo; todos devem passar
 npm ci --prefix web && npm run build:web   # interface (E3)
 ```
+
+## Ensaio integrado no Yoga (F0B)
+
+Com dependências e Chromium previamente instalados, rode `npm run smoke:yoga`.
+O comando faz builds/contratos e ensaia LAB em loopback/porta efêmera, com dados e PINs
+sintéticos descartáveis. Não usa a Ui16 nem altera a rede. Se faltar browser, informa
+como instalar separadamente, sem download automático. [Roteiro Windows/celular, diagnóstico
+somente consulta e portão para F0 físico](docs/lab/17-F0B-YOGA-REHEARSAL.md).
 
 ## Testar sem a mesa: laboratório ou simulador
 
@@ -311,3 +319,6 @@ Experimento de voz E9A (desativado por padrão, somente LAB, sem execução de c
 
 HTTPS/WSS privado opcional para LAB (Yoga + Android, voz continua OFF):
 [instalação manual e validação E9B](docs/lab/16-E9B-HTTPS-LAN.md).
+
+Bancada offline de STT E9C (whisper.cpp configurado manualmente, sem execução de comandos):
+[guia Windows, WAV autorizado, demo simulada e métricas](docs/lab/17-E9C-OFFLINE-STT.md).
