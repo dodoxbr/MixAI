@@ -8,7 +8,9 @@ Desde a v0.4 (E2) existe um **servidor único** (`npm run serve:lab` / `serve:re
 da mesa; o MCP do Claude Desktop é só um cliente dele. Detalhes: `docs/lab/06-E2-SERVIDOR.md`.
 
 No laboratório, o operador pode abrir **EQ LAB** para editar quatro bandas e HPF com curva
-estimada, bypass, reset e desfazer. Tudo é simulado; veja [E7A](docs/lab/11-E7A-EQ.md).
+estimada, bypass, reset e desfazer. Também pode comparar presets orientativos de samba/pagode
+e aplicar explicitamente no simulador. Tudo é simulado; veja [E7A](docs/lab/11-E7A-EQ.md)
+e [E7B — guias de EQ](docs/lab/16-E7B-EQ-GUIDES.md).
 
 ## O que precisa
 
@@ -55,9 +57,10 @@ npm run console:mock    # simulador em memória
   e o laboratório volta do `.bak` (ou do estado padrão), com aviso no log;
 - arquivo de uma versão **mais nova** do MixAI não é aberto nem alterado.
 
-O laboratório já guarda EQ de 4 bandas, HPF e bypass por canal, mas eles **ainda não têm
-tool nem tela**: entram nas próximas etapas (E7). Os valores iniciais do laboratório são
-neutros do MixAI, **não** os padrões de fábrica da Ui16.
+O laboratório guarda EQ de 4 bandas, HPF e bypass por canal. O operador pode editá-los
+na tela **EQ LAB** (E7A) e comparar/aplicar presets orientativos (E7B), exclusivamente
+no simulador. Esses parâmetros continuam `simulated_only`, sem aplicação à Ui16 real.
+Os valores iniciais do laboratório são neutros do MixAI, **não** os padrões de fábrica da Ui16.
 
 Exemplos no console:
 

@@ -1,6 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, output, signal } from '@angular/core';
 import { ActionsService } from '../core/actions.service';
 import { LiveService } from '../core/live.service';
+import { SessionService } from '../core/session.service';
+import { compareEqGuide, eqGuideContext, eqGuides, eqValues, type EqGuide } from '../../../../src/knowledge/sound-engineer/eq-guides';
 import { eqFilters, magnitudeDB, plotFrequency, plotPosition, type EqResponse } from '../../../../src/core/eq-response';
 
 @Component({
@@ -15,7 +17,7 @@ import { eqFilters, magnitudeDB, plotFrequency, plotPosition, type EqResponse } 
     <p class="eq-notice">SIMULADO — somente laboratório. Curva estimada, não medida na Ui16 real.</p>
     <label
       >Canal
-      <select aria-label="Canal do EQ" [value]="channel()" (change)="channel.set(+$any($event.target).value)">
+      <select aria-label="Canal do EQ" [value]="channel()" (change)="selectChannel(+$any($event.target).value)">
         @for (ch of live.channels(); track ch.number) {
           <option [value]="ch.number">{{ ch.name }}</option>
         }
@@ -32,6 +34,9 @@ import { eqFilters, magnitudeDB, plotFrequency, plotPosition, type EqResponse } 
           <text [attr.x]="x(hz)" y="292" text-anchor="middle">{{ hz }}</text>
         }
         <path [attr.d]="path()" fill="none" stroke="#65d4f5" stroke-width="3" />
+        @if (reviewed(); as guide) {
+          <path data-testid="eq-guide-curve" [attr.d]="guidePath()" fill="none" stroke="#ffce73" stroke-width="3" stroke-dasharray="8 4" />
+        }
         @for (b of preview()!.bands; track $index; let i = $index) {
           <circle
             [attr.cx]="x(b.freq)"
@@ -51,6 +56,54 @@ import { eqFilters, magnitudeDB, plotFrequency, plotPosition, type EqResponse } 
           />
         }
       </svg>
+      @if (live.hello()?.mode === 'lab') {
+        <section class="eq-guides" aria-label="Presets orientativos MixAI">
+          <h3>Presets orientativos MixAI</h3>
+          <p>SIMULADO — somente LAB; referência inicial, não medida na Ui16. Não é snapshot da Soundcraft.</p>
+          <p>Pontos de partida não universais. Microfone, acústica, afinação e instrumento mudam o resultado. Não há escuta ou medição de áudio.</p>
+          <label>Preset orientativo
+            <select aria-label="Preset orientativo" [disabled]="disabled()" [value]="reviewed()?.id ?? ''" (change)="selectGuide($any($event.target).value)">
+              <option value="">Selecione para comparar</option>
+              @for (guide of guides; track guide.id) { <option [value]="guide.id">{{ guide.name }}</option> }
+            </select>
+          </label>
+          @if (reviewed(); as guide) {
+            <h4>{{ guide.name }} — prévia no canal {{ channel() }}</h4>
+            <p>{{ guide.purpose }}</p>
+            <p><strong>Justificativa:</strong> {{ guide.rationale }}</p>
+            <p><strong>Contraindicações:</strong> {{ guide.contraindication }} {{ context()!.instrument.avoid }}</p>
+            <p><strong>Antes de decidir:</strong> {{ context()!.instrument.captureChecks.join(' ') }}</p>
+            <p>Curva azul contínua: EQ LAB atual. Curva amarela tracejada: preset proposto. Curvas estimadas a 48 kHz, sem equivalência garantida ao firmware Ui16.</p>
+            <p>Aplicar substitui as quatro bandas, HPF e bypass deste canal. HPF em 20 Hz significa desligado no LAB. Bypass será desligado.</p>
+            <div class="eq-diff-scroll" tabindex="0" role="region" aria-label="Comparação de parâmetros de EQ">
+              <table class="eq-diff">
+                <caption>EQ LAB atual × preset proposto — valores diferentes destacados</caption>
+                <thead><tr><th scope="col">Parâmetro</th><th scope="col">Atual</th><th scope="col">Proposto</th></tr></thead>
+                <tbody>
+                  @for (row of diff(); track row.key) {
+                    <tr [class.changed]="row.current !== row.proposed">
+                      <th scope="row">{{ row.label }}</th><td>{{ format(row.current) }} {{ row.unit }}</td><td>{{ format(row.proposed) }} {{ row.unit }} {{ row.current !== row.proposed ? '(muda)' : '' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p><strong>Referências de princípios (os números são escolhas editoriais MixAI, não receitas das fontes):</strong></p>
+            <ul>
+              @for (ref of context()!.references; track ref.source) {
+                <li><a [href]="ref.url" target="_blank" rel="noopener noreferrer">{{ ref.title }}</a> — {{ ref.locator }}</li>
+              }
+            </ul>
+            <div class="eq-guide-actions">
+              <button class="btn" [disabled]="disabled()" (click)="applyGuide()">Aplicar no LAB</button>
+              <button class="btn" (click)="cancelGuide()">Cancelar preset</button>
+            </div>
+          }
+          <p role="status">{{ guideNotice() }}</p>
+          <button class="btn" [disabled]="disabled() || actions.isBusy('undo')" (click)="undo()">Desfazer última ação LAB</button>
+          <p>Desfazer usa o histórico existente; confira a última ação, que pode ter vindo de outro operador.</p>
+        </section>
+      }
       <fieldset [disabled]="disabled()">
         <legend>Parâmetros do canal</legend>
         <div class="eq-bands">
@@ -171,6 +224,14 @@ import { eqFilters, magnitudeDB, plotFrequency, plotPosition, type EqResponse } 
       circle:focus {
         outline: 2px solid white;
       }
+      .eq-guides { border: 1px solid #698096; padding: 12px; margin: 12px 0; }
+      .eq-guides a { color: #65d4f5; overflow-wrap: anywhere; }
+      .eq-guide-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+      .eq-guide-actions .btn { min-height: 48px; }
+      .eq-diff-scroll { overflow-x: auto; }
+      .eq-diff { border-collapse: collapse; width: 100%; }
+      .eq-diff th, .eq-diff td { padding: 8px; text-align: left; border-bottom: 1px solid #354454; }
+      .eq-diff .changed { background: #263b4d; }
       .eq-bands {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -219,10 +280,68 @@ import { eqFilters, magnitudeDB, plotFrequency, plotPosition, type EqResponse } 
 export class EqComponent {
   readonly live = inject(LiveService);
   readonly actions = inject(ActionsService);
+  private readonly session = inject(SessionService);
   readonly closed = output<void>();
+  readonly guides = eqGuides;
+  readonly guideNotice = signal('Selecionar um preset não altera o EQ.');
+  private readonly selection = signal<{ guide: EqGuide; stamp: string } | null>(null);
+  private readonly stamp = computed(() => JSON.stringify([
+    this.session.token(), this.live.hello()?.serverId, this.live.hello()?.mode, this.live.hello()?.role, this.channel(),
+    Object.entries(this.live.state()?.params ?? {}).filter(([key]) => key.startsWith(`ch.${this.channel()}.eq.`)),
+  ]));
+  readonly reviewed = computed(() => {
+    const s = this.selection();
+    return s && !this.disabled() && s.stamp === this.stamp() ? s.guide : null;
+  });
+  readonly context = computed(() => this.reviewed() ? eqGuideContext(this.reviewed()!) : null);
+  readonly diff = computed(() => this.reviewed() && this.eq() ? compareEqGuide(this.eq()!, this.reviewed()!.model) : []);
+  readonly guidePath = computed(() => this.curvePath(this.reviewed()?.model ?? null));
+  constructor() {
+    effect(() => {
+      if (this.selection() && !this.reviewed()) {
+        this.selection.set(null);
+        this.guideNotice.set('Prévia descartada: canal, EQ, sessão ou conexão mudou. Selecione novamente e confira.');
+      }
+    });
+  }
+  selectChannel(channel: number) {
+    this.cancelGuide();
+    this.cancel();
+    this.channel.set(channel);
+  }
+  selectGuide(id: string) {
+    this.cancel();
+    const guide = this.guides.find(g => g.id === id);
+    if (!guide || this.disabled() || !this.eq()) { this.cancelGuide(); return; }
+    this.selection.set({ guide, stamp: this.stamp() });
+    this.guideNotice.set('Prévia somente. Confira as diferenças e decida se deseja aplicar no LAB.');
+  }
+  cancelGuide() {
+    this.selection.set(null);
+    this.guideNotice.set('Prévia cancelada. Nenhum preset aplicado.');
+  }
+  async applyGuide() {
+    const guide = this.reviewed();
+    if (!guide || !this.eq() || this.disabled()) return;
+    // Explicit human button only; same validated LAB batch/permissions/history as E7A.
+    this.selection.set(null);
+    this.guideNotice.set('Aplicando no LAB; aguarde a resposta do servidor.');
+    const token = this.session.token();
+    const r = await this.actions.run('eq', {
+      type: 'set_lab_eq', channel: this.channel(),
+      values: Object.fromEntries(Object.entries(eqValues(guide.model)).map(([key, value]) => [`ch.${this.channel()}.eq.${key}`, value])),
+    });
+    if (token === this.session.token()) this.guideNotice.set(r.ok ? 'Preset aplicado somente no LAB. Pode desfazer pelo histórico.' : r.message);
+  }
+  undo() {
+    if (this.disabled() || this.actions.isBusy('undo')) return;
+    this.cancelGuide();
+    void this.actions.run('undo', { type: 'undo' }, r => r.message);
+  }
+  format(value: number | boolean) { return typeof value === 'boolean' ? value ? 'Ligado' : 'Desligado' : value; }
   readonly channel = signal(this.live.channels()[0]?.number ?? 1);
   readonly disabled = computed(
-    () => !this.live.writable() || this.live.hello()?.mode !== 'lab' || this.live.hello()?.role !== 'operator' || this.actions.isBusy('eq'),
+    () => !this.live.writable() || this.live.hello()?.mode !== 'lab' || this.live.hello()?.role !== 'operator' || this.actions.isBusy('eq') || this.actions.isBusy('undo'),
   );
   private read(suffix: string): number | boolean | undefined {
     const v = this.live.state()?.params[`ch.${this.channel()}.eq.${suffix}`]?.value;
@@ -242,15 +361,15 @@ export class EqComponent {
       return null;
     return { bands, hpf: { freq, slope }, bypass } as EqResponse;
   });
-  readonly path = computed(() => {
-    const model = this.preview();
+  readonly path = computed(() => this.curvePath(this.preview()));
+  private curvePath(model: EqResponse | null) {
     if (!model) return '';
     const filters = eqFilters(model);
     return Array.from({ length: 401 }, (_, i) => {
       const f = plotFrequency(i / 400);
       return `${i ? 'L' : 'M'}${this.x(f)},${this.y(magnitudeDB(filters, f))}`;
     }).join(' ');
-  });
+  }
   x(freq: number) {
     return 40 + 660 * plotPosition(freq);
   }
@@ -262,6 +381,7 @@ export class EqComponent {
   }
   private send(values: Record<string, number | boolean>) {
     if (this.disabled()) return;
+    this.cancelGuide();
     void this.actions.run('eq', {
       type: 'set_lab_eq',
       channel: this.channel(),
@@ -269,7 +389,9 @@ export class EqComponent {
     });
   }
   reset() {
-    if (!this.disabled()) void this.actions.run('eq', { type: 'reset_lab_eq', channel: this.channel() });
+    if (this.disabled()) return;
+    this.cancelGuide();
+    void this.actions.run('eq', { type: 'reset_lab_eq', channel: this.channel() });
   }
   // Only the current pointer gesture is local; committed parameters come from LiveService.
   private readonly drag = signal<{ pointer: number; band: number; channel: number; freq: number; gain: number } | null>(null);
@@ -282,6 +404,7 @@ export class EqComponent {
   start(e: PointerEvent, band: number) {
     if (this.disabled()) return;
     e.preventDefault();
+    this.cancelGuide();
     const b = this.eq()!.bands[band]!;
     this.drag.set({ pointer: e.pointerId, band, channel: this.channel(), freq: b.freq, gain: b.gain });
     (e.target as Element).setPointerCapture(e.pointerId);
