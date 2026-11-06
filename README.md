@@ -57,9 +57,10 @@ npm run console:mock    # simulador em memória
   e o laboratório volta do `.bak` (ou do estado padrão), com aviso no log;
 - arquivo de uma versão **mais nova** do MixAI não é aberto nem alterado.
 
-O laboratório já guarda EQ de 4 bandas, HPF e bypass por canal, mas eles **ainda não têm
-tool nem tela**: entram nas próximas etapas (E7). Os valores iniciais do laboratório são
-neutros do MixAI, **não** os padrões de fábrica da Ui16.
+O laboratório guarda EQ de 4 bandas, HPF e bypass por canal. O operador pode editá-los
+na tela **EQ LAB** (E7A) e comparar/aplicar presets orientativos (E7B), exclusivamente
+no simulador. Esses parâmetros continuam `simulated_only`, sem aplicação à Ui16 real.
+Os valores iniciais do laboratório são neutros do MixAI, **não** os padrões de fábrica da Ui16.
 
 Exemplos no console:
 
