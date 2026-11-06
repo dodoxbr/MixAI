@@ -749,12 +749,34 @@ mx-root {
   overflow-wrap: anywhere;
 }
 .mute-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
   font-size: 0.85rem;
   font-weight: 700;
+  line-height: 1.1;
+}
+.mute-toggle .mute-dest {
+  font-size: 0.65rem;
+  font-weight: 600;
+  opacity: 0.8;
+  letter-spacing: 0.04em;
 }
 .mute-toggle.on {
   background: var(--mute);
+  border-color: var(--mute);
   color: #fff;
+}
+.fones-row.is-muted {
+  border-color: var(--mute);
+}
+.fones-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.85rem;
+  color: var(--text);
 }
 .pa-warning {
   border-color: #3b82f6;
@@ -1265,5 +1287,167 @@ mx-root {
   }
   .scenes-list ul {
     max-height: 30vh;
+  }
+}
+
+/* ---------- celular DEITADO (tela baixa): Mesa utilizável ----------
+   Problema: deitado, o celular passa de 720 px de largura e caía no layout do notebook, com a
+   Mesa presa à altura da tela. A barra superior quebrava em 2–3 linhas e sobravam ~90 px para
+   os canais: o .strips (overflow-x: auto) cortava os faders e só o MASTER, sem esse corte,
+   transbordava. Aqui a Mesa deixa de ser presa à altura da tela: barra compacta numa linha,
+   canais e MASTER lado a lado com altura própria (nunca menor que o usável) e a página rola na
+   vertical. Não vale para o Yoga (altura útil > 560 px). Vem depois das regras de 720 px. */
+@media (max-height: 560px) {
+  .mx-view.mx-mesa {
+    height: auto;
+    min-height: 100%;
+  }
+  .mx-status-bar {
+    min-height: 40px;
+    padding: 2px 10px;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+  .mx-status-bar .btn {
+    min-height: 36px;
+  }
+  .mx-mesa .toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    padding: 4px 10px;
+    scrollbar-width: thin;
+  }
+  .mx-mesa .toolbar > * {
+    flex-shrink: 0;
+  }
+  .mx-mesa .toolbar .spacer {
+    flex: 1 0 0;
+  }
+  .mx-mesa .toolbar .segmented button {
+    min-width: 56px;
+    font-size: 0.95rem;
+  }
+  .mx-mesa .toolbar > .btn {
+    padding: 0 10px;
+    font-size: 0.95rem;
+  }
+  /* a legenda é só texto (cada canal já mostra o selo SIM); o aviso dos FONES fica */
+  .mx-mesa .toolbar .sim-legend {
+    display: none;
+  }
+  .mx-mesa .toolbar .shared-warning {
+    white-space: nowrap;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+  }
+  .mx-mesa .toolbar .mx-assistant-input {
+    order: 0;
+    width: auto;
+  }
+  .mx-mesa .toolbar .mx-assistant-input form {
+    flex-wrap: nowrap;
+  }
+  .mx-mesa .toolbar .mx-assistant-input input {
+    width: 130px;
+    flex: none;
+  }
+  .mx-mesa .toolbar .mx-assistant-input .btn {
+    padding: 0 10px;
+  }
+  .mx-mesa .toolbar .assist-hint {
+    display: none; /* o motivo continua no title/aria do botão e no banner de conexão */
+  }
+  .mx-mesa .offline-banner {
+    margin: 0 10px 4px;
+    padding: 6px 10px;
+  }
+  /* Canais à esquerda (rolagem horizontal), MASTER separado à direita; o resto embaixo. */
+  .mx-mesa .mesa-main {
+    flex: none;
+    min-height: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'strips master' 'side side';
+    gap: 8px;
+    padding: 0 10px 10px;
+    overflow: visible;
+  }
+  .mx-mesa .strips {
+    grid-area: strips;
+    flex: none;
+    /* ocupa a tela inteira depois de rolar a barra para fora; nunca menos que o usável */
+    height: max(300px, calc(100dvh - 12px));
+    overscroll-behavior-x: contain;
+  }
+  .mx-mesa .mx-fones-list {
+    grid-area: strips;
+  }
+  .mx-mesa .master-area {
+    grid-area: master;
+    height: max(300px, calc(100dvh - 12px));
+    padding-left: 8px;
+    border-left: 1px solid var(--line);
+    justify-content: flex-start;
+  }
+  .mx-mesa .side {
+    grid-area: side;
+    width: 100%;
+    overflow-y: visible;
+  }
+  .mx-mesa .side.has-assistant > .mx-pending-cards,
+  .mx-mesa .side.has-assistant > .history {
+    max-height: none;
+  }
+  .mx-mesa .side.has-assistant > .mx-assistant-panel {
+    flex: none;
+    min-height: 0;
+  }
+  .mx-mesa .side .mx-assistant-panel .assist-log {
+    flex: none;
+    max-height: 70vh;
+  }
+  .mx-strip {
+    flex: 0 0 84px;
+    padding: 6px 4px;
+    gap: 4px;
+  }
+  .mx-strip.is-master {
+    flex: 0 0 104px;
+  }
+  .strip-name {
+    min-height: 2.2em;
+    font-size: clamp(0.75rem, 14cqi, 0.95rem);
+  }
+  .strip-body {
+    min-height: 150px;
+  }
+  /* músico deitado: − / + e MUTE visíveis, sem rolagem horizontal da página */
+  .mx-fones .shared-warning.big {
+    margin: 6px 10px;
+    padding: 8px 12px;
+  }
+  .mx-fones .musician-tabs {
+    padding: 4px 10px 0;
+  }
+  .fones-row.has-mute {
+    grid-template-columns: minmax(0, 1fr) 60px 48px 76px 48px;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+  .fones-row .step {
+    height: 48px;
+  }
+  .fones-row.has-mute .fones-name {
+    font-size: 1rem;
+  }
+  .fones-row.has-mute .fones-value {
+    font-size: 0.95rem;
+  }
+}
+/* músico deitado com largura sobrando: duas colunas de canais, sem rolagem horizontal */
+@media (max-height: 560px) and (min-width: 760px) {
+  .mx-fones .fones-rows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
