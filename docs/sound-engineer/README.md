@@ -2,7 +2,10 @@
 
 Base de conhecimento **somente para consulta**, em `src/knowledge/sound-engineer/`.
 Branch: `feature/sound-engineer-knowledge`, criada da `main` em
-`274b92416a1d49de1d2efda36fc6aee01fff2ef3`. Não há integração ao assistente,
+`274b92416a1d49de1d2efda36fc6aee01fff2ef3`. Durante o trabalho, a `main` recebeu
+a E7A (PR #14); a branch incorporou `aa98ace` sem conflitos e foi revalidada.
+O diff contra essa base continua restrito aos arquivos novos desta entrega.
+Não há integração ao assistente,
 MCP, servidor, parser, controlador ou adaptador da mesa. Nenhum arquivo existente
 da E7A foi alterado. Esta entrega cobre B1 e uma consulta determinística mínima de
 B2; não implementa aplicação de propostas nem simulação de DSP.
@@ -84,7 +87,9 @@ antigos listam inclinações 12/24/36 dB/oct no LAB. O contrato instalado em
 `lib/facade/eq/eq-filter.d.ts` declara `setSlope` sem efeito e `slope$` sem emissão
 na Ui12/Ui16. Esses números não comprovam capacidade da mesa. Esta entrega não
 altera o registro ou a E7A. Pelo manual 5.2, bypass do EQ paramétrico também não
-desliga HPF/de-esser; não o usar como comparação de toda a cadeia.
+desliga HPF/de-esser; não o usar como comparação de toda a cadeia. A E7A
+modela bypass de bandas **e HPF** no LAB (`docs/lab/11-E7A-EQ.md`), outra
+diferença explícita entre simulação e mesa. Esse modelo também foi preservado.
 
 ## Procedimentos e samba/pagode
 

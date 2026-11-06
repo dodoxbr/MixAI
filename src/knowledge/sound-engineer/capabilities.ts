@@ -19,7 +19,7 @@ export const capabilities: readonly CapabilityEntry[] = [
   entry('parametric_eq', 'documented', 'available', 'lab_only', '4 bandas: 20–22050 Hz, Q 0,05–15, ganho ±20 dB na API; limites não são recomendações de uso.', '5.2', 'lib/facade/eq/eq-band.d.ts'),
   entry('hpf_frequency', 'documented', 'available', 'lab_only', '20–1000 Hz na API; 20 Hz é a convenção de desligado da biblioteca.', '5.2', 'lib/facade/eq/eq-filter.d.ts'),
   entry('hpf_slope', 'unsupported', 'ui24r_only', 'lab_only', 'setSlope não tem efeito na Ui16; slope$ não emite. Valores 12/24/36 no LAB não comprovam capacidade física.', '5.2 (sem controle de inclinação documentado)', 'lib/facade/eq/eq-filter.d.ts'),
-  entry('eq_bypass', 'documented', 'available', 'lab_only', 'Manual: bypass do EQ paramétrico não desliga HPF nem de-esser.', '5.2', 'lib/facade/eq/channel-eq.d.ts'),
+  entry('eq_bypass', 'documented', 'available', 'lab_only', 'Manual: bypass do EQ paramétrico não desliga HPF nem de-esser. O modelo LAB da E7A desliga bandas e HPF; essa simulação não reproduz o bypass físico.', '5.2', 'lib/facade/eq/channel-eq.d.ts'),
   entry('lpf', 'unsupported', 'ui24r_only', 'not_integrated', 'Observables não emitem e setters não têm efeito na Ui12/Ui16.', '5.2 (HPF documentado; sem LPF)', 'lib/facade/eq/channel-eq.d.ts'),
   entry('compressor_gate_deesser', 'documented', 'not_exposed', 'not_integrated', 'Existem na interface oficial; sem fachada tipada na biblioteca 7.1.0. Não inventar métodos ou chaves do protocolo.', '5.2; 5.4', 'lib/facade/index.d.ts'),
   entry('geq_afs', 'documented', 'not_exposed', 'not_integrated', 'GEQ de saída e AFS na interface oficial; nenhum controle nesta entrega.', '5.3; 5.3.1', 'lib/facade/index.d.ts'),
