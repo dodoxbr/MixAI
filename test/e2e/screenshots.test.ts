@@ -182,3 +182,22 @@ it('capturas do celular em retrato e deitado (operador e músico)', async () => 
     await l.server.close();
   }
 }, 90_000);
+
+it('capturas da barra compacta em retrato (320, 360, 390, 430 px)', async () => {
+  const out = join(PROJECT_ROOT, 'docs', 'lab', 'img');
+  const l = await startLab({ channels: bandChannels() });
+  const browser = await launch();
+  try {
+    for (const [w, h] of [[320, 640], [360, 780], [390, 844], [430, 932]] as const) {
+      const s = await enter(browser, l.base, OPERATOR_PIN, { viewport: { width: w, height: h }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+      await s.page.evaluate(() => scrollTo(0, 0));
+      await s.page.locator('.sim-legend').waitFor();
+      await s.page.waitForTimeout(400);
+      await s.page.screenshot({ path: join(out, `mobile-retrato-${w}.png`) });
+      await s.ctx.close();
+    }
+  } finally {
+    await browser.close();
+    await l.server.close();
+  }
+}, 90_000);

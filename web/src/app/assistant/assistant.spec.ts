@@ -175,7 +175,8 @@ describe('assistente na tela', () => {
     (el.querySelector('[aria-label="Recolher o assistente"]') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(el.querySelector('mx-assistant-panel')).toBeNull();
-    const toggle = [...el.querySelectorAll('.toolbar button')].find((b) => b.textContent!.trim() === 'Assistente') as HTMLButtonElement;
+    // pelo nome acessível (no retrato o texto visível é "Chat")
+    const toggle = [...el.querySelectorAll('.toolbar button')].find((b) => (b.getAttribute('aria-label') ?? b.textContent!.trim()) === 'Assistente') as HTMLButtonElement;
     toggle.click();
     fixture.detectChanges();
     expect(el.querySelector('mx-assistant-panel')).not.toBeNull();
