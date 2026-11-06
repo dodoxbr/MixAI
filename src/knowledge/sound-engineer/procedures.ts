@@ -1,0 +1,55 @@
+import type { Procedure, Symptom } from './contracts.js';
+
+/** Faixas citadas são regiões exploratórias editoriais, nunca frequência medida ou preset. */
+export const procedures: Readonly<Record<Symptom, Procedure>> = {
+  embolado: {
+    symptom: 'embolado', meaning: 'Relato de pouca separação ou excesso de corpo/reverberação.',
+    questions: ['Acontece no PA, nos fones ou nos dois?', 'Qual fonte perde definição e em qual trecho?', 'Acontece com a fonte sozinha ou apenas com todos tocando?'],
+    causes: ['Mascaramento entre surdo, tantã e baixarias do violão.', 'Vazamento, efeito de proximidade ou reverberação do ambiente.'],
+    checks: ['Pedir ao operador comparação da fonte isolada e na roda, sem mutar canais automaticamente.', 'Revisar posição do microfone e distância de paredes; registrar captação e processamento já usado.'],
+    trial: 'Somente após confirmar excesso no relato: discutir um corte leve e amplo na região de 200–400 Hz em uma fonte concorrente, ou HPF abaixo do conteúdo útil em fonte sem função de grave. Escolher uma hipótese por vez; preservar surdo e tantã.',
+    expectedObservation: 'Operador relata maior separação no mesmo trecho, com corpo preservado.',
+    stopOrRevert: 'Se perder peso, piorar a inteligibilidade ou surgir apito, interromper e pedir revisão humana do estado anterior.',
+    references: [{ source: 'yamaha-eq', locator: 'Peak EQ e mascaramento' }, { source: 'shure-placement', locator: 'Signal to Noise Ratio; efeito de proximidade' }],
+  },
+  estridente: {
+    symptom: 'estridente', meaning: 'Relato de ataque agressivo, aspereza ou sibilância; não identifica microfonia.',
+    questions: ['É ataque de corda/platinela, consoantes da voz ou apito contínuo?', 'O incômodo está em qual destino e fonte?', 'Há distorção também quando a fonte toca sozinha?'],
+    causes: ['Captação enfatizando ataque, platinelas ou sibilância.', 'EQ de presença excessivo ou distorção na cadeia de entrada.'],
+    checks: ['Conferir posição/eixo do microfone e controles atuais pela interface oficial.', 'Se houver apito relatado, priorizar procedimento de feedback; não tentar varredura com boost.'],
+    trial: 'Se captação e entrada estiverem adequadas, discutir corte leve em região de presença (2–5 kHz) de uma fonte por vez. Se for apenas sibilância, discutir de-esser com operador na interface oficial, sem comando da biblioteca.',
+    expectedObservation: 'Operador relata ataque menos agressivo mantendo articulação da voz e ritmo.',
+    stopOrRevert: 'Interromper se perder dicção, ficar abafado, houver distorção persistente ou apito.',
+    references: [{ source: 'yamaha-eq', locator: 'Peak EQ, presença vocal' }, { source: 'ui16-manual', locator: '5.2 de-esser; 5.3.1 AFS' }],
+  },
+  abafado: {
+    symptom: 'abafado', meaning: 'Relato de pouca clareza/ataque; pode ser captação ou mascaramento.',
+    questions: ['A fonte é abafada acusticamente ou apenas amplificada?', 'Qual destino e instrumento?', 'Quais EQ, gate e compressor já estão ativos?'],
+    causes: ['Microfone fora de eixo, posição inadequada ou captação sem ataque.', 'Cortes de presença excessivos, dinâmica excessiva ou mascaramento por outra fonte.'],
+    checks: ['Comparar relato acústico, isolado e na mix; verificar cabo e DI quando aplicável.', 'Inspecionar EQ e dinâmica existentes na interface oficial; não presumir LPF da Ui16.'],
+    trial: 'Após revisar captação, discutir reduzir um corte de presença já existente ou abrir espaço na fonte que mascara. Se ainda necessário, avaliar pequeno reforço em 2–4 kHz com operador, sem grande boost e sem presumir frequência problemática.',
+    expectedObservation: 'Operador identifica melhor articulação sem aumento de aspereza.',
+    stopOrRevert: 'Interromper se surgir estridência, sibilância, apito ou apenas aumento de volume sem clareza.',
+    references: [{ source: 'shure-live', locator: 'regras gerais de captação' }, { source: 'yamaha-eq', locator: 'Peak EQ' }],
+  },
+  magro: {
+    symptom: 'magro', meaning: 'Relato de falta de corpo ou sustentação.',
+    questions: ['O corpo falta na fonte isolada, na mix ou só em uma posição da sala?', 'Qual instrumento e destino?', 'Há múltiplos microfones/DI para a mesma fonte ou HPF elevado?'],
+    causes: ['HPF alto ou cortes excessivos removendo corpo.', 'Captação/DI inadequada, cancelamento entre caminhos ou resposta do PA/ambiente.'],
+    checks: ['Inspecionar HPF separadamente do bypass paramétrico; não aplicar desligamento automático.', 'Pedir comparação dos caminhos e posição de escuta; cancelamento é hipótese, não conclusão obtida por faders.'],
+    trial: 'Se o operador confirmar remoção excessiva de corpo, discutir recuar o HPF/corte existente antes de adicionar graves. Preservar a função do instrumento e verificar a entrada/DI; não compensar cancelamento com grande boost.',
+    expectedObservation: 'Operador relata corpo recuperado sem encobrir surdo, tantã e voz.',
+    stopOrRevert: 'Interromper se aumentar embolamento, vazamento ou instabilidade; revisar captação antes de novo teste.',
+    references: [{ source: 'ui16-manual', locator: '5.2 HPF e bypass' }, { source: 'yamaha-gain', locator: 'compatibilidade de entrada' }, { source: 'shure-live', locator: 'interferência e captação' }],
+  },
+  desequilibrio: {
+    symptom: 'desequilibrio', meaning: 'Relato de uma fonte sumindo ou dominando a roda.',
+    questions: ['Qual instrumento domina e qual desaparece?', 'É no PA ou no AUX 1 compartilhado?', 'É constante ou só em notas/frases fortes e refrões?'],
+    causes: ['Balanço/arranjo ou mascaramento entre fontes.', 'Diferença de captação, dinâmica de execução ou envio/roteamento do destino.'],
+    checks: ['Registrar papéis musicais no mesmo trecho, mutes e envios; posições iguais de faders não significam volumes acústicos iguais.', 'Conferir pre/post fader do AUX e distância do cantor ao microfone; medidores simulados não avaliam balanço real.'],
+    trial: 'Se confirmado pelo operador, discutir pequeno recuo da fonte dominante no destino correto antes de subir todas as demais. Se a fonte some apenas na mix, investigar mascaramento; se oscila, revisar técnica e só depois discutir dinâmica manual.',
+    expectedObservation: 'Operador reconhece a voz e as levadas sem perder o pulso; todos aprovam a mix dos fones.',
+    stopOrRevert: 'Interromper se prejudicar outro músico no AUX compartilhado, perder sustentação ou exigir escalada de volume.',
+    references: [{ source: 'ui16-manual', locator: '4.3 AUX' }, { source: 'yamaha-eq', locator: 'mascaramento' }, { source: 'yamaha-dynamics', locator: 'Compression Advice' }],
+  },
+};
