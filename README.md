@@ -308,3 +308,6 @@ Experimento de voz E9A (desativado por padrão, somente LAB, sem execução de c
 
 HTTPS/WSS privado opcional para LAB (Yoga + Android, voz continua OFF):
 [instalação manual e validação E9B](docs/lab/16-E9B-HTTPS-LAN.md).
+
+Bancada offline de STT E9C (whisper.cpp configurado manualmente, sem execução de comandos):
+[guia Windows, WAV autorizado, demo simulada e métricas](docs/lab/17-E9C-OFFLINE-STT.md).
