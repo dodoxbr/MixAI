@@ -287,3 +287,6 @@ test/                 testes (Vitest)
 - **Depois de atualizar o firmware da mesa algo parou**: a biblioteca usa o protocolo
   da interface web, que não é oficial. Teste no console antes de qualquer evento.
   A versão da biblioteca está fixada em `package.json` de propósito.
+
+Experimento de voz E9A (desativado por padrão, somente LAB, sem execução de comandos):
+[arquitetura, HTTPS/WSS e avaliação de provedores](docs/E9A-SPEECH-SPIKE.md).
