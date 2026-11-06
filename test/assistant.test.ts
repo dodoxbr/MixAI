@@ -174,7 +174,7 @@ describe('assistente: Claude (respostas simuladas)', () => {
       },
     });
     const { ask } = await screen(t);
-    const r = await ask('não tô ouvindo direito o cavaco, tá embolado');
+    const r = await ask('preciso organizar melhor o cavaco na mix');
     expect(r.source).toBe('ai');
     expect(r.proposals[0]).toMatchObject({ channel: 'Cavaco', destination: 'PA', reason: 'Cavaco abafado pelo surdo', result: '−8.0 dB' });
     expect(r.ai).toMatchObject({ model: 'claude-haiku-5-5', inputTokens: 900, outputTokens: 80 });
@@ -202,7 +202,7 @@ describe('assistente: Claude (respostas simuladas)', () => {
         }),
     });
     const { c, ask } = await screen(t);
-    c.send({ type: 'assistant', requestId: 'slow', text: 'tá embolado, arruma aí' });
+    c.send({ type: 'assistant', requestId: 'slow', text: 'preciso organizar a mix, arruma aí' });
     // enquanto a IA não responde, comandos e faders funcionam normalmente
     const r = await c.request({ type: 'command', command: { type: 'set_level', channel: 9, deltaDB: 1 } });
     expect(r.result.code).toBe('OK');
@@ -294,11 +294,11 @@ describe('assistente: Claude (respostas simuladas)', () => {
     expect(usage).toMatchObject({ requests: 1, inputTokens: 900, outputTokens: 80 });
   });
 
-  it('IA desligada: pedido que o parser não entende recebe orientação, sem travar', async () => {
+  it('IA desligada: queixa conhecida consulta a base técnica sem propostas', async () => {
     const t = await start();
     const r = await (await screen(t)).ask('tá embolado');
-    expect(r.kind).toBe('answer');
-    expect(r.code).toBe('AI_DISABLED');
-    expect(r.text).toContain('sobe o surdo no PA');
+    expect(r.kind).toBe('diagnosis');
+    expect(r.proposals).toBeUndefined();
+    expect(r.text).toContain('Não ouvi o som');
   });
 });

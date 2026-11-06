@@ -119,7 +119,7 @@ describe('assistente na tela (LAB, navegador real)', () => {
     });
     const yoga = await open(l, OPERATOR_PIN);
     expect(await yoga.locator('.assist-mode').count()).toBe(0); // painel fechado até usar
-    await say(yoga, 'não tô ouvindo o cavaco, tá embolado');
+    await say(yoga, 'preciso organizar melhor o cavaco na mix');
     await lastCard(yoga).waitFor();
     expect(await yoga.locator('.assist-mode').textContent()).toContain('IA ligada');
     expect(await lastCard(yoga).textContent()).toContain('O cavaco está sumindo atrás do surdo');

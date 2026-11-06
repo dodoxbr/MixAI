@@ -116,6 +116,13 @@ snapshot da Soundcraft. Só o operador; só no laboratório. Detalhes: `docs/lab
 
 ![Comparação de cena no Yoga](docs/lab/img/e5-yoga-cenas-comparacao.png)
 
+## Comparação offline LAB × REAL (E8A)
+
+O [comparador somente leitura](docs/lab/16-E8A-READONLY-DIFF.md) recebe cenas/estados e
+retratos fornecidos (fixtures), classifica diferenças e exporta JSON/Markdown. Não abre
+conexão, não aplica valores e não valida EQ/HPF ou saídas físicas da Ui16. F0 físico/E6
+continuam pendentes. O documento inclui comandos para gerar relatório fictício sem mesa.
+
 ## Assistente de texto (E4)
 
 Na Mesa e na tela de Fones há um campo **"O que você deseja ajustar?"**. Exemplos: "aumenta um
@@ -127,6 +134,14 @@ Opcional: com uma chave da API da Anthropic no servidor (`config/secrets.yaml` �
 `anthropicApiKey`, ou `ANTHROPIC_API_KEY`) e `ai.enabled: true`, pedidos vagos ("tá embolado")
 vão para o Claude, com teto de gasto diário. Detalhes, modelos e custos:
 `docs/lab/08-E4-ASSISTENTE.md`.
+
+## Consulta técnica Sound Engineer (B3A)
+
+O operador pode perguntar no chat: **"Meu cavaco está estridente. O que podemos fazer?"**.
+A consulta funciona offline, usa a base especializada e pede fonte/destino quando
+necessário. Mostra hipóteses, justificativas e referências, sem ouvir áudio nem criar
+ajustes ou cartões de aplicação. Músicos continuam usando os comandos autorizados.
+Detalhes e exemplos: [Sound Engineer no chat](docs/sound-engineer/CHAT-READONLY.md).
 
 ## Ligar no Claude Desktop
 

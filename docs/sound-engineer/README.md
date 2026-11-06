@@ -1,5 +1,8 @@
 # MixAI Sound Engineer — primeira entrega da Issue #13
 
+A integração de consulta ao chat está documentada em [B3A — somente leitura](CHAT-READONLY.md).
+O texto abaixo registra o escopo original da base do PR #18.
+
 Base de conhecimento **somente para consulta**, em `src/knowledge/sound-engineer/`.
 Branch: `feature/sound-engineer-knowledge`, criada da `main` em
 `274b92416a1d49de1d2efda36fc6aee01fff2ef3`. Durante o trabalho, a `main` recebeu

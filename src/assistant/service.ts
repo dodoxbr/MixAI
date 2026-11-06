@@ -1,3 +1,4 @@
+import { consult, consultationSchema, parseConsultation, type ConsultationReply } from './sound-engineer.js';
 import type { AiContext, AiTurn, AiUsage, ClaudeClient } from '../ai/claude.js';
 import type { NamedEntry } from '../core/config.js';
 import type { Result } from '../core/controller.js';
@@ -12,7 +13,10 @@ import { parseRequest, type StepSizes } from './nl-parser.js';
 import { fmtDb, ProposalBuilder, type Proposal, type ProposalCard } from './proposals.js';
 
 export interface AssistantReply {
-  kind: 'proposals' | 'clarify' | 'answer' | 'error';
+  kind: 'proposals' | 'clarify' | 'answer' | 'error' | 'diagnosis';
+  diagnosis?: ConsultationReply['diagnosis'];
+  references?: ConsultationReply['references'];
+  diagnosticOptions?: ConsultationReply['diagnosticOptions'];
   source: 'local' | 'ai' | 'feedback';
   text?: string;
   proposals?: ProposalCard[];
@@ -76,6 +80,8 @@ export class AssistantService {
     const text = typeof raw === 'string' ? raw.trim() : '';
     if (!text) return error('INVALID', 'Escreva o que você deseja ajustar.');
     if (text.length > MAX_TEXT) return error('INVALID', `Pedido longo demais (máximo ${MAX_TEXT} caracteres).`);
+    const consultation = parseConsultation(text, this.core.controller.names);
+    if (consultation) return this.diagnose(p, consultation);
     this.prune();
 
     const local = parseRequest(text, { names: this.core.controller.names, role: p.role, steps: this.opts.steps, musicianPA: musicianHasPA(this.core.policy) });
@@ -114,6 +120,18 @@ export class AssistantService {
     const reply = this.render(p, r.outcome, 'ai', r.usage);
     this.remember(p.id, text, reply);
     return reply;
+  }
+
+  /** B3A: autorização e validação comuns a chat, HTTP e WS. Nunca cria propostas. */
+  diagnose(p: Principal, raw: unknown): AssistantReply {
+    if (p.role !== 'operator') return error('FORBIDDEN', 'A consulta técnica é exclusiva do operador autenticado.');
+    const parsed = consultationSchema.safeParse(raw);
+    if (!parsed.success) return error('INVALID', 'Consulta inválida: informe sintoma, canal/fonte, destino e evidências com origem, sem comandos ou aprovações.');
+    try {
+      return consult(parsed.data, this.core.controller.names, this.core.policy.musicianAux);
+    } catch (err) {
+      return error('INVALID', (err as Error).message);
+    }
   }
 
   /** Aplica uma proposta: confere se o estado ainda é o do cálculo e manda para a fila da E2. */
