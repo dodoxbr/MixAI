@@ -1,7 +1,7 @@
-import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { LiveService, type AssistantOutcome } from './live.service';
 import { SessionService } from './session.service';
-import type { ApplyReply, AssistantReply, ProposalCard } from './protocol';
+import type { ApplyReply, AssistantReply, DiagnosticContext, ProposalCard } from './protocol';
 
 export type CardState = 'open' | 'applying' | 'applied' | 'awaiting' | 'cancelled' | 'stale' | 'failed';
 
@@ -11,6 +11,7 @@ export interface ChatItem {
   text?: string;
   cards?: ProposalCard[];
   diagnostic?: boolean;
+  diagnosticContext?: DiagnosticContext;
   references?: AssistantReply['references'];
   diagnosticOptions?: AssistantReply['diagnosticOptions'];
   options?: Array<{ label: string; text: string }>;
@@ -38,6 +39,8 @@ export class AssistantUiService {
   readonly items = signal<ChatItem[]>([]);
   readonly cardState = signal<Record<string, CardState>>({});
   readonly thinking = signal(false);
+  readonly diagnosticContext = signal<DiagnosticContext | undefined>(undefined);
+  private contextTimer?: ReturnType<typeof setTimeout>;
   readonly open = signal(false);
   readonly aiOn = computed(() => !!this.live.hello()?.assistant?.ai);
   /**
@@ -55,6 +58,7 @@ export class AssistantUiService {
   private seq = 0;
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.contextTimer));
     // Nova sessão (ou volta ao PIN): a conversa e os cartões antigos não valem mais.
     effect(() => {
       this.session.token();
@@ -78,7 +82,7 @@ export class AssistantUiService {
     this.push({ from: 'user', text: t });
     this.thinking.set(true);
     try {
-      const r = await this.live.assistant({ type: 'assistant', text: t });
+      const r = await this.live.assistant({ type: 'assistant', text: t, ...this.contextStamp() });
       if (this.session.token() !== sessionToken) return true;
       if (!r.ok) this.push({ from: 'assistant', tone: 'error', text: r.why === 'offline' ? NOT_SENT : LOST_ASK });
       else this.showReply(r.msg['reply'] as AssistantReply | undefined);
@@ -89,14 +93,16 @@ export class AssistantUiService {
   }
 
   /** Opção contextual de consulta: não passa por proposal_apply nem por command. */
-  async consult(option: NonNullable<AssistantReply['diagnosticOptions']>[number]): Promise<void> {
-    if (this.blockedReason()) return;
+  async consult(option: NonNullable<AssistantReply['diagnosticOptions']>[number], context?: DiagnosticContext): Promise<void> {
+    if (this.blockedReason() || (context && !this.isCurrentContext(context))) return;
     const sessionToken = this.session.token();
     this.open.set(true);
     this.push({ from: 'user', text: `Consulta técnica: ${option.label}` });
     this.thinking.set(true);
     try {
-      const r = await this.live.assistant({ type: 'assistant_diagnose', input: option.input });
+      const r = await this.live.assistant(context
+        ? { type: 'assistant_conversation', input: { text: option.label, context: { id: context.id, revision: context.revision } } }
+        : { type: 'assistant_diagnose', input: option.input });
       if (this.session.token() !== sessionToken) return;
       if (!r.ok) this.push({ from: 'assistant', tone: 'error', text: r.why === 'offline' ? NOT_SENT : LOST_ASK });
       else this.showReply(r.msg['reply'] as AssistantReply | undefined);
@@ -159,8 +165,27 @@ export class AssistantUiService {
   }
 
   clear(): void {
+    this.setContext(undefined);
     this.items.set([]);
     this.cardState.set({});
+  }
+
+  isCurrentContext(context: DiagnosticContext): boolean {
+    const current = this.diagnosticContext();
+    return current?.id === context.id && current.revision === context.revision;
+  }
+  private contextStamp(): { context?: { id: string; revision: number } } {
+    const current = this.diagnosticContext();
+    return current ? { context: { id: current.id, revision: current.revision } } : {};
+  }
+  private setContext(context: DiagnosticContext | undefined): void {
+    clearTimeout(this.contextTimer);
+    this.diagnosticContext.set(context);
+    if (context) {
+      const remaining = Date.parse(context.expiresAt) - Date.now();
+      if (remaining <= 0) this.diagnosticContext.set(undefined);
+      else this.contextTimer = setTimeout(() => this.diagnosticContext.set(undefined), remaining);
+    }
   }
 
   private showReply(r: AssistantReply | undefined) {
@@ -168,8 +193,9 @@ export class AssistantUiService {
       // Resposta fora do formato: avisa em vez de ficar em silêncio.
       return this.push({ from: 'assistant', tone: 'error', text: 'O servidor respondeu num formato que esta tela não entende. Recarregue a página (pode ser uma versão antiga em cache).' });
     }
+    if (r.diagnosticContext !== undefined) this.setContext(r.diagnosticContext ?? undefined);
     if (r.kind === 'diagnosis') {
-      return this.push({ from: 'assistant', source: 'local', diagnostic: true, text: r.text, references: r.references, diagnosticOptions: r.diagnosticOptions });
+      return this.push({ from: 'assistant', source: 'local', diagnostic: true, text: r.text, references: r.references, diagnosticOptions: r.diagnosticOptions, diagnosticContext: r.diagnosticContext ?? undefined });
     }
     if (r.kind === 'proposals' && !r.proposals?.length) {
       return this.push({ from: 'assistant', source: r.source, text: r.text || 'Nada a ajustar.' });

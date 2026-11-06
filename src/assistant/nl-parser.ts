@@ -180,3 +180,10 @@ function findChannelsIn(text: string, names: ChannelMap): { channels: number[]; 
   rest = rest.replace(/ (?:canal|ch|aux) \d+ /g, ' ');
   return { channels: out, rest: ` ${rest.trim()} ` };
 }
+
+
+/** Comandos explícitos têm prioridade sobre esclarecimentos técnicos, sem inferir ação de uma resposta curta. */
+export function isExplicitMixRequest(raw: string): boolean {
+  const text = words(raw).join(' ').replace(/^por favor /, '');
+  return [...UP, ...DOWN, ...MUTE, ...UNMUTE, ...SET, ...UNDO, 'mais', 'menos'].some(verb => text === verb || text.startsWith(`${verb} `));
+}

@@ -1587,3 +1587,7 @@ mx-root {
 .diagnostic-options { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
 
 .technical-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.diagnostic-context { padding: .6rem; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.diagnostic-context p { margin: .3rem 0; }
+.diagnostic-context small { display: block; margin-bottom: .3rem; }

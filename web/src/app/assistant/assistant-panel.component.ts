@@ -26,6 +26,14 @@ const STATE_TEXT: Record<CardState, string> = {
       <span class="spacer"></span>
       <button type="button" class="btn btn-ghost btn-small" (click)="assistant.open.set(false)" aria-label="Recolher o assistente">Recolher</button>
     </header>
+    @if (assistant.diagnosticContext(); as context) {
+      <section class="diagnostic-context" aria-label="Diagnóstico pendente" role="status">
+        <strong>{{ context.subject }}</strong>
+        <p>{{ context.question }}</p>
+        <small>Responda no chat. Prazo máximo: 5 minutos; sem ajustes.</small>
+        <button type="button" class="btn chip" [disabled]="!!assistant.blockedReason()" (click)="assistant.send('cancelar diagnóstico')">Cancelar diagnóstico</button>
+      </section>
+    }
     <ol class="assist-log" aria-live="polite" #log>
       @for (item of assistant.items(); track item.id) {
         <li class="assist-item" [class.from-user]="item.from === 'user'" [class.tone-error]="item.tone === 'error'" [class.tone-ok]="item.tone === 'ok'">
@@ -50,7 +58,7 @@ const STATE_TEXT: Record<CardState, string> = {
           @if (item.diagnosticOptions?.length) {
             <div class="diagnostic-options" aria-label="Esclarecer consulta técnica">
               @for (option of item.diagnosticOptions; track option.label) {
-                <button type="button" class="btn chip" [disabled]="!!assistant.blockedReason()" (click)="assistant.consult(option)">{{ option.label }}</button>
+                <button type="button" class="btn chip" [disabled]="!!assistant.blockedReason() || (!!item.diagnosticContext && !assistant.isCurrentContext(item.diagnosticContext))" (click)="assistant.consult(option, item.diagnosticContext)">{{ option.label }}</button>
               }
             </div>
           }

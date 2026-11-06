@@ -140,6 +140,7 @@ export class Auth {
     if (!s) return undefined;
     if (this.clock() > s.expiresAt) {
       this.sessions.delete(key);
+      this.emitRevoke(s.principal.id, 'expired');
       return undefined;
     }
     return s.principal;
