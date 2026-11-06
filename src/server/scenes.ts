@@ -83,7 +83,7 @@ export class ScenesService {
         return {
           ok: true,
           code: 'OK',
-          message: `${scenes.length} cena(s) do MixAI${invalid.length ? `; ${invalid.length} arquivo(s) ilegível(is) em data/scenes` : ''}.`,
+          message: `${scenes.length} cena(s) do MixAI${invalid.length ? `; ${invalid.length} arquivo(s) em data/scenes não podem ser usados (ilegíveis ou de outro equipamento)` : ''}.`,
           data: { scenes, invalid, canLoad: this.labOnly },
         };
       }
@@ -253,6 +253,7 @@ function summaryOf(s: Scene) {
 }
 
 function storeFail(r: Extract<StoreResult<unknown>, { ok: false }>): Result {
+  // DEVICE_MISMATCH vira INVALID com data.reason = DEVICE_MISMATCH (a tela mostra a mensagem).
   const code = r.code === 'NOT_FOUND' ? 'NOT_FOUND' : r.code === 'CONFLICT' ? 'CONFLICT' : 'INVALID';
   return { ok: false, code, message: r.message, data: { reason: r.code, errors: r.errors ?? [] } };
 }

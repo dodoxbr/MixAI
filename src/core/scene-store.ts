@@ -71,15 +71,15 @@ export class SceneStore {
   }
 
   /** Lista as cenas válidas e aponta os arquivos que não puderam ser lidos (sem apagá-los). */
-  list(): { scenes: SceneSummary[]; invalid: Array<{ file: string; error: string }> } {
+  list(): { scenes: SceneSummary[]; invalid: Array<{ file: string; error: string; reason: string }> } {
     const scenes: SceneSummary[] = [];
-    const invalid: Array<{ file: string; error: string }> = [];
+    const invalid: Array<{ file: string; error: string; reason: string }> = [];
     if (!existsSync(this.dir)) return { scenes, invalid };
     for (const f of readdirSync(this.dir)) {
       if (!f.endsWith('.json')) continue;
       const r = this.readFile(join(this.dir, f));
       if (!r.ok) {
-        invalid.push({ file: f, error: r.message });
+        invalid.push({ file: f, error: r.message, reason: r.code ?? 'INVALID' });
         continue;
       }
       scenes.push(summarize(r.value));
@@ -195,9 +195,19 @@ export class SceneStore {
       return { ok: false, code: 'INVALID', message: `não foi possível ler (${(err as Error).message})` };
     }
     const v = validateScene(text, this.registry, this.device);
-    if (!v.scene || (!v.ok && v.code !== 'DEVICE_MISMATCH')) return { ok: false, code: v.code ?? 'INVALID', message: v.errors.join('; '), errors: v.errors };
+    // Lida do disco vale a MESMA regra da importação: só cena totalmente válida para ESTA mesa.
+    // Outro modelo (DEVICE_MISMATCH) nunca é consultado, comparado nem carregado; o arquivo
+    // fica intacto no disco (nada é apagado nem reescrito).
+    if (!v.ok || !v.scene) {
+      const why = v.errors.join('; ');
+      const message =
+        v.code === 'DEVICE_MISMATCH'
+          ? `Cena incompatível com esta mesa: ${why} O arquivo foi mantido em data/scenes, mas não pode ser consultado, comparado nem carregado.`
+          : why;
+      return { ok: false, code: v.code ?? 'INVALID', message, errors: v.errors };
+    }
     if (`${v.scene.id}.json` !== path.split(/[\\/]/).pop()) return { ok: false, code: 'INVALID', message: 'o id dentro do arquivo não confere com o nome do arquivo' };
-    return { ok: true, value: v.scene, warnings: v.ok ? v.warnings : v.errors };
+    return { ok: true, value: v.scene, warnings: v.warnings };
   }
 
   private write(scene: Scene): StoreResult<Scene> {

@@ -1225,6 +1225,31 @@ mx-root {
   color: var(--text);
   font: inherit;
 }
+.dest-AUX {
+  background: #3b2a5c;
+  color: #e3d4ff;
+}
+.load-summary {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.load-summary li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.scenes-invalid ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.scenes-invalid small {
+  display: block;
+  color: var(--muted);
+}
 .dest-EQ,
 .dest-HPF {
   background: var(--panel-2);

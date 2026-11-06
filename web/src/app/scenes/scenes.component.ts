@@ -67,7 +67,18 @@ const MAX_IMPORT_BYTES = 256 * 1024;
           }
         </ul>
         @if (s.invalidFiles().length) {
-          <p class="scenes-invalid">{{ s.invalidFiles().length }} arquivo(s) ilegível(is) em data/scenes foram ignorados (não foram apagados).</p>
+          <div class="scenes-invalid" data-testid="scenes-invalid">
+            <p>{{ s.invalidFiles().length }} arquivo(s) em data/scenes não podem ser usados (foram mantidos no disco):</p>
+            <ul>
+              @for (f of s.invalidFiles(); track f.file) {
+                <li>
+                  <strong>{{ f.file }}</strong>:
+                  {{ f.reason === 'DEVICE_MISMATCH' ? 'cena de outro equipamento.' : 'arquivo ilegível ou inválido.' }}
+                  <small>{{ f.error }}</small>
+                </li>
+              }
+            </ul>
+          </div>
         }
       </aside>
 
@@ -144,7 +155,7 @@ const MAX_IMPORT_BYTES = 256 * 1024;
                     @for (r of diffRows(); track r.key) {
                       <tr [class]="'kind-' + r.kind + (r.applicable ? '' : ' na')">
                         <td>{{ r.channel }}</td>
-                        <td><span [class]="'dest dest-' + r.destination">{{ r.destination }}</span></td>
+                        <td><span [class]="'dest dest-' + destClass(r.group, r.destination)">{{ r.destination }}</span></td>
                         <td>{{ show(r.current, r.kind) }}</td>
                         <td>
                           {{ show(r.target, r.kind) }}
@@ -182,7 +193,7 @@ const MAX_IMPORT_BYTES = 256 * 1024;
                   @for (r of viewRows(); track r.key) {
                     <tr [class.na]="!r.applicable">
                       <td>{{ r.channel }}</td>
-                      <td><span [class]="'dest dest-' + r.destination">{{ r.destination }}</span></td>
+                      <td><span [class]="'dest dest-' + destClass(r.group, r.destination)">{{ r.destination }}</span></td>
                       <td>{{ show(r.value, r.kind) }}{{ r.kind === 'other' ? ' (' + paramName(r.key) + ')' : '' }}</td>
                       <td>
                         <small>{{ r.applicable ? 'carregável no LAB' : r.reason }}</small>
@@ -220,9 +231,22 @@ const MAX_IMPORT_BYTES = 256 * 1024;
             @if (s.comparison(); as c) {
               <p>
                 Carregar <strong>{{ s.selected()?.name }}</strong> no LABORATÓRIO:
-                <strong>{{ c.totals.applicable }} parâmetro(s)</strong> mudam
-                (PA {{ count(c, 'PA') }}, FONES {{ count(c, 'FONES') }}, MASTER {{ count(c, 'MASTER') }}).
+                <strong>{{ c.totals.applicable }} parâmetro(s)</strong> mudam, em {{ loadSummary().length }} destino(s):
               </p>
+              <ul class="load-summary" data-testid="load-summary">
+                @for (d of loadSummary(); track d.destination) {
+                  <li>
+                    <span [class]="'dest dest-' + destClass(d.group, d.destination)">{{ d.destination }}</span>
+                    <span>
+                      <strong>{{ d.total }} alteração(ões)</strong>
+                      ({{ d.level ? d.level + ' volume' + (d.level > 1 ? 's' : '') : '' }}{{ d.level && d.mute ? ', ' : '' }}{{ d.mute ? d.mute + ' mute' + (d.mute > 1 ? 's' : '') : '' }})
+                      @if (d.channels.length) {
+                        — {{ d.channels.join(', ') }}
+                      }
+                    </span>
+                  </li>
+                }
+              </ul>
               @if (c.totals.notApplicable) {
                 <p class="scene-meta">{{ c.totals.notApplicable }} diferença(s) ainda não aplicável(is) ficam como estão.</p>
               }
@@ -337,7 +361,28 @@ export class ScenesComponent {
     return key.replace(/^ch\.\d+\./, '');
   }
 
-  count(c: { rows: Array<{ group: SceneGroup; applicable: boolean }> }, g: SceneGroup): number {
-    return c.rows.filter((r) => r.group === g && r.applicable).length;
+  /**
+   * Resumo final do carregamento: TODOS os destinos com alterações aplicáveis (PA, FONES, cada
+   * AUX pelo número, MASTER), com volume/mute e os canais. Nada fica escondido em "outros".
+   */
+  readonly loadSummary = computed(() => {
+    const rows = (this.s.comparison()?.rows ?? []).filter((r) => r.applicable);
+    const order: Record<SceneGroup, number> = { PA: 0, FONES: 1, OUTROS: 2, MASTER: 3 };
+    const byDest = new Map<string, { destination: string; group: SceneGroup; level: number; mute: number; total: number; channels: string[] }>();
+    for (const r of rows) {
+      const d = byDest.get(r.destination) ?? { destination: r.destination, group: r.group, level: 0, mute: 0, total: 0, channels: [] };
+      if (r.kind === 'mute') d.mute++;
+      else d.level++;
+      d.total++;
+      if (r.group !== 'MASTER' && !d.channels.includes(r.channel)) d.channels.push(r.channel);
+      byDest.set(r.destination, d);
+    }
+    return [...byDest.values()].sort((a, b) => order[a.group] - order[b.group] || a.destination.localeCompare(b.destination, 'pt-BR', { numeric: true }));
+  });
+
+  /** Classe CSS do selo de destino (outros AUX e EQ/HPF têm selo próprio). */
+  destClass(group: SceneGroup, destination: string): string {
+    if (group === 'OUTROS') return destination.startsWith('AUX') ? 'AUX' : destination;
+    return destination;
   }
 }

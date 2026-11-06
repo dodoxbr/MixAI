@@ -19,7 +19,7 @@ da mesa; o MCP do Claude Desktop é só um cliente dele. Detalhes: `docs/lab/06-
 cd mixai
 npm install
 npm run build
-npm test        # 332 testes, todos devem passar
+npm test        # 335 testes, todos devem passar
 npm ci --prefix web && npm run build:web   # interface (E3)
 ```
 

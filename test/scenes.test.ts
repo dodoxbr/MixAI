@@ -222,6 +222,96 @@ describe('cenas: exportar e importar JSON (ROG → Yoga)', () => {
   });
 });
 
+describe('cenas: arquivo de outro equipamento colocado direto em data/scenes', () => {
+  it('outro modelo nunca é consultado, comparado nem carregado; o arquivo fica intacto', async () => {
+    const t = await start();
+    const op = await screen(t);
+    await op.cmd({ type: 'set_level', channel: 'surdo', db: -5 });
+    const base = (await op.cmd({ type: 'scene_save', name: 'Base' })).data.scene.id;
+    await op.cmd({ type: 'set_level', channel: 'surdo', db: -10 });
+    const json = JSON.parse((await op.cmd({ type: 'scene_export', id: base })).data.json);
+    // copiado à mão (pendrive/Explorer), sem passar pela importação
+    const id = 'cena-ui24manual';
+    const file = join(t.dir, 'scenes', `${id}.json`);
+    const text = `${JSON.stringify({ ...json, id, name: 'Do bar (Ui24)', deviceProfile: { model: 'ui24', inputs: 24, aux: 10 } }, null, 2)}\n`;
+    writeFileSync(file, text);
+
+    const list = await op.cmd({ type: 'scene_list' });
+    expect(list.data.scenes.map((x: { id: string }) => x.id)).toEqual([base]); // fora da lista de uso
+    expect(list.data.invalid).toEqual([{ file: `${id}.json`, reason: 'DEVICE_MISMATCH', error: expect.stringContaining('Cena incompatível com esta mesa') }]);
+    expect(list.data.invalid[0].error).toContain('UI24');
+    for (const command of [
+      { type: 'scene_get', id },
+      { type: 'scene_compare', id },
+      { type: 'scene_load', id, previewId: 'pv-qualquer' },
+      { type: 'scene_duplicate', id },
+      { type: 'scene_export', id },
+    ]) {
+      const r = await op.cmd(command);
+      expect(r.ok, command.type).toBe(false);
+      if (command.type !== 'scene_load') {
+        expect(r.data.reason, command.type).toBe('DEVICE_MISMATCH');
+        expect(r.message).toContain('não pode ser consultado, comparado nem carregado');
+      }
+    }
+    expect(v(t, PA(9))).toBe(-10); // nada aplicado
+    expect(readFileSync(file, 'utf8')).toBe(text); // preservado byte a byte
+
+    // arquivo trocado por outro modelo DEPOIS da comparação: o pedido é recusado e nada muda
+    const cmp = await op.cmd({ type: 'scene_compare', id: base });
+    const baseFile = join(t.dir, 'scenes', `${base}.json`);
+    const swapped = `${JSON.stringify({ ...json, deviceProfile: { model: 'ui24', inputs: 24, aux: 10 } }, null, 2)}\n`;
+    writeFileSync(baseFile, swapped);
+    const req = await op.cmd({ type: 'scene_load', id: base, previewId: cmp.data.previewId });
+    expect(req).toMatchObject({ ok: false, data: { reason: 'DEVICE_MISMATCH' } });
+    expect(v(t, PA(9))).toBe(-10);
+    expect((await t.http('/api/pending', { token: await t.login(OPERATOR_PIN) })).json.items).toEqual([]);
+    expect(readFileSync(baseFile, 'utf8')).toBe(swapped);
+  });
+
+  it('trocado entre o pedido e a aprovação: a aprovação não aplica nada', async () => {
+    const t = await start();
+    const op = await screen(t);
+    await op.cmd({ type: 'set_level', channel: 'surdo', db: -5 });
+    const id = (await op.cmd({ type: 'scene_save', name: 'Show' })).data.scene.id;
+    await op.cmd({ type: 'set_level', channel: 'surdo', db: -10 });
+    const { req } = await compareAndRequest(op, id);
+    expect(req.code).toBe('NEEDS_CONFIRMATION');
+    const file = join(t.dir, 'scenes', `${id}.json`);
+    const json = JSON.parse(readFileSync(file, 'utf8'));
+    writeFileSync(file, JSON.stringify({ ...json, deviceProfile: { model: 'ui12', inputs: 8, aux: 2 } }));
+    const ap = await op.approve(req.pendingId);
+    expect(ap.ok).toBe(false);
+    expect(ap.message).toContain('incompatível');
+    expect(v(t, PA(9))).toBe(-10);
+  });
+
+  it('mesmo modelo com outro tamanho, colocado direto no disco: continua usável com aviso (regra mantida)', async () => {
+    const t = await start();
+    const op = await screen(t);
+    const base = (await op.cmd({ type: 'scene_save', name: 'Base' })).data.scene.id;
+    const json = JSON.parse((await op.cmd({ type: 'scene_export', id: base })).data.json);
+    const id = 'cena-maior16in';
+    writeFileSync(
+      join(t.dir, 'scenes', `${id}.json`),
+      JSON.stringify({
+        ...json,
+        id,
+        name: 'Maior',
+        deviceProfile: { model: 'ui16', inputs: 16, aux: 6 },
+        params: { ...json.params, 'ch.9.main.level': { value: -4, status: 'unknown' }, 'ch.14.main.level': { value: -2, status: 'unknown' } },
+      }),
+    );
+    const got = await op.cmd({ type: 'scene_get', id });
+    expect(got.ok).toBe(true);
+    expect(got.data.warnings.join(' ')).toMatch(/16 entradas/);
+    expect(got.data.unknownKeys).toEqual(['ch.14.main.level']);
+    const { req } = await compareAndRequest(op, id);
+    await op.approve(req.pendingId);
+    expect(v(t, PA(9))).toBe(-4); // o que existe aqui é aplicado; ch.14 não existe e não é aplicado
+  });
+});
+
 describe('cenas: comparação', () => {
   it('8. calcula só o que difere, por destino, com a diferença em dB, mute e o que ainda não é aplicável', async () => {
     const t = await start();

@@ -77,6 +77,12 @@ A tela de Cenas mostra a diferença no topo: "Arquivos do MixAI guardados neste 
   - **outro modelo de mesa** (`DEVICE_MISMATCH`, por exemplo uma cena da Ui24).
 - **Aceita com aviso:** mesmo modelo com outro número de entradas ou AUX. Os parâmetros que não existem aqui ficam guardados e nunca são aplicados.
 - **Sempre cria uma cena nova:** id novo, e um nome livre se já houver um igual (`"Show (importada)"`). **Nunca sobrescreve e nunca aplica nada.**
+- **Arquivo copiado direto para `data/scenes/`** (sem passar pela importação) segue a **mesma regra** (revisão do PR #9):
+  - uma cena de **outro modelo** nunca é consultada, comparada, duplicada, exportada nem carregada;
+  - ela aparece na tela como "cena de outro equipamento", com a mensagem completa;
+  - o arquivo fica **intacto** no disco;
+  - se o arquivo de uma cena for trocado por outro modelo depois da comparação ou da pendência, o pedido e a aprovação são recusados e nada é aplicado;
+  - mesmo modelo com outro tamanho continua usável com aviso, sem aplicar os parâmetros que não existem aqui.
 
 ## Comparação
 
@@ -104,7 +110,10 @@ Comparar não altera nada e guarda uma **prévia** presa às revisões dos parâ
 
 1. O operador escolhe a cena.
 2. **Comparar:** o servidor calcula as diferenças e guarda a prévia, com as revisões dos parâmetros.
-3. A tela mostra a prévia, e **Carregar…** abre o resumo ("N parâmetros mudam: PA x, FONES y, MASTER z").
+3. A tela mostra a prévia, e **Carregar…** abre o resumo final com **todos os destinos que mudam**:
+   - PA, FONES, cada outro AUX **pelo número e nome** (ex.: `AUX 2 · Monitor do Fred`) e MASTER;
+   - para cada destino, quantos volumes e mutes mudam e em quais canais;
+   - nada fica escondido numa contagem genérica de "outros" (revisão do PR #9).
 4. **Pedir carregamento:**
    - o servidor confere a prévia **dentro da fila única**;
    - se qualquer parâmetro mudou, responde `STATE_CHANGED` e a tela pede nova comparação.
@@ -181,9 +190,9 @@ Os botões têm pelo menos 48 px de altura (toque no Yoga). Em tela estreita, a 
 
 | Conjunto | Total | Novos na E5 |
 | --- | --- | --- |
-| Servidor e núcleo (`npm test`) | 332 | 21 de cenas (+ 2 da E1 adaptados ao formato v2) |
+| Servidor e núcleo (`npm test`) | 335 | 24 de cenas (+ 2 da E1 adaptados ao formato v2) |
 | Interface, unitários (`npm run test:web`) | 46 | 3 |
-| Integração com navegador (`npm run test:e2e`) | 33 | 6 |
+| Integração com navegador (`npm run test:e2e`) | 35 | 8 |
 
 Cobertura dos 16 itens pedidos:
 1. Criar e salvar.
@@ -203,7 +212,15 @@ Cobertura dos 16 itens pedidos:
 15. Proteções anteriores: tetos, falha parcial, aprovação só do operador, assistente recusado, e todos os testes anteriores verdes.
 16. Interface no tamanho do Yoga (125%) e em retrato, no Chromium, sem erros de JavaScript.
 
-Mutações conferidas: sem a aprovação obrigatória, 5 testes falham; sem a conferência da prévia, o teste de "estado mudou" falha.
+Mutações conferidas:
+- sem a aprovação obrigatória, 5 testes falham;
+- sem a conferência da prévia, o teste de "estado mudou" falha;
+- com a regra antiga do `readFile()` (aceitar outro modelo do disco), os 2 testes novos falham.
+
+**Revisão do PR #9:**
+- teste do servidor com cena de outro modelo colocada à mão em `data/scenes/`: consultar, comparar e carregar recusados; arquivo preservado; troca do arquivo depois da comparação e depois da pendência;
+- teste de navegador com uma cena que muda PA, FONES e AUX 2: o resumo final lista os três destinos, e tudo só é aplicado depois de "Aprovar";
+- teste de navegador do arquivo incompatível listado na tela.
 
 ## Riscos e limites
 

@@ -202,4 +202,66 @@ describe('Cenas na tela do Yoga (LAB, navegador real)', () => {
       expect(box.height, name).toBeGreaterThanOrEqual(44); // alvo de toque
     }
   });
+
+  it('confirmação mostra TODOS os destinos: PA, FONES e outro AUX identificado (AUX 2), e aplica tudo só após aprovar', async () => {
+    // Um segundo retorno cadastrado SÓ neste teste (o config/channels.yaml da banda não muda).
+    const channels = bandChannels();
+    channels.aux.push({ number: 2, name: 'Monitor do Fred', aliases: ['monitor fred'] });
+    const l = await startLab({ channels });
+    labs.push(l);
+    const { page, errors } = await open(l);
+    const op = await l.login(OPERATOR_PIN);
+    const AUX2 = paramKey.level(1, auxBus(2));
+    await l.command(op, { type: 'set_level', channel: 'surdo', db: -12 });
+    await l.command(op, { type: 'set_mute', channels: ['pandeiro'], muted: true });
+    await l.command(op, { type: 'set_level', channel: 'voz fernando', aux: 'fones', db: -17 });
+    await l.command(op, { type: 'set_level', channel: 'cavaco', aux: 2, db: -15 });
+    await page.getByRole('button', { name: 'Cenas' }).click();
+    await saveViaUi(page, 'Três destinos');
+    await l.command(op, { type: 'set_level', channel: 'surdo', db: -15 });
+    await l.command(op, { type: 'set_mute', channels: ['pandeiro'], muted: false });
+    await l.command(op, { type: 'set_level', channel: 'voz fernando', aux: 'fones', db: -20 });
+    await l.command(op, { type: 'set_level', channel: 'cavaco', aux: 2, db: -20 });
+
+    await page.getByRole('button', { name: 'Comparar' }).click();
+    await expect.poll(() => page.getByTestId('compare-total').textContent()).toContain('4 alteração(ões) a aplicar');
+    // a comparação detalhada continua mostrando o AUX 2 pelo número
+    await page.locator('.scene-compare tbody tr', { hasText: 'AUX 2 · Monitor do Fred' }).waitFor();
+
+    await page.getByRole('button', { name: 'Carregar…' }).click();
+    const items = await page
+      .getByTestId('load-summary')
+      .locator('li')
+      .evaluateAll((lis) => lis.map((li) => [...li.children].map((c) => c.textContent!.replace(/\s+/g, ' ').trim()).join(' | ')));
+    expect(items).toEqual([
+      'PA | 2 alteração(ões) (1 volume, 1 mute) — Pandeiro, Surdo',
+      'FONES | 1 alteração(ões) (1 volume) — Voz Fernando',
+      'AUX 2 · Monitor do Fred | 1 alteração(ões) (1 volume) — Cavaco',
+    ]);
+    await page.getByRole('dialog', { name: 'Carregar cena no laboratório' }).getByText('4 parâmetro(s)').waitFor();
+    await page.getByRole('dialog', { name: 'Carregar cena no laboratório' }).getByText('3 destino(s)').waitFor();
+    await page.getByRole('button', { name: 'Pedir carregamento' }).click();
+    const card = page.getByTestId('scene-load-card');
+    await card.waitFor();
+    expect([v(l, SURDO), v(l, FERNANDO_FONES), v(l, AUX2)]).toEqual([-15, -20, -20]); // nada ainda
+    await card.getByRole('button', { name: 'Aprovar' }).click();
+    await expect.poll(() => [v(l, SURDO), v(l, paramKey.mute(7, MASTER)), v(l, FERNANDO_FONES), v(l, AUX2)]).toEqual([-12, true, -17, -15]);
+    expect(errors).toEqual([]);
+  });
+
+  it('cena de outro equipamento copiada direto para data/scenes: aparece como incompatível e não pode ser usada', async () => {
+    const l = await lab();
+    const { page } = await open(l);
+    const op = await l.login(OPERATOR_PIN);
+    const saved = (await l.command(op, { type: 'scene_save', name: 'Base' })).json.result.data.scene;
+    const json = JSON.parse((await l.command(op, { type: 'scene_export', id: saved.id })).json.result.data.json);
+    writeFileSync(join(l.dir, 'scenes', 'cena-ui24manual.json'), JSON.stringify({ ...json, id: 'cena-ui24manual', name: 'Do bar', deviceProfile: { model: 'ui24', inputs: 24, aux: 10 } }));
+    await page.getByRole('button', { name: 'Cenas' }).click();
+    const box = page.getByTestId('scenes-invalid');
+    await box.waitFor();
+    expect(await box.textContent()).toContain('cena-ui24manual.json');
+    expect(await box.textContent()).toContain('cena de outro equipamento');
+    expect(await box.textContent()).toContain('UI24');
+    expect(await page.locator('.scene-item').allTextContents()).toEqual([expect.stringContaining('Base')]);
+  });
 });

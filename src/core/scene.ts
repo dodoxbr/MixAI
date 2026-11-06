@@ -309,7 +309,8 @@ export function classifyParam(key: ParamKey, ctx: Omit<DiffContext, 'read'>): Pa
       const aux = ctx.names.aux.list().find((a) => a.number === p.aux);
       const fones = p.aux === ctx.musicianAux;
       out.group = fones ? 'FONES' : 'OUTROS';
-      out.destination = fones ? 'FONES' : (aux?.name ?? `AUX ${p.aux}`);
+      // Outro AUX: sempre o número (e o nome do channels.yaml, se houver), ex.: "AUX 2 · Monitor".
+      out.destination = fones ? 'FONES' : aux && aux.name !== `AUX ${p.aux}` ? `AUX ${p.aux} · ${aux.name}` : `AUX ${p.aux}`;
       out.ceiling = ctx.ceilings.aux;
       if (!aux && out.applicable) {
         out.applicable = false;

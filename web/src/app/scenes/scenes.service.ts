@@ -65,7 +65,7 @@ export class ScenesUiService {
 
   readonly open = signal(false);
   readonly scenes = signal<SceneSummary[]>([]);
-  readonly invalidFiles = signal<Array<{ file: string; error: string }>>([]);
+  readonly invalidFiles = signal<Array<{ file: string; error: string; reason?: string }>>([]);
   readonly selectedId = signal<string | null>(null);
   readonly detail = signal<{ scene: SceneSummary; rows: SceneViewRow[]; unknownKeys: string[] } | null>(null);
   readonly comparison = signal<Comparison | null>(null);
@@ -132,7 +132,7 @@ export class ScenesUiService {
     const r = await this.run('list', { type: 'scene_list' });
     if (!r.ok) return this.fail(r);
     this.scenes.set((r.data?.['scenes'] as SceneSummary[]) ?? []);
-    this.invalidFiles.set((r.data?.['invalid'] as Array<{ file: string; error: string }>) ?? []);
+    this.invalidFiles.set((r.data?.['invalid'] as Array<{ file: string; error: string; reason?: string }>) ?? []);
     const sel = this.selectedId();
     if (sel && !this.scenes().some((s) => s.id === sel)) this.select(null);
     else if (!sel && this.scenes().length) await this.select(this.scenes()[0]!.id);
