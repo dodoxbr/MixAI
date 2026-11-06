@@ -229,6 +229,8 @@ describe('Cenas na tela do Yoga (LAB, navegador real)', () => {
     await page.locator('.scene-compare tbody tr', { hasText: 'AUX 2 · Monitor do Fred' }).waitFor();
 
     await page.getByRole('button', { name: 'Carregar…' }).click();
+    // espera o diálogo renderizar o resumo antes de ler (corrida vista na CI)
+    await expect.poll(() => page.getByTestId('load-summary').locator('li').count()).toBe(3);
     const items = await page
       .getByTestId('load-summary')
       .locator('li')

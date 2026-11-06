@@ -44,7 +44,8 @@ async function boot(canLoad = true) {
     ws.receive({ type: 'result', requestId: req['requestId'], result });
     await settle();
   };
-  const button = (name: string) => [...el.querySelectorAll('button')].find((b) => b.textContent!.trim() === name) as HTMLButtonElement;
+  // pelo nome acessível (aria-label quando houver; senão o texto)
+  const button = (name: string) => [...el.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') ?? b.textContent!.trim()) === name) as HTMLButtonElement;
   const open = async () => {
     button('Cenas').click();
     await settle();

@@ -41,14 +41,30 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       @if (bus() === 'fones') {
         <span class="shared-warning">{{ auxName() }}: muda o fone de TODOS</span>
       } @else if (simulatedMeters()) {
-        <span class="sim-legend">Medidores SIMULADOS (laboratório) — não é o som real</span>
+        <span class="sim-legend"><span class="tb-full">Medidores SIMULADOS (laboratório) — não é o som real</span><span class="tb-short">Medidores SIMULADOS — não é o som real</span></span>
       }
       <span class="spacer"></span>
       <mx-assistant-input />
-      <button type="button" class="btn" [class.on]="assistant.open()" (click)="assistant.open.set(!assistant.open())" [attr.aria-expanded]="assistant.open()">Assistente</button>
-      <button type="button" class="btn" [disabled]="!live.writable() || actions.isBusy('undo')" (click)="undo()">Desfazer</button>
-      <button type="button" class="btn" [class.on]="showHistory()" (click)="toggleHistory()">Histórico</button>
-      <button type="button" class="btn" [class.on]="scenes.open()" (click)="scenes.show()" [attr.aria-expanded]="scenes.open()">Cenas</button>
+      <!-- Ações: no celular em retrato viram 4 botões compactos (ícone + rótulo curto) numa linha.
+           O nome acessível é sempre o completo. Fora do retrato o grupo é transparente (display: contents). -->
+      <div class="toolbar-actions" role="group" aria-label="Ações da mesa">
+        <button type="button" class="btn tb-action" aria-label="Assistente" [class.on]="assistant.open()" (click)="assistant.open.set(!assistant.open())" [attr.aria-expanded]="assistant.open()">
+          <svg class="tb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>
+          <span class="tb-full">Assistente</span><span class="tb-short" aria-hidden="true">Chat</span>
+        </button>
+        <button type="button" class="btn tb-action" aria-label="Desfazer" [disabled]="!live.writable() || actions.isBusy('undo')" (click)="undo()">
+          <svg class="tb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5" /><path d="M4 12h10a6 6 0 0 1 0 12h-2" transform="translate(0 -6)" /></svg>
+          <span class="tb-full">Desfazer</span><span class="tb-short" aria-hidden="true">Desfazer</span>
+        </button>
+        <button type="button" class="btn tb-action" aria-label="Histórico" [class.on]="showHistory()" (click)="toggleHistory()" [attr.aria-expanded]="showHistory()">
+          <svg class="tb-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></svg>
+          <span class="tb-full">Histórico</span><span class="tb-short" aria-hidden="true">Histórico</span>
+        </button>
+        <button type="button" class="btn tb-action" aria-label="Cenas" [class.on]="scenes.open()" (click)="scenes.show()" [attr.aria-expanded]="scenes.open()">
+          <svg class="tb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 8 4-8 4-8-4z" /><path d="m4 12 8 4 8-4" /><path d="m4 16 8 4 8-4" /></svg>
+          <span class="tb-full">Cenas</span><span class="tb-short" aria-hidden="true">Cenas</span>
+        </button>
+      </div>
     </div>
 
     @if (!live.writable()) {

@@ -173,6 +173,26 @@ mx-root {
   flex: 1;
 }
 
+/* ---------- barra da Mesa: grupo de ações ---------- */
+/* Fora do celular em retrato o grupo não existe para o layout (botões continuam itens da barra)
+   e só aparecem os rótulos completos. */
+.toolbar-actions {
+  display: contents;
+}
+.tb-icon,
+.tb-short {
+  display: none;
+}
+.tb-icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* ---------- views ---------- */
 .mx-view {
   display: flex;
@@ -1321,6 +1341,7 @@ mx-root {
     scrollbar-width: thin;
   }
   .mx-mesa .toolbar > *,
+  .mx-mesa .toolbar .toolbar-actions > *,
   .mx-mesa .toolbar .mx-assistant-input form > * {
     flex-shrink: 0;
   }
@@ -1331,7 +1352,8 @@ mx-root {
     min-width: 56px;
     font-size: 0.95rem;
   }
-  .mx-mesa .toolbar > .btn {
+  .mx-mesa .toolbar > .btn,
+  .mx-mesa .toolbar .toolbar-actions > .btn {
     padding: 0 10px;
     font-size: 0.95rem;
   }
@@ -1457,6 +1479,101 @@ mx-root {
 /* músico deitado com largura sobrando: duas colunas de canais, sem rolagem horizontal */
 @media (max-height: 560px) and (min-width: 760px) {
   .mx-fones .fones-rows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ---------- celular em RETRATO: barra compacta da Mesa ----------
+   1ª linha: PA/FONES + aviso curto · 2ª: campo do assistente + Enviar · 3ª: Chat, Desfazer,
+   Histórico e Cenas (ícone + rótulo curto, ≥ 48 px) · depois os faders. Sem rolagem lateral.
+   Só retrato de celular: largura ≤ 720 px E altura > 560 px (o deitado tem regra própria). */
+@media (max-width: 720px) and (min-height: 561px) {
+  .mx-mesa .toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      'seg note'
+      'input input'
+      'actions actions';
+    align-items: center;
+    gap: 6px 8px;
+    padding: 6px 10px;
+  }
+  .mx-mesa .toolbar .segmented {
+    grid-area: seg;
+  }
+  .mx-mesa .toolbar .segmented button {
+    min-width: 64px;
+    min-height: 44px;
+  }
+  .mx-mesa .toolbar .sim-legend,
+  .mx-mesa .toolbar .shared-warning {
+    grid-area: note;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    padding: 4px 8px;
+  }
+  .mx-mesa .toolbar .sim-legend {
+    padding: 0;
+  }
+  .mx-mesa .toolbar .tb-full {
+    display: none;
+  }
+  .mx-mesa .toolbar .tb-short {
+    display: inline;
+  }
+  .mx-mesa .toolbar .spacer {
+    display: none;
+  }
+  .mx-mesa .toolbar .mx-assistant-input {
+    grid-area: input;
+    width: 100%;
+    order: 0;
+  }
+  .mx-mesa .toolbar .mx-assistant-input form {
+    flex-wrap: wrap;
+  }
+  .mx-mesa .toolbar .mx-assistant-input input {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+  }
+  .mx-mesa .toolbar .mx-assistant-input .btn {
+    flex: 0 0 auto;
+    min-width: 64px;
+    padding: 0 12px;
+  }
+  .mx-mesa .toolbar .toolbar-actions {
+    grid-area: actions;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .mx-mesa .toolbar .tb-action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    min-height: 52px;
+    padding: 4px 2px;
+    font-size: 0.78rem;
+    line-height: 1.1;
+  }
+  .mx-mesa .toolbar .tb-icon {
+    display: block;
+  }
+  .mx-mesa .toolbar .tb-action .tb-short {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+/* tela estreita demais para 4 botões de 48 px: 2 × 2, sem sobreposição */
+@media (max-width: 239px) and (min-height: 561px) {
+  .mx-mesa .toolbar .toolbar-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

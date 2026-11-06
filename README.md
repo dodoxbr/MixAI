@@ -97,7 +97,8 @@ Detalhes, capturas e testes: `docs/lab/07-E3-INTERFACE.md`.
 
 ## Celular (deitado e retrato)
 
-A Mesa funciona com o celular **deitado**: barra compacta numa linha, faders inteiros com rolagem
+Em **retrato**, a barra da Mesa é compacta (PA/FONES, campo + Enviar e Chat · Desfazer · Histórico ·
+Cenas com ícones numa linha; `docs/lab/12-CELULAR-RETRATO-BARRA.md`). A Mesa funciona com o celular **deitado**: barra compacta numa linha, faders inteiros com rolagem
 horizontal dos canais, MASTER separado à direita e a página rolando na vertical; girar a tela não
 envia nenhum comando. O músico tem **MUTE / ABRIR** por canal nos FONES (e no PA, se
 `server.musicianAccess` permitir). Detalhes e capturas: `docs/lab/11-CELULAR-PAISAGEM-MUTE.md`.
