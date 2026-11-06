@@ -202,6 +202,9 @@ Ordem sugerida: **F0** (sábado), **E0 → E1 → E2 → E3** (primeira entrega 
 
 ## E7 — EQ Lab
 
+> Incremento **E7A** (Issue #12): interface, curva estimada e comandos exclusivos do LAB.
+> Detalhes e convenções em [11-E7A-EQ.md](11-E7A-EQ.md). Presets, `propose_eq` e skill continuam fora deste incremento.
+
 - **Objetivo:** aprender e preparar EQ/HPF com uma curva visual honesta.
 - **Funcionalidades:**
   - parâmetros `eq.b1..b4` (freq, Q, ganho) e `hpf` (freq, slope) com as faixas da biblioteca;

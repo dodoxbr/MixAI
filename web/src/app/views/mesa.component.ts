@@ -1,3 +1,4 @@
+import { EqComponent } from '../eq/eq.component';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { ActionsService } from '../core/actions.service';
 import { LiveService } from '../core/live.service';
@@ -29,7 +30,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 @Component({
   selector: 'mx-mesa',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
+  imports: [EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
   host: { class: 'mx-view mx-mesa' },
   template: `
     <mx-status-bar />
@@ -37,6 +38,9 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       <div class="segmented" role="tablist" aria-label="Mix">
         <button type="button" role="tab" [attr.aria-selected]="bus() === 'pa'" [class.on]="bus() === 'pa'" (click)="bus.set('pa')">PA</button>
         <button type="button" role="tab" [attr.aria-selected]="bus() === 'fones'" [class.on]="bus() === 'fones'" (click)="bus.set('fones')">FONES</button>
+        @if (live.hello()?.mode === 'lab' && live.hello()?.role === 'operator') {
+          <button type="button" (click)="showEq.set(true)">EQ LAB</button>
+        }
       </div>
       @if (bus() === 'fones') {
         <span class="shared-warning">{{ auxName() }}: muda o fone de TODOS</span>
@@ -142,6 +146,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
     @if (scenes.open()) {
       <mx-scenes />
     }
+    @if (showEq()) { <mx-eq (closed)="showEq.set(false)" /> }
     <mx-toasts />
   `,
 })
@@ -151,6 +156,7 @@ export class MesaComponent {
   readonly assistant = inject(AssistantUiService);
   readonly scenes = inject(ScenesUiService);
 
+  readonly showEq = signal(false);
   readonly bus = signal<'pa' | 'fones'>('pa');
   readonly showHistory = signal(false);
   readonly history = signal<LogEntry[]>([]);
