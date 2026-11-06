@@ -657,6 +657,9 @@ mx-root {
 }
 
 /* ---------- avisos ---------- */
+.mx-mesa:has(.eq-panel) .mx-toasts {
+  z-index: 61;
+}
 .mx-toasts {
   position: fixed;
   left: 50%;

@@ -7,6 +7,9 @@ desfazer, log e **aprovação humana** das operações críticas.
 Desde a v0.4 (E2) existe um **servidor único** (`npm run serve:lab` / `serve:real`) que é o dono
 da mesa; o MCP do Claude Desktop é só um cliente dele. Detalhes: `docs/lab/06-E2-SERVIDOR.md`.
 
+No laboratório, o operador pode abrir **EQ LAB** para editar quatro bandas e HPF com curva
+estimada, bypass, reset e desfazer. Tudo é simulado; veja [E7A](docs/lab/11-E7A-EQ.md).
+
 ## O que precisa
 
 - Node.js 22 ou mais novo (`node -v`)

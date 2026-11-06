@@ -19,6 +19,7 @@ import { SessionService } from '../core/session.service';
     </div>
     <div class="spacer"></div>
     <div class="role-chip">{{ session.role() === 'operator' ? 'Operador' : 'Músico' }}</div>
+    <ng-content select="[status-action]" />
     <button type="button" class="btn btn-ghost" (click)="session.logout()">Sair</button>
   `,
 })
