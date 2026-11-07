@@ -205,8 +205,9 @@ físico nem autorizam E6 ou escrita real.
 `npm run observe:f0 -- --help` mostra os gates de execução física **manual e supervisionada**.
 O [roteiro F0C](docs/lab/18-F0C-READONLY-OBSERVER.md) permite observar fader/MUTE alterados
 pelo operador na UI oficial, link/reconexão e exportar evidências sanitizadas opt-in.
-Aceita [Ethernet ou Wi-Fi explícitos](docs/lab/19-F0D-DUAL-TRANSPORT-READONLY.md), com IP/interface confirmados e PA/HA800/fones desconectados. Não roda pelo smoke/CI,
-não envia ajustes e não habilita E6. Sem hardware, usar apenas os testes com socket falso.
+Aceita [Ethernet ou Wi-Fi explícitos](docs/lab/19-F0D-DUAL-TRANSPORT-READONLY.md), com IP/interface confirmados e PA/HA800/fones desconectados.
+O [preflight F0E](docs/lab/20-F0E-NATIVE-ROUTE-PREFLIGHT.md) funciona sem executar arquivos `.ps1` nem alterar a política PowerShell.
+O observador não roda pelo smoke/CI, não envia ajustes e não habilita E6. Sem hardware, usar apenas os testes com socket falso.
 
 ## Nomes da banda
 

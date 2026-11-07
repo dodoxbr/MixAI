@@ -1,32 +1,39 @@
 import { spawnSync } from 'node:child_process';
-import { isIP } from 'node:net';
-import { join } from 'node:path';
-import { z } from 'zod';
+import { evaluateObserverRoute, isObserverPrivateIP, type ObserverTransport, type RouteDecision } from './observer-route.js';
+export { evaluateObserverRoute, isObserverPrivateIP, RouteDecisionSchema, WindowsRouteSnapshotSchema, type ObserverTransport } from './observer-route.js';
 
-export type ObserverTransport = 'ethernet' | 'wifi';
-export function isObserverPrivateIP(ip: string): boolean {
-  if (isIP(ip) !== 4) return false;
-  const [a, b] = ip.split('.').map(Number);
-  return a === 10 || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
-}
-export const RouteDecisionSchema = z.object({
-  schemaVersion: z.literal(1), transport: z.enum(['ethernet', 'wifi']),
-  expectedInterfaceIndex: z.number().int().positive(), selectedInterfaceIndex: z.number().int().nonnegative(),
-  passed: z.boolean(), reason: z.enum(['ok', 'invalid_target', 'snapshot_incomplete', 'interface_down', 'transport_mismatch',
-    'route_via_usb_tether', 'unexpected_interface', 'target_not_on_link', 'overlapping_subnets', 'ambiguous_routes', 'query_unavailable']),
-}).strict().refine((d) => d.passed ? d.reason === 'ok' && d.selectedInterfaceIndex === d.expectedInterfaceIndex : d.reason !== 'ok');
+/** Código local fixo: somente cmdlets de consulta e projeção; nenhuma entrada vira código.
+ * Restricted permite comandos nativos, mas bloqueia arquivos .ps1. Se GPO/AppLocker/
+ * linguagem restrita também impedir a consulta, falha fechada, sem fallback/bypass.
+ */
+export const WINDOWS_ROUTE_QUERY = String.raw`
+$ErrorActionPreference = 'Stop'
+[ordered]@{
+  interfaces = @(Get-NetIPInterface -AddressFamily IPv4 | Select-Object InterfaceIndex, InterfaceMetric)
+  adapters = @(Get-NetAdapter | Select-Object ifIndex,
+    @{n='Up';e={$_.Status -eq 'Up'}},
+    @{n='Medium';e={[int]$_.NdisPhysicalMedium}},
+    @{n='Hardware';e={$_.HardwareInterface -eq $true}},
+    @{n='UsbTether';e={$_.InterfaceDescription -match 'RNDIS|Remote.*NDIS|tether|mobile.*(ethernet|broadband)'}})
+  addresses = @(Get-NetIPAddress -AddressFamily IPv4 | Where-Object AddressState -eq 'Preferred' | Select-Object InterfaceIndex, IPAddress, PrefixLength)
+  routes = @(Get-NetRoute -AddressFamily IPv4 -PolicyStore ActiveStore | Select-Object InterfaceIndex, DestinationPrefix, RouteMetric)
+  selected = @(Find-NetRoute -RemoteIPAddress $env:MIXAI_F0_ROUTE_TARGET | Select-Object InterfaceIndex)
+} | ConvertTo-Json -Depth 4 -Compress
+`.trim();
 
-/** Consulta Windows somente leitura, antes de CADA socket. Não executa conexão/probe. */
-export function confirmWindowsObserverRoute(root: string, ip: string, transport: ObserverTransport, index: number): boolean {
-  if (process.platform !== 'win32' || !isObserverPrivateIP(ip) || !Number.isInteger(index) || index < 1) throw new Error('F0D_WINDOWS_ROUTE_CHECK_REQUIRED');
+/** Consulta local Windows, antes de CADA socket. Não executa conexão/probe ou arquivo. */
+export function queryWindowsObserverRoute(ip: string, transport: ObserverTransport, index: number): RouteDecision {
+  if (process.platform !== 'win32' || !isObserverPrivateIP(ip) || !['wifi', 'ethernet'].includes(transport) || !Number.isSafeInteger(index) || index < 1 || index > 0xffffffff) throw new Error('F0D_WINDOWS_ROUTE_CHECK_REQUIRED');
   try {
-    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', join(root, 'scripts', 'ui16-route-preflight.ps1'),
-      '-TargetIp', ip, '-Transport', transport, '-InterfaceIndex', String(index)],
-    { encoding: 'utf8', timeout: 15_000, maxBuffer: 16_384, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    if (result.error || result.status !== 0) throw new Error();
-    const output = result.stdout;
-    const decision = RouteDecisionSchema.safeParse(JSON.parse(output.replace(/^\uFEFF/, '')));
-    if (!decision.success || decision.data.transport !== transport || decision.data.expectedInterfaceIndex !== index) throw new Error();
-    return decision.data.passed;
+    const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', WINDOWS_ROUTE_QUERY],
+      { encoding: 'utf8', timeout: 15_000, maxBuffer: 262_144, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, MIXAI_F0_ROUTE_TARGET: ip } });
+    if (result.error || result.status !== 0 || result.signal || result.stderr.trim()) throw new Error();
+    return evaluateObserverRoute(JSON.parse(result.stdout.replace(/^\uFEFF/, '')), ip, transport, index);
   } catch { throw new Error('F0D_ROUTE_PREFLIGHT_FAILED'); } // nunca ecoa stderr, endereços ou caminhos
+}
+
+/** Mantém a assinatura do F0D; root não é mais usado para executar arquivos. */
+export function confirmWindowsObserverRoute(_root: string, ip: string, transport: ObserverTransport, index: number): boolean {
+  return queryWindowsObserverRoute(ip, transport, index).passed;
 }
