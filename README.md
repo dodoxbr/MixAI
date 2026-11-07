@@ -124,6 +124,8 @@ versões sem restauração e acompanhar pedidos dos músicos. Aprovar uma orient
 ajustes. Identidade usa o vínculo de sessão do servidor (incluindo múltiplos canais); a bandeja do
 operador consulta a base técnica offline sem criar propostas, duplicar autenticação ou executar ajustes.
 Veja [operação, persistência e dependências](docs/lab/MIX-REFERENCE-REQUESTS.md).
+O [atendimento guiado](docs/lab/GUIDED-REQUESTS.md) permite consultar, revisar e enviar
+o contexto ao operador, acompanhar esclarecimentos e encerrar sem executar ajustes.
 
 ## Cenas do MixAI (E5)
 

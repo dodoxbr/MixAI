@@ -1,0 +1,64 @@
+import { randomUUID } from 'node:crypto';
+import { afterEach, expect, it, vi } from 'vitest';
+import { startTestServer, OPERATOR_PIN, MUSICIAN_PIN } from './server-support.js';
+import { parseChannels, PROJECT_ROOT } from '../src/core/config.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parse } from 'yaml';
+const servers: Awaited<ReturnType<typeof startTestServer>>[] = [];
+afterEach(async () => { vi.restoreAllMocks(); for(const t of servers.splice(0)) await t.server.close(); });
+async function boot(dir?: string) {
+ const t = await startTestServer({dir, channels:parseChannels(parse(readFileSync(join(PROJECT_ROOT,'config/channels.yaml'),'utf8')))}); servers.push(t);
+ const op=await t.login(OPERATOR_PIN), musician=await t.login(MUSICIAN_PIN);
+ const id=(await t.command(musician,{type:'musician_identity'})).json.result.data.sessionId;
+ const bind=()=>t.command(op,{type:'musician_bind',sessionId:id,musicianId:'fernando',name:'Fernando',channels:[6],mute:true}); await bind();
+ const base={serverId:t.server.core.serverId};
+ const prepare=(extra:object={}, token=musician)=>t.http('/api/mix-requests/preview',{token,body:{...base, report:'Minha voz está abafada no retorno.',sourceChannel:6,destination:'AUX1',symptom:'voz abafada',checksPerformed:['Conferi o encaixe do fone'],targetConfirmed:true,...extra}});
+ const send=(preview:any, extra:object={},token=musician)=>t.http('/api/mix-requests',{token,body:{...base,type:'diagnostico',requestId:randomUUID(),guidedId:preview.id,reviewed:true,report:preview.report,channel:preview.context.sourceChannel,destination:preview.context.destination,...extra}});
+ return {t,op,musician,id,bind,base,prepare,send};
+}
+it('Fernando CH6: preview, review, submit, operator clarification, musician reply, close, audit and restart without writes',async()=>{
+ const s=await boot(); const execute=vi.spyOn(s.t.server.core,'execute'), write=vi.spyOn(s.t.mixer,'write');
+ const p=(await s.prepare()).json; expect(p.context).toMatchObject({sessionId:s.id,sourceChannel:6,destination:'AUX1',evidenceLevel:'human_report_unverified',rollback:'informative_only_no_automatic_restore',diagnosis:{status:'theoretical_guidance'}});
+ expect(p.context.diagnosis.text).toContain('não confirmado'); expect(p.context.referenceId).toBeUndefined();
+ const workspace=(await s.t.http('/api/reference-workspace',{token:s.op})).json; expect(workspace.requests).toHaveLength(0); expect(workspace.requestCapabilities).toEqual({guidedPreviewVersion:1,closure:true});
+ expect((await s.send(p,{reviewed:false})).status).toBe(400);
+ const r=(await s.send(p)).json; expect(r.guidedContext.checksPerformed).toEqual(['Conferi o encaixe do fone']);
+ const decide=(version:number,state:string)=>s.t.http(`/api/mix-requests/${r.id}/decide`,{token:s.op,body:{...s.base,expectedVersion:version,expectedStateRevision:s.t.server.core.snapshotFor('operator').revision,state,response:'Confira por escuta e informe o resultado, sem executar ajustes.'}});
+ expect((await decide(1,'needs_information')).status).toBe(200);
+ expect((await decide(1,'closed')).status).toBe(409);
+ expect((await s.t.http(`/api/mix-requests/${r.id}/reply`,{token:s.musician,body:{...s.base,expectedVersion:2,text:'Conferi a conexão, continua abafada.'}})).status).toBe(200);
+ expect((await decide(3,'closed')).json.state).toBe('closed');
+ expect(write).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled();
+ await s.t.server.close(); const again=await boot(s.t.dir);
+ const detail=(await again.t.http(`/api/mix-requests/${r.id}`,{token:again.op})).json;
+ expect(detail.guidedContext).toEqual(r.guidedContext); expect(detail.history.map((h:any)=>h.action)).toEqual(['received','needs_information','received','closed']);
+ expect((await again.t.http(`/api/mix-requests/${r.id}`,{token:again.musician})).status).toBe(404);
+});
+it('isolates two musicians, refuses forged context, foreign channels and expired/revoked previews; allows unverified report without privileges',async()=>{
+ const s=await boot(); const other=await s.t.login(MUSICIAN_PIN);
+ expect((await s.prepare({sourceChannel:3})).status).toBe(403);
+ expect((await s.prepare({targetConfirmed:false})).status).toBe(400);
+ expect((await s.prepare({referenceId:randomUUID()})).status).toBe(400);
+ const p=(await s.prepare({report:'Minha voz está microfonando no retorno',symptom:'microfonia'})).json;
+ expect(p.context.diagnosis.text).toContain('Inspeção:');
+ expect((await s.send(p,{},other)).status).toBe(404);
+ expect((await s.send(p,{guidedContext:p.context})).status).toBe(400);
+ await s.t.command(s.op,{type:'musician_revoke',sessionId:s.id});
+ expect((await s.send(p)).status).toBe(409);
+ const unverified=(await s.prepare({},other)).json; const r=await s.send(unverified,{},other);
+ expect(r.json.requestedBy.verified).toBe(false); expect(r.json.state).toBe('needs_information');
+ expect((await s.t.http('/api/reference-workspace',{token:s.musician})).json.requests).toHaveLength(0);
+ expect((await s.t.http(`/api/mix-requests/${r.json.id}/decide`,{token:other,body:{...s.base,expectedVersion:1,expectedStateRevision:0,state:'approved',response:'x'}})).status).toBe(403);
+ const unused=(await s.prepare({},other)).json; s.t.clock.advance(600001); expect((await s.send(unused,{},other)).status).toBe(404);
+});
+it('captures valid reference context but refuses stale external mixer changes, and never restores',async()=>{
+ const s=await boot();
+ const ref=(await s.t.http('/api/mix-references',{token:s.op,body:{...s.base,eventId:'event-guided',eventName:'Show',eventDate:'2026-11-07',scope:'AUX1',expectedVersion:0,expectedStateRevision:s.t.server.core.snapshotFor('operator').revision,operatorApproved:true}})).json;
+ const p=(await s.prepare({referenceId:ref.id})).json; expect(p.context.referenceId).toBe(ref.id);
+ await s.t.mixer.write('ch.6.aux.1.level',-12); (s.t.mixer as any).emitChange('ch.6.aux.1.level',-12,'external');
+ const write=vi.spyOn(s.t.mixer,'write'); expect((await s.send(p)).status).toBe(409);
+ const next=(await s.prepare({referenceId:ref.id})).json; const r=await s.send(next); expect(r.status).toBe(200);
+ expect((await s.t.http(`/api/mix-references/${ref.id}/compare`,{token:s.op})).json.rows.some((row:any)=>row.changed)).toBe(true);
+ expect(write).not.toHaveBeenCalled();
+});

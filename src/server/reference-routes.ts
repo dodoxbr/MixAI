@@ -29,6 +29,7 @@ export async function referenceRoutes(app: FastifyInstance, opts: {
   app.get<{ Params: { id: string } }>('/api/mix-requests/:id', req => opts.service.detail(actors.get(req)!, req.params.id));
   app.get<{ Params: { id: string } }>('/api/mix-references/:id/compare', req => opts.service.compare(actors.get(req)!, req.params.id));
   app.post('/api/mix-references', { bodyLimit: 4096 }, req => opts.service.capture(actors.get(req)!, req.body));
+  app.post('/api/mix-requests/preview', { bodyLimit: 8192 }, req => opts.service.preview(actors.get(req)!, req.body));
   app.post('/api/mix-requests', { bodyLimit: 4096 }, req => opts.service.create(actors.get(req)!, req.body));
   for (const action of ['decide', 'cancel', 'reply', 'assess'] as const) {
     app.post<{ Params: { id: string } }>(`/api/mix-requests/:id/${action}`, { bodyLimit: 4096 }, req => opts.service[action](actors.get(req)!, req.params.id, req.body));

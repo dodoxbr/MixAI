@@ -1,9 +1,10 @@
+import { GuidedRequestComponent } from './guided.component';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LiveService } from '../core/live.service';
 import { newId } from '../core/protocol';
 import { ReferenceUiService, type Help } from './reference.service';
-@Component({ selector: 'mx-reference-workspace', imports: [FormsModule], changeDetection: ChangeDetectionStrategy.OnPush,
+@Component({ selector: 'mx-reference-workspace', imports: [FormsModule, GuidedRequestComponent], changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`:host{display:block;min-width:0}.workspace{border:1px solid #52616b;border-radius:8px;padding:.6rem;margin:.4rem;max-height:42vh;overflow:auto}.columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem}input,select,textarea{max-width:100%;margin:.2rem;padding:.35rem}textarea{width:95%}table{border-collapse:collapse;width:100%;font-size:.85rem}th,td{padding:.3rem;text-align:left;border-bottom:1px solid #52616b}.relevant{background:#655123}.request{border:1px solid #52616b;border-radius:6px;padding:.5rem;margin:.4rem 0}.actions{display:flex;flex-wrap:wrap;gap:.3rem}.muted{font-size:.85rem;opacity:.85}@media(max-width:720px){.columns{grid-template-columns:1fr}.workspace{max-height:38vh}}`],
   template: `@if (eligible()) {
     @if (!ui.open()) { <button type="button" class="btn btn-small" (click)="ui.open.set(true)" [attr.aria-expanded]="false" [attr.aria-label]="operator() ? 'Referência e pedidos' : 'Solicitar ao operador'">{{operator() ? 'Referência e pedidos' : 'Solicitar ao operador'}} ({{activeCount()}})</button> }
@@ -34,7 +35,7 @@ import { ReferenceUiService, type Help } from './reference.service';
             </section>
           } @else {
             <section aria-label="Solicitação ao operador">
-              <h3>Solicitar ao operador</h3><p class="muted">{{data.identity.verified ? data.identity.displayName : 'Sessão sem identidade vinculada — o canal informado é apenas relato, não permissão.'}}</p>
+              <mx-guided-request /><h3>Solicitar ao operador</h3><p class="muted">{{data.identity.verified ? data.identity.displayName : 'Sessão sem identidade vinculada — o canal informado é apenas relato, não permissão.'}}</p>
               <select aria-label="Tipo do pedido" [(ngModel)]="type"><option value="meu_canal">Meu canal (vínculo validado no servidor)</option><option value="mix_geral">Mix geral</option><option value="diagnostico">Pedir avaliação técnica ao operador</option></select>
               <select aria-label="Canal relatado" [(ngModel)]="channel"><option value="">Fonte a informar / mix geral</option>@for (c of data.channels; track c.number) { <option [value]="c.number">CH{{c.number}} — {{c.name}}</option> }</select>
               <select aria-label="Destino do pedido" [(ngModel)]="destination"><option value="PA">PA</option><option value="AUX1">FONES — AUX1 compartilhado</option></select>
@@ -54,6 +55,19 @@ import { ReferenceUiService, type Help } from './reference.service';
                     @for (url of r.recommendation.references || []; track url) { <a [href]="url" target="_blank" rel="noopener noreferrer">Fonte técnica</a> }
                   </details>
                 }
+                @if (r.guidedContext; as context) {
+                  <details><summary>Contexto do atendimento — {{context.symptom}}</summary>
+                    <p>CH{{context.sourceChannel}} · {{context.destination}} · relato humano: {{context.evidenceLevel}}</p>
+                    <p>Verificações declaradas: {{context.checksPerformed.join('; ') || 'nenhuma'}}. Não são medições.</p>
+                    <p style="white-space:pre-wrap">{{context.diagnosis.text}}</p>
+                    <p>Estado LAB na consulta: revisão {{context.observed.stateRevision}} · {{context.observed.available ? 'disponível' : 'indisponível'}}.</p>
+                    @if (operator()) {
+                      <label>Referência para comparar<select #reference aria-label="Referência do atendimento"><option value="">Sem referência</option>@for(ref of data.references; track ref.id) { @if(ref.scope === r.destination) {<option [value]="ref.id">{{ref.eventName}} v{{ref.version}}</option>} }</select></label>
+                      <button type="button" [disabled]="!reference.value" (click)="ui.compare(reference.value)">Comparar atendimento (somente leitura)</button>
+                    }
+                    <p>Rollback informativo: nenhuma restauração automática; revisão manual pelo operador.</p>
+                  </details>
+                }
                 @if (r.response) { <p>Resposta: {{r.response}}</p> }
                 @if (!closed(r.state)) {
                   <textarea [attr.aria-label]="'Resposta ' + r.id" maxlength="500" [(ngModel)]="notes[r.id]" placeholder="Resposta / esclarecimento / orientação"></textarea>
@@ -64,6 +78,7 @@ import { ReferenceUiService, type Help } from './reference.service';
                       <button type="button" [disabled]="ui.busy() || !note(r)" (click)="ui.decide(r, 'suggested', note(r))">Sugerir orientação</button>
                       <button type="button" [disabled]="ui.busy() || !note(r)" (click)="ui.decide(r, 'approved', note(r))">Aprovar orientação (não aplica)</button>
                       <button type="button" [disabled]="ui.busy() || !note(r)" (click)="ui.decide(r, 'rejected', note(r))">Recusar</button>
+                      <button type="button" [disabled]="ui.busy() || !note(r)" (click)="ui.decide(r, 'closed', note(r))">Encerrar atendimento (não aplica)</button>
                       <button type="button" [disabled]="ui.busy() || !note(r)" (click)="ui.decide(r, 'failed', note(r))">Registrar impedimento</button>
                     } @else { <button type="button" [disabled]="ui.busy() || !notes[r.id]?.trim()" (click)="ui.reply(r, notes[r.id] || '')">Complementar relato</button> }
                     <button type="button" [disabled]="ui.busy()" (click)="ui.cancel(r)">Cancelar pedido</button>
@@ -88,7 +103,7 @@ export class ReferenceWorkspaceComponent {
   report = ''; type = 'mix_geral'; channel = ''; destination = 'AUX1'; notes: Record<string, string> = {}; showClosed = false;
   readonly activeCount = computed(() => this.ui.data()?.requests.filter(r => !this.closed(r.state)).length ?? 0);
   visibleRequests() { return [...(this.ui.data()?.requests ?? [])].reverse().filter(r => this.showClosed || !this.closed(r.state)); }
-  closed(state: string) { return ['rejected', 'failed', 'expired', 'cancelled', 'applied'].includes(state); }
+  closed(state: string) { return ['rejected', 'failed', 'expired', 'cancelled', 'applied', 'closed'].includes(state); }
   note(r: Help) { return this.notes[r.id]?.trim() || r.response || ''; }
   channelName(channel?: number) { return channel ? `CH${channel} — ${this.ui.data()?.channels.find(c => c.number === channel)?.name ?? 'a confirmar'}` : 'Mix geral / fonte a informar'; }
   newEvent() { this.eventId = newId('evento'); this.eventName = ''; this.approved = false; void this.ui.compare(''); }
