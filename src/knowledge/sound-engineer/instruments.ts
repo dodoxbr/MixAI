@@ -28,7 +28,7 @@ export const instruments: Readonly<Record<Instrument, InstrumentGuide>> = {
     ['Identificar equilíbrio pele/platinelas na posição do microfone.', 'Revisar técnica e vazamento; não presumir que só produz agudos.'],
     ['Se estridente, rever ângulo para platinelas antes de EQ.', 'Se magro, verificar se HPF removeu a contribuição grave da pele.', 'Se domina a roda, discutir captação e balanço antes de retirar todo o brilho.'],
     'Não aplicar HPF extremo por tratá-lo como chimbal; preservar a função da pele.'),
-  vozes: guide('vozes', 'Inteligibilidade da voz principal e resposta do coro; o cadastro da banda declara Fred CH3 lead e CH4–7 backing, sem offset fixo.',
+  vozes: guide('vozes', 'Inteligibilidade da voz principal e resposta do coro.',
     ['Confirmar qual voz, distância/eixo do microfone e se a queixa ocorre em todas.', 'Revisar efeito de proximidade, vazamento da roda e posição do PA conforme padrão polar.'],
     ['Se embolada, discutir captação/HPF preservando corpo e tessitura.', 'Se estridente apenas nas consoantes, distinguir sibilância de presença; de-esser só manual na interface oficial.', 'Se some nos refrões, revisar distância e competição com instrumentos antes de compressão; AUX 1 afeta todos.'],
     'Não subir todas as vozes nem alterar ganho/phantom por diagnóstico textual; não usar gate que corte finais de palavras.'),

@@ -157,3 +157,13 @@ it('contrato autossuficiente resolve hipóteses e recusa evidências em categori
   const nonReport = { id: 'fake', kind: 'simulated_meter', valueDB: -3, detail: 'Simulação não é relato.' };
   expect(diagnosticConsultationSchema.safeParse({ ...c, evidence: { ...c.evidence, reports: [nonReport] } }).success).toBe(false);
 });
+
+it('cadastro vocal divergente mantém guia genérico sem atribuir Fred/lead ao canal', () => {
+  const d = diagnose({ symptom: 'desequilibrio', channel: 3, sourceLabel: 'Voz Fernando', instrument: 'vozes', destination: 'pa',
+    evidence: [{ id: 'report', kind: 'operator_report', symptom: 'desequilibrio', detail: 'A voz está sumindo.' }] });
+  expect(d.consultation.diagnostic.voiceRole).toBe('unknown');
+  expect(d.consultation.diagnostic.profileIds).toEqual([]);
+  expect(d.consultation.diagnostic.interactionIds).not.toContain('lead-backing');
+  expect(d.instrumentGuide!.role).not.toContain('Fred');
+  expect(d.bandGuidance).toEqual([]);
+});

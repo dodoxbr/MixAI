@@ -60,7 +60,7 @@ versão/status explícitos. Perfis não armazenam microfone/modelo ou preferênc
 A pergunta de captação/número de cordas permanece aberta mesmo quando o alias cadastrado
 inclui “7 cordas”. Relações surdo–tantã, cavaco–violão e lead–coro são condicionais.
 Fred CH3 só é identificado como lead com correspondência canal/nome do cadastro; CH4–7
-como backing também exigem correspondência. Isso não concede vínculo ou permissão.
+como backing também exigem correspondência. Sem correspondência, conserva guia vocal genérico e não atribui perfis de lead/coro a pessoas. Isso não concede vínculo ou permissão.
 
 Procedimentos consultivos não sugerem faixas numéricas padronizadas. Os pontos numéricos
 LAB da E7B em `eq-guides.ts` foram preservados e **não** são carregados por diagnóstico

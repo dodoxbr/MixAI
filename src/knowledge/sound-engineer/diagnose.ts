@@ -44,9 +44,9 @@ export function diagnose(input: unknown): Diagnosis {
   ] : [];
   const role = context.instrument === 'vozes' ? voiceRole(context.channel, context.sourceLabel) : 'unknown';
   const profiles = instrumentProfiles.filter(p => p.instrument === context.instrument &&
-    (context.instrument !== 'vozes' || role === 'unknown' || p.id === `voice-${role}`));
+    (context.instrument !== 'vozes' || (role !== 'unknown' && p.id === `voice-${role}`)));
   const involved = new Set([context.instrument, ...(context.relatedInstruments ?? [])]);
-  const related = interactions.filter(item => item.instruments.every(instrument => involved.has(instrument)));
+  const related = interactions.filter(item => (item.id !== 'lead-backing' || role !== 'unknown') && item.instruments.every(instrument => involved.has(instrument)));
   const moduleIds = modulesFor(context.symptom);
   const moduleRefs = moduleIds.flatMap(id => technicalModules[id].references);
   const refs = citations([...procedure.references, ...moduleRefs, ...profiles.flatMap(p => p.references)]);
