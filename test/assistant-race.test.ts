@@ -7,7 +7,7 @@ import { paramKey } from '../src/core/revisions.js';
 import { MASTER } from '../src/mixer/types.js';
 import { OPERATOR_PIN, startTestServer, wsClient } from './server-support.js';
 
-const band = () => parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'config', 'channels.yaml'), 'utf8')));
+const band = () => parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'test', 'fixtures', 'legacy-channels.yaml'), 'utf8')));
 type T = Awaited<ReturnType<typeof startTestServer>>;
 const running: T[] = [];
 const clients: Array<{ close: () => void }> = [];
