@@ -44,7 +44,7 @@ it.skipIf(process.platform !== 'win32')('Restricted bloqueia .ps1, mas permite a
     encoding: 'utf8', timeout: 15000, maxBuffer: 262144, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...env, ...extra },
   });
   try {
-    const policy = run(['-Command', 'Get-ExecutionPolicy']);
+    const policy = run(['-Command', 'Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; Get-ExecutionPolicy']);
     expect(policy.error).toBeUndefined(); expect(policy.stderr).toBe('');
     expect(policy.status).toBe(0); expect(policy.stdout.trim()).toBe('Restricted');
     const script = join(dir, 'blocked.ps1'); writeFileSync(script, "Write-Output 'MUST_NOT_EXECUTE'");
