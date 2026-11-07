@@ -334,3 +334,32 @@ describe('assistente na tela', () => {
     expect(el.querySelector('.proposal')).toBeNull();
   });
 });
+
+it('progressive chat renders one question, keeps technical details collapsed and treats HTML as text', async () => {
+ const {ws,el,say,settle}=await boot();
+ const req=await say('Minha voz está abafada no retorno');
+ const context={id:'ctx-progressive',revision:1,expiresAt:new Date(Date.now()+300000).toISOString(),subject:'Voz · FONES',field:'channel',question:'Qual é sua voz?'};
+ ws.receive({type:'assistant_reply',requestId:req['requestId'],reply:{kind:'diagnosis',source:'local',text:'<img src=x onerror=alert(1)> Dados integrais',diagnosticContext:context,diagnosticOptions:[{label:'Voz Fred',input:{channel:3}},{label:'Voz Lucius',input:{channel:4}}],references:[{title:'Manual',url:'javascript:alert(1)',locator:'seção'}]}});
+ await settle();
+ expect(el.querySelectorAll('.chat-question')).toHaveLength(1);
+ expect(el.querySelector('.chat-question')?.textContent).toBe('Qual é sua voz?');
+ expect((el.querySelector('.technical-details') as HTMLDetailsElement).open).toBe(false);
+ expect(el.querySelector('.technical-text')?.textContent).toContain('<img');
+ expect(el.querySelector('.technical-details img')).toBeNull();
+ expect(el.querySelector('.technical-references a')).toBeNull();
+ expect(el.querySelector('.diagnostic-options button')?.textContent?.trim()).toBe('Fred');
+ (el.querySelector('.diagnostic-options button') as HTMLButtonElement).click(); await settle();
+ expect(ws.last('assistant_conversation')).toMatchObject({input:{text:'Voz Fred',context:{id:context.id,revision:1}}});
+ expect(ws.last('proposal_apply')).toBeUndefined();
+ expect(el.querySelector('[aria-busy="true"]')).not.toBeNull();
+});
+
+it('server unavailability is explained and cannot enqueue a chat request', async () => {
+ const {ws,el,settle}=await boot();
+ ws.receive({...hello('operator'),assistant:{available:false,ai:false}});await settle();
+ const input=el.querySelector('.mx-assistant-input input') as HTMLInputElement;
+ input.value='Minha voz está abafada';input.dispatchEvent(new Event('input'));await settle();
+ expect((el.querySelector('.mx-assistant-input button[type=submit]') as HTMLButtonElement).disabled).toBe(true);
+ expect(el.querySelector('[data-testid="assist-hint"]')?.textContent).toContain('indisponível');
+ expect(ws.last('assistant')).toBeUndefined();
+});

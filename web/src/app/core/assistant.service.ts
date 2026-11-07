@@ -1,3 +1,4 @@
+import { diagnosticView, type DiagnosticView } from '../assistant/diagnostic-view';
 import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { LiveService, type AssistantOutcome } from './live.service';
 import { SessionService } from './session.service';
@@ -11,6 +12,7 @@ export interface ChatItem {
   text?: string;
   cards?: ProposalCard[];
   diagnostic?: boolean;
+  presentation?: DiagnosticView;
   diagnosticContext?: DiagnosticContext;
   references?: AssistantReply['references'];
   diagnosticOptions?: AssistantReply['diagnosticOptions'];
@@ -22,10 +24,10 @@ export interface ChatItem {
   source?: AssistantReply['source'];
 }
 
-const MAX_ITEMS = 10;
+const MAX_ITEMS = 40;
 
 const NOT_SENT = 'Sem conexão com o servidor: o pedido NÃO foi enviado e nada mudou na mesa. Quando a conexão voltar, envie de novo.';
-const LOST_ASK = 'A conexão caiu antes da resposta. O pedido não será repetido automaticamente; confira a tela e, se precisar, envie de novo.';
+const LOST_ASK = 'Sem resposta no prazo ou conexão interrompida. O pedido não será repetido automaticamente; confira a tela e, se precisar, envie de novo.';
 
 /**
  * Assistente na tela. Só conversa com o servidor: interpretar, aplicar e "melhorou?" são
@@ -52,6 +54,7 @@ export class AssistantUiService {
     if (c === 'offline') return 'Sem conexão com o servidor — reconectando. Nada é enviado enquanto isso.';
     if (c === 'connecting') return 'Conectando ao servidor…';
     if (c !== 'online') return 'Desconectado do servidor.';
+    if (this.live.hello()?.assistant?.available === false) return 'Assistente indisponível neste servidor.';
     if (this.thinking()) return 'Esperando a resposta do pedido anterior…';
     return null;
   });
@@ -195,7 +198,7 @@ export class AssistantUiService {
     }
     if (r.diagnosticContext !== undefined) this.setContext(r.diagnosticContext ?? undefined);
     if (r.kind === 'diagnosis') {
-      return this.push({ from: 'assistant', source: 'local', diagnostic: true, text: r.text, references: r.references, diagnosticOptions: r.diagnosticOptions, diagnosticContext: r.diagnosticContext ?? undefined });
+      return this.push({ from: 'assistant', source: 'local', diagnostic: true, presentation: diagnosticView(r), text: r.text, references: r.references, diagnosticOptions: r.diagnosticOptions, diagnosticContext: r.diagnosticContext ?? undefined });
     }
     if (r.kind === 'proposals' && !r.proposals?.length) {
       return this.push({ from: 'assistant', source: r.source, text: r.text || 'Nada a ajustar.' });

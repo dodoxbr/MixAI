@@ -1591,3 +1591,43 @@ mx-root {
 .diagnostic-context { padding: .6rem; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .diagnostic-context p { margin: .3rem 0; }
 .diagnostic-context small { display: block; margin-bottom: .3rem; }
+
+/* Progressive diagnostic chat (#56), scoped to the existing panel. */
+
+.mx-assistant-panel .assist-log { overscroll-behavior: contain; }
+.mx-assistant-panel .chat-readonly-note { margin:0; padding:8px 12px; font-size:.8rem; color:var(--muted); }
+.mx-assistant-panel .assist-item { border-radius:14px; padding:10px; background:var(--panel-2); overflow-wrap:anywhere; }
+.mx-assistant-panel .assist-item.from-user { margin-left:12%; background:#17334c; }
+.mx-assistant-panel .chat-title { font-size:1.05rem; margin:0; }
+.mx-assistant-panel .chat-context { display:flex; flex-wrap:wrap; gap:6px; font-size:.85rem; }
+.mx-assistant-panel .chat-context span { border:1px solid var(--line); border-radius:8px; padding:4px 8px; }
+.mx-assistant-panel .diagnostic-safety, .mx-assistant-panel .shared-chat { margin:0; font-size:.85rem; }
+.mx-assistant-panel .chat-block { margin:0; padding:8px; border-left:3px solid #7dbbff; font-size:.9rem; }
+.mx-assistant-panel .chat-block strong { display:block; }
+.mx-assistant-panel .hypothesis { border-color:#c6a4ff; }
+.mx-assistant-panel .recommendation { border-color:#65d4b2; }
+.mx-assistant-panel .measurement { border-color:#f6c466; }
+.mx-assistant-panel .chat-question { margin:4px 0; font-weight:700; }
+.mx-assistant-panel .technical-details summary { min-height:48px; cursor:pointer; padding:12px 4px; }
+.mx-assistant-panel .technical-details { min-width:0; }
+.mx-assistant-panel .structured-diagnostic { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.8rem; }
+.mx-assistant-panel .chip { min-height:48px; max-width:100%; white-space:normal; }
+.mx-assistant-panel :focus-visible { outline:3px solid #7dbbff; outline-offset:2px; }
+.mx-assistant-panel .history-back { align-self:flex-start; margin:4px 10px; }
+.mx-assistant-panel .chat-status { padding:8px 12px; margin:0; color:#f6c466; }
+@media (max-width:720px) {
+  .mx-assistant-panel .assist-log { padding:8px; gap:8px; max-height:65dvh; }
+  .mx-assistant-panel .assist-item { padding:8px; }
+  .mx-assistant-panel .diagnostic-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+.mx-assistant-panel .diagnostic-context { display:flex; gap:8px; align-items:center; font-size:.8rem; }
+.mx-assistant-panel .diagnostic-context details { flex:1; min-width:0; }
+.mx-assistant-panel .diagnostic-context summary { cursor:pointer; min-height:48px; display:flex; align-items:center; }
+.mx-assistant-panel .diagnostic-context .chip { font-size:.8rem; padding:6px; }
+.mx-assistant-panel .assist-head .history-back { margin:0; align-self:auto; min-height:48px; }
+@media (max-width:720px) and (min-height:561px) {
+  .mx-mesa .side.has-assistant > .mx-assistant-panel { flex:none; min-height:min(600px,80dvh); }
+  .mx-mesa .side .mx-assistant-panel .assist-log { flex:1 1 300px; min-height:220px; max-height:65dvh; }
+}
+/* Keep the established command/proposal card dimensions and approval column usable. */
+.mx-assistant-panel .assist-item:not(.is-diagnostic) { padding:0; background:transparent; }
