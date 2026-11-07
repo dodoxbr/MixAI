@@ -138,15 +138,15 @@ describe('modelos de microfone (não misturar P3 S com P5)', () => {
 describe('resumo do modelo local: motivos de descarte', () => {
   it('desligado ou sem trechos: não é falha e não entra nas estatísticas', async () => {
     const off = await service({ ollama: fakeOllama().client, narrative: false, docs: { 'shure-live.md': MIC_DOC } });
-    expect((await ask(off.k)).narrativeStatus).toEqual({ status: 'disabled' });
+    expect((await ask(off.k)).narrativeStatus).toMatchObject({ status: 'disabled' });
     const none = await service({ ollama: fakeOllama().client, narrative: true });
-    expect((await none.k.enrich({ text: 'zzzz qqqq', symptom: 'microfonia' })).narrativeStatus).toEqual({ status: 'no_passages' });
-    expect((await off.k.status()).narrativeStats).toEqual({ used: 0, dropped: {} });
+    expect((await none.k.enrich({ text: 'zzzz qqqq', symptom: 'microfonia' })).narrativeStatus).toMatchObject({ status: 'no_passages' });
+    expect((await off.k.status()).narrativeStats).toEqual({ used: 0, usedBy: {}, dropped: {} });
   });
   it('texto bom é mostrado, conta como usado e as tags <trecho> repetidas são removidas', async () => {
     const { k } = await narr('<trecho n="1">ruído</trecho> Pode ser que o ganho esteja alto no canal; o operador pode conferir o posicionamento.');
     const r = await ask(k);
-    expect(r.narrativeStatus).toEqual({ status: 'used' });
+    expect(r.narrativeStatus).toMatchObject({ status: 'used' });
     expect(r.narrative).toMatchObject({ source: 'ollama', verified: false });
     expect(r.narrative!.text).not.toMatch(/<\/?trecho/);
     expect((await k.status()).narrativeStats.used).toBe(1);
@@ -164,7 +164,7 @@ describe('resumo do modelo local: motivos de descarte', () => {
     const { k } = await narr(reply, (m) => logs.push(m));
     const r = await ask(k);
     expect(r.narrative).toBeUndefined();
-    expect(r.narrativeStatus).toEqual({ status: 'blocked', rule });
+    expect(r.narrativeStatus).toMatchObject({ status: 'blocked', rule });
     const line = logs.join('\n');
     expect(line).toContain(`motivo=blocked:${rule}`);
     expect(line).not.toMatch(/graves|ganho|vocal|brilho|set_level|phantom e|48V/);
@@ -176,18 +176,18 @@ describe('resumo do modelo local: motivos de descarte', () => {
     const empty = await narr('   ');
     expect((await ask(empty.k)).narrativeStatus).toMatchObject({ status: 'empty' });
     const noBase = await narr('Não há base suficiente nos trechos.');
-    expect((await ask(noBase.k)).narrativeStatus).toEqual({ status: 'empty', rule: 'sem_base' });
+    expect((await ask(noBase.k)).narrativeStatus).toMatchObject({ status: 'empty', rule: 'sem_base' });
   });
   it('timeout, serviço fora e erro HTTP viram motivos distintos, sem vazar a mensagem do servidor', async () => {
     const logs: string[] = [];
     const slow = await narr('x', (m) => logs.push(m));
     const slowClient = fakeOllama({ chat: timeoutError() }).client;
     const t = await service({ ollama: slowClient, narrative: true, log: (m) => logs.push(m), docs: { 'shure-live.md': MIC_DOC } });
-    expect((await ask(t.k)).narrativeStatus).toEqual({ status: 'timeout' });
+    expect((await ask(t.k)).narrativeStatus).toMatchObject({ status: 'timeout' });
     const http = await service({ ollama: fakeOllama({ chat: { status: 500 } }).client, narrative: true, log: (m) => logs.push(m), docs: { 'shure-live.md': MIC_DOC } });
-    expect((await ask(http.k)).narrativeStatus).toEqual({ status: 'error' });
+    expect((await ask(http.k)).narrativeStatus).toMatchObject({ status: 'error' });
     const noChat = await service({ ollama: fakeOllama({ chatModel: false }).client, narrative: true, log: (m) => logs.push(m), docs: { 'shure-live.md': MIC_DOC } });
-    expect((await ask(noChat.k)).narrativeStatus).toEqual({ status: 'unavailable' });
+    expect((await ask(noChat.k)).narrativeStatus).toMatchObject({ status: 'unavailable' });
     expect(slow).toBeDefined();
     expect(logs.join('\n')).not.toContain('segredo-do-servidor');
   });

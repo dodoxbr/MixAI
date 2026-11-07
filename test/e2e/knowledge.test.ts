@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import type { Browser, Page } from 'playwright';
 import { PROJECT_ROOT } from '../../src/core/config.js';
+import { GeminiClient } from '../../src/knowledge/local/gemini.js';
 import { OllamaClient } from '../../src/knowledge/local/ollama.js';
 import { LocalKnowledge } from '../../src/knowledge/local/service.js';
 import { FileKnowledgeStore } from '../../src/knowledge/local/store.js';
@@ -37,11 +38,11 @@ function fakeOllama(opts: { up?: boolean; chat?: string } = {}) {
   return new OllamaClient({ url: 'http://127.0.0.1:11434', embedModel: 'bge-m3', chatModel: 'llama3.2:3b', embedDimensions: 8, timeoutMs: 2000 }, fetchFn as unknown as typeof fetch);
 }
 
-async function lab(opts: { ollama?: OllamaClient; narrative?: boolean; ingested?: boolean; seeded?: boolean } = {}) {
+async function lab(opts: { ollama?: OllamaClient; narrative?: boolean; ingested?: boolean; seeded?: boolean; gemini?: GeminiClient; chat?: 'ollama' | 'gemini' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'mixai-e2e-k-'));
   const store = new FileKnowledgeStore(join(dir, 'knowledge.json'));
   await store.init();
-  const knowledge = new LocalKnowledge({ store, ollama: opts.ollama, inboxDir: join(dir, 'inbox'), seedDir: join(PROJECT_ROOT, 'knowledge', 'seed', 'banda-v1_2'), maxDocumentBytes: 1024 * 1024, maxPassages: 3, narrative: opts.narrative ?? false });
+  const knowledge = new LocalKnowledge({ store, ollama: opts.ollama, chatProviders: opts.ollama ? [opts.ollama, ...(opts.gemini ? [opts.gemini] : [])] : undefined, chat: opts.chat, inboxDir: join(dir, 'inbox'), seedDir: join(PROJECT_ROOT, 'knowledge', 'seed', 'banda-v1_2'), maxDocumentBytes: 1024 * 1024, maxPassages: 3, narrative: opts.narrative ?? false });
   mkdirSync(join(dir, 'inbox'), { recursive: true });
   writeFileSync(join(dir, 'inbox', 'shure-live.md'), DOC);
   if (opts.seeded !== false) await knowledge.importSeed();
@@ -196,4 +197,79 @@ it('base indisponível: painel mostra aviso, ações falham com mensagem curta e
   expect(await page.locator('.technical-text').last().textContent()).toContain('Não ouvi o som');
   expect(await page.locator('.proposal').count()).toBe(0);
   expect(await page.content()).not.toMatch(/segredo|ECONNREFUSED|5433/);
+});
+
+// ---- Provedor do resumo (Ollama local × Gemini externo) ---------------------------------------
+const KEY = 'FAKE-gemini-key-for-tests-0123456789abcdef';
+const GEMINI_TEXT = 'Pode ser que o retorno esteja alto demais; o operador pode conferir a posição do microfone.';
+function fakeGemini(opts: { chat?: { status: number } } = {}) {
+  const sent: string[] = [];
+  const fetchFn = async (input: URL | string, init?: RequestInit) => {
+    const url = String(input);
+    sent.push(`${url}\n${String(init?.body ?? '')}\n${JSON.stringify(init?.headers ?? {})}`);
+    if (url.includes(':generateContent')) {
+      return opts.chat ? new Response('detalhe-interno', { status: opts.chat.status }) : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: GEMINI_TEXT }] }, finishReason: 'STOP' }] }));
+    }
+    return new Response('{}');
+  };
+  return { sent, client: new GeminiClient({ chatModel: 'gemini-2.5-flash', embedModel: 'gemini-embedding-001', embedDimensions: 8, timeoutMs: 2000 }, KEY, fetchFn as unknown as typeof fetch) };
+}
+
+it('provedor: sem Gemini habilitado a escolha não existe; com ele o operador lê o aviso, consente e passa a usá-lo', async () => {
+  const none = await lab({ ollama: fakeOllama(), narrative: true, ingested: true });
+  const a = await enter(browser, none.t.base, OPERATOR_PIN, YOGA);
+  const panelA = await open(a.page);
+  await panelA.getByRole('status').first().waitFor();
+  expect(await panelA.locator('input[name=chat-provider]').count()).toBe(0);
+  await a.ctx.close();
+
+  const g = fakeGemini();
+  const { t } = await lab({ ollama: fakeOllama(), narrative: true, ingested: true, gemini: g.client });
+  const { page } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
+  const writes = vi.spyOn(t.mixer, 'write');
+  const panel = await open(page);
+  await panel.getByRole('radiogroup', { name: 'Provedor do resumo' }).waitFor();
+  expect(await panel.textContent()).toContain('Em uso: Ollama (local)');
+  expect(g.sent).toHaveLength(0); // abrir o painel não chama o serviço externo
+
+  await panel.getByLabel('Gemini (serviço externo do Google)').check();
+  expect(await panel.getByRole('note').textContent()).toContain('saem deste computador para o Google');
+  const apply = panel.getByRole('button', { name: 'Aplicar provedor' });
+  expect(await apply.isDisabled()).toBe(true);
+  await panel.getByLabel('Entendo e aceito enviar esses dados ao serviço externo.').check();
+  await expect.poll(() => apply.isDisabled()).toBe(false);
+  await apply.click();
+  await expect.poll(() => panel.textContent()).toContain('Em uso: Gemini (externo)');
+
+  await ask(page, 'O Fred está microfonando no PA, senha 987654');
+  const block = page.locator('.knowledge-block').last();
+  await block.waitFor({ state: 'attached' });
+  await page.locator('.technical-details').last().locator('summary').click();
+  expect(await block.textContent()).toContain('Resumo do Gemini (serviço externo) · não verificado, teoria a conferir');
+  expect(await block.textContent()).toContain(GEMINI_TEXT);
+  expect(await page.locator('.proposal').count()).toBe(0);
+  expect(writes).not.toHaveBeenCalled();
+
+  const outgoing = g.sent.filter((x) => x.includes(':generateContent')).join('\n');
+  expect(outgoing).toContain('microfonia');
+  expect(outgoing).not.toMatch(/Fred|987654/);
+  expect(outgoing).toContain('o músico');
+  expect(await page.content()).not.toContain(KEY);
+  expect(await page.evaluate(() => JSON.stringify({ ...sessionStorage, ...localStorage }))).not.toContain(KEY);
+});
+
+it('provedor: Gemini com cota esgotada → o modelo local assume, a tela explica e não vaza detalhes', async () => {
+  const g = fakeGemini({ chat: { status: 429 } });
+  const { t } = await lab({ ollama: fakeOllama({ chat: 'Pode ser o cabo; o operador pode conferir a ligação do microfone no palco.' }), narrative: true, ingested: true, gemini: g.client, chat: 'gemini' });
+  const { page } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
+  const panel = await open(page);
+  await expect.poll(() => panel.textContent()).toContain('Em uso: Gemini (externo)');
+  await ask(page, 'O Fred está microfonando no PA');
+  const block = page.locator('.knowledge-block').last();
+  await block.waitFor({ state: 'attached' });
+  await page.locator('.technical-details').last().locator('summary').click();
+  expect(await block.textContent()).toContain('Resumo do modelo local · não verificado, teoria a conferir');
+  expect(await block.textContent()).toContain('Resumo gerado pelo modelo local porque o Gemini atingiu o limite de uso.');
+  expect(await page.content()).not.toMatch(/detalhe-interno|AIza/);
+  expect(await page.locator('.proposal').count()).toBe(0);
 });

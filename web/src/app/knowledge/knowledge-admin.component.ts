@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { safeReference } from '../assistant/diagnostic-view';
 import { KnowledgeAdminService } from './knowledge.service';
 
@@ -37,6 +37,28 @@ const EVIDENCE: Record<string, string> = {
           }
           @if (k.error()) { <p class="knowledge-warning" role="alert">{{ k.error() }}</p> }
           @if (k.notice()) { <p class="knowledge-ok" role="status">{{ k.notice() }}</p> }
+
+          @if (k.status()?.providers; as pv) {
+            @if (pv.chat.options.length > 1) {
+              <h3>Provedor do resumo</h3>
+              <div class="knowledge-providers" role="radiogroup" aria-label="Provedor do resumo">
+                @for (o of pv.chat.options; track o.id) {
+                  <label class="provider-option">
+                    <input type="radio" name="chat-provider" [value]="o.id" [checked]="selected() === o.id" [disabled]="k.busy() || !o.configured" (change)="choose(o.id)" />
+                    {{ o.id === 'gemini' ? 'Gemini (serviço externo do Google)' : 'Ollama (local, neste computador)' }}@if (!o.configured) { — falta a chave em config/secrets.yaml }
+                  </label>
+                }
+              </div>
+              @if (selected() === 'gemini') {
+                <p class="knowledge-warning" role="note">Atenção: com o Gemini, trechos de manuais públicos e a sua pergunta (sem nomes nem números sensíveis) saem deste computador para o Google. Documentos locais nunca são enviados. Se o Gemini falhar, o Ollama local assume.</p>
+                <label class="provider-consent"><input type="checkbox" #agree [checked]="consent()" (change)="consent.set(agree.checked)" /> Entendo e aceito enviar esses dados ao serviço externo.</label>
+              }
+              @if (selected() !== pv.chat.selected) {
+                <button type="button" class="btn" [disabled]="k.busy() || (selected() === 'gemini' && !consent())" (click)="apply()">Aplicar provedor</button>
+              }
+              <p class="knowledge-note">Em uso: {{ pv.chat.selected === 'gemini' ? 'Gemini (externo)' : 'Ollama (local)' }}@if (!pv.narrative) { · o resumo está desligado na configuração (knowledge.ollama.narrative) }</p>
+            }
+          }
 
           <div class="knowledge-actions">
             <button type="button" class="btn" [disabled]="k.busy()" (click)="k.importSeed()">Importar pacote base</button>
@@ -112,6 +134,15 @@ const EVIDENCE: Record<string, string> = {
 export class KnowledgeAdminComponent {
   readonly k = inject(KnowledgeAdminService);
   readonly link = safeReference;
+  /** Escolha ainda não aplicada (null = a que está em uso). */
+  private readonly pending = signal<'ollama' | 'gemini' | null>(null);
+  readonly consent = signal(false);
+  readonly selected = computed(() => this.pending() ?? this.k.status()?.providers?.chat.selected ?? 'ollama');
+  choose(id: 'ollama' | 'gemini'): void { this.pending.set(id); this.consent.set(false); }
+  apply(): void {
+    const id = this.selected();
+    void this.k.setProvider(id, id === 'gemini' && this.consent()).then(() => { if (!this.k.error()) { this.pending.set(null); this.consent.set(false); } });
+  }
   readonly modelIds = computed(() => Object.keys(this.k.mics()?.models ?? {}));
   readonly rows = computed(() =>
     Object.entries(this.k.mics()?.assignments ?? {})

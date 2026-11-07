@@ -1,7 +1,8 @@
 import { ingestInbox, type IngestReport } from './ingest.js';
 import { modelKeyOf, scopeOf, type PerceptionModel } from './models.js';
 import { readPackFromDir, readPackFromZip, type Assignment, type CatalogEntry, type KnowledgePack } from './pack.js';
-import type { GenerateFailure, OllamaClient } from './ollama.js';
+import { isPublicSource, redactForExternal } from './privacy.js';
+import type { AiProvider, GenerateFailure, ProviderId } from './provider.js';
 import type { KnowledgeStore, MicrophoneState, Passage, SearchMode } from './store.js';
 import { cleanText } from './text.js';
 
@@ -10,8 +11,15 @@ export class KnowledgeError extends Error {
 }
 
 /** Por que o resumo do modelo local foi (ou não) mostrado. Só códigos: nunca o texto do modelo. */
-export type NarrativeStatus = 'used' | 'disabled' | 'no_passages' | 'unavailable' | 'timeout' | 'error' | 'empty' | 'echo' | 'blocked';
-export interface NarrativeStats { used: number; dropped: Record<string, number> }
+export type NarrativeStatus = 'used' | 'disabled' | 'no_passages' | 'unavailable' | 'timeout' | 'error' | 'empty' | 'echo' | 'blocked' | 'auth' | 'quota' | 'refused' | 'withheld';
+export interface NarrativeStats { used: number; usedBy: Record<string, number>; dropped: Record<string, number> }
+
+/** Provedores de IA: o que existe, o que o operador escolheu e se os dados saem do computador. */
+export interface ProvidersInfo {
+  chat: { selected: ProviderId; options: Array<{ id: ProviderId; external: boolean; configured: boolean }> };
+  embed: { id: ProviderId; external: boolean };
+  narrative: boolean;
+}
 
 export interface KnowledgeStatus {
   enabled: true;
@@ -25,6 +33,7 @@ export interface KnowledgeStatus {
   mode: 'vector' | 'keyword' | 'deterministic';
   note: string;
   narrativeStats: NarrativeStats;
+  providers: ProvidersInfo;
 }
 
 export interface EnrichInput { text: string; symptom?: string; instrument?: string; channel?: number; destination?: string }
@@ -35,9 +44,9 @@ export interface KnowledgeContext {
   passages: Array<Passage & { title: string; url: string }>;
   microphone?: { channel: string; musician: string; model: string | null; pattern?: string; evidence: Assignment['evidence']; note: string };
   caseRef?: { id: string; title: string };
-  narrative?: { text: string; source: 'ollama'; verified: false };
+  narrative?: { text: string; source: ProviderId; verified: false };
   /** Por que há (ou não) resumo do modelo: ajuda o operador e o suporte, sem expor conteúdo. */
-  narrativeStatus?: { status: NarrativeStatus; rule?: string };
+  narrativeStatus?: { status: NarrativeStatus; rule?: string; provider?: ProviderId; fellBackFrom?: ProviderId; fallbackReason?: NarrativeStatus };
   /** Trechos de outros modelos de microfone deixados de fora (ex.: P5 quando o canal usa P3 S). */
   modelFilter?: { model: string; excluded: number };
 }
@@ -93,13 +102,22 @@ function race<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
   });
 }
 
-const FAILURE_STATUS: Record<GenerateFailure, NarrativeStatus> = { unavailable: 'unavailable', timeout: 'timeout', error: 'error', empty: 'empty' };
+const FAILURE_STATUS: Record<GenerateFailure, NarrativeStatus> = { unavailable: 'unavailable', timeout: 'timeout', error: 'error', empty: 'empty', auth: 'auth', quota: 'quota', refused: 'refused' };
+/** Falhas de disponibilidade: passam para o provedor local de reserva. Descarte de segurança não passa. */
+const FALLBACK_STATUS: ReadonlySet<NarrativeStatus> = new Set<NarrativeStatus>(['unavailable', 'timeout', 'error', 'auth', 'quota', 'refused', 'withheld']);
 
 export class LocalKnowledge {
-  private readonly stats: NarrativeStats = { used: 0, dropped: {} };
+  private readonly stats: NarrativeStats = { used: 0, usedBy: {}, dropped: {} };
   constructor(private readonly o: {
     store: KnowledgeStore;
-    ollama?: OllamaClient;
+    /** Provedor de embeddings (e, por padrão, do resumo). O nome vem da época em que só havia o Ollama. */
+    ollama?: AiProvider;
+    /** Provedores disponíveis para o resumo (Ollama e, se habilitado, Gemini). */
+    chatProviders?: AiProvider[];
+    /** Provedor do resumo escolhido (padrão: ollama). */
+    chat?: ProviderId;
+    /** Chamado quando o operador troca o provedor do resumo (para persistir a escolha). */
+    onChatProvider?: (id: ProviderId) => void;
     inboxDir: string;
     seedDir: string;
     maxDocumentBytes: number;
@@ -113,7 +131,9 @@ export class LocalKnowledge {
     narrativeTimeoutMs?: number;
     /** Só recebe códigos de motivo e tamanhos: nunca texto de documentos, do modelo ou do operador. */
     log?: (msg: string) => void;
-  }) {}
+  }) {
+    this.chatSelected = o.chat ?? 'ollama';
+  }
 
   get store(): KnowledgeStore { return this.o.store; }
 
@@ -140,7 +160,8 @@ export class LocalKnowledge {
         : mode === 'deterministic'
         ? 'Sem documentos ingeridos: o diagnóstico usa só o motor determinístico do MixAI.'
         : mode === 'keyword' ? 'Busca por palavras (Ollama indisponível ou sem embeddings).' : 'Busca semântica ativa (Ollama + embeddings).',
-      narrativeStats: { used: this.stats.used, dropped: { ...this.stats.dropped } },
+      narrativeStats: { used: this.stats.used, usedBy: { ...this.stats.usedBy }, dropped: { ...this.stats.dropped } },
+      providers: this.providers(),
     };
   }
 
@@ -225,12 +246,77 @@ export class LocalKnowledge {
     return this.seedMics ?? undefined;
   }
 
-  private note(status: NarrativeStatus, rule?: string, chars?: number): { status: NarrativeStatus; rule?: string } {
-    if (status === 'used') this.stats.used++;
+  // ---- provedores de IA -----------------------------------------------------------------------
+  private chatSelected: ProviderId;
+
+  private chatList(): AiProvider[] { return this.o.chatProviders ?? (this.o.ollama ? [this.o.ollama] : []); }
+  private chatProvider(id: ProviderId): AiProvider | undefined { return this.chatList().find((p) => p.id === id); }
+  private isConfigured(p: AiProvider): boolean { return (p as { configured?: boolean }).configured !== false; }
+
+  /** Ordem de tentativa do resumo: o escolhido e, se ele for externo, o Ollama local como reserva. */
+  private chatChain(): AiProvider[] {
+    const chosen = this.chatProvider(this.chatSelected) ?? this.chatProvider('ollama');
+    const local = this.chatProvider('ollama');
+    return [chosen, ...(chosen?.external && local ? [local] : [])].filter((p): p is AiProvider => !!p);
+  }
+
+  providers(): ProvidersInfo {
+    return {
+      chat: {
+        selected: this.chatProvider(this.chatSelected) ? this.chatSelected : 'ollama',
+        options: this.chatList().map((p) => ({ id: p.id, external: p.external, configured: this.isConfigured(p) })),
+      },
+      embed: { id: this.o.ollama?.id ?? 'ollama', external: this.o.ollama?.external ?? false },
+      narrative: this.o.narrative,
+    };
+  }
+
+  /**
+   * Escolha do operador para o resumo. O provedor externo só entra com habilitação na configuração,
+   * chave presente, confirmação explícita do operador e uma verificação de que ele responde agora.
+   */
+  async setChatProvider(id: ProviderId, confirmExternal = false): Promise<ProvidersInfo> {
+    const provider = this.chatProvider(id);
+    if (!provider) throw new KnowledgeError('INVALID', id === 'gemini' ? 'O Gemini não está habilitado na configuração (knowledge.gemini.enabled).' : 'Provedor desconhecido.');
+    if (provider.external) {
+      if (!confirmExternal) throw new KnowledgeError('INVALID', 'Confirme que aceita enviar trechos de manuais públicos e a sua pergunta (sem nomes nem números sensíveis) a um serviço externo.');
+      if (!this.isConfigured(provider)) throw new KnowledgeError('INVALID', 'Falta a chave do Gemini (config/secrets.yaml ou MIXAI_GEMINI_API_KEY).');
+      const h = await provider.health(true);
+      if (!h.chatModel) throw new KnowledgeError('INVALID', /recusou/.test(h.detail) ? 'O Gemini recusou a chave configurada.' : 'O Gemini não respondeu agora; tente de novo.');
+    }
+    this.chatSelected = id;
+    this.o.onChatProvider?.(id);
+    return this.providers();
+  }
+
+  /** Nomes de pessoas (músicos) que NÃO podem sair do computador junto com a pergunta. */
+  private async personNames(): Promise<string[]> {
+    const mics = await this.o.store.getMicrophones().catch(() => this.seedMicrophones());
+    return Object.values(mics?.assignments ?? {}).map((a) => a.musician);
+  }
+
+  private async narrate(provider: AiProvider, input: EnrichInput, passages: KnowledgeContext['passages'], names: string[]): Promise<{ text?: string; status: NarrativeStatus; rule?: string; chars?: number }> {
+    // Trechos com tabela de vários modelos ficam fora do resumo: o modelo os misturaria.
+    let sent = passages.filter((p) => !p.caution);
+    // Provedor externo: só fontes públicas do catálogo; documentos locais do operador nunca saem do computador.
+    if (provider.external) sent = sent.filter((p) => isPublicSource({ url: p.url }));
+    if (!sent.length) return provider.external ? { status: 'withheld', rule: 'sem_fonte_publica' } : { status: 'empty', rule: 'so_trechos_de_varios_modelos' };
+    const question = provider.external ? redactForExternal(input.text, names) : cleanText(input.text).slice(0, 200);
+    const prompt = sent.map((p, i) => `<trecho n="${i + 1}" fonte="${cleanText(p.title).slice(0, 80)}">${cleanText(p.excerpt)}</trecho>`).join('\n')
+      + `\nPergunta do operador: ${question}`;
+    const res = await race(provider.generateDetailed(NARRATIVE_SYSTEM, prompt), (this.o.narrativeTimeoutMs ?? 30_000) + 2000);
+    if (!res) return { status: 'timeout' };
+    if (!res.text) return { status: FAILURE_STATUS[res.failure ?? 'error'] };
+    const verdict = judgeNarrative(res.text, sent);
+    return 'text' in verdict ? { status: 'used', text: verdict.text } : { status: verdict.status, rule: verdict.rule, chars: res.text.length };
+  }
+
+  private note(status: NarrativeStatus, rule?: string, chars?: number, provider?: ProviderId): { status: NarrativeStatus; rule?: string } {
+    if (status === 'used') { this.stats.used++; if (provider) this.stats.usedBy[provider] = (this.stats.usedBy[provider] ?? 0) + 1; }
     else if (status !== 'disabled' && status !== 'no_passages') {
       const key = rule ? `${status}:${rule}` : status;
       this.stats.dropped[key] = (this.stats.dropped[key] ?? 0) + 1;
-      this.o.log?.(`Base de conhecimento: resumo do modelo descartado (motivo=${key}${chars !== undefined ? `, ${chars} caracteres` : ''}).`);
+      this.o.log?.(`Base de conhecimento: resumo do modelo descartado (motivo=${key}${provider ? `, provedor=${provider}` : ''}${chars !== undefined ? `, ${chars} caracteres` : ''}).`);
     }
     return { status, ...(rule ? { rule } : {}) };
   }
@@ -273,25 +359,20 @@ export class LocalKnowledge {
         if (c) ctx.caseRef = { id: c.id, title: c.title };
       }
 
-      if (!this.o.narrative || !this.o.ollama) ctx.narrativeStatus = { status: 'disabled' };
+      if (!this.o.narrative || !this.chatChain().length) ctx.narrativeStatus = { status: 'disabled' };
       else if (!ctx.passages.length) ctx.narrativeStatus = { status: 'no_passages' };
       else {
-        // Trechos com tabela de vários modelos ficam fora do resumo: o modelo local os misturaria.
-        const usable = ctx.passages.filter((p) => !p.caution);
-        const sent = usable.length ? usable : ctx.passages.slice(0, 0);
-        if (!sent.length) ctx.narrativeStatus = this.note('empty', 'so_trechos_de_varios_modelos');
-        else {
-          const prompt = sent.map((p, i) => `<trecho n="${i + 1}" fonte="${cleanText(p.title).slice(0, 80)}">${cleanText(p.excerpt)}</trecho>`).join('\n')
-            + `\nPergunta do operador: ${cleanText(input.text).slice(0, 200)}`;
-          const limit = (this.o.narrativeTimeoutMs ?? 30_000) + 2000;
-          const res = await race(this.o.ollama.generateDetailed(NARRATIVE_SYSTEM, prompt), limit);
-          if (!res) ctx.narrativeStatus = this.note('timeout');
-          else if (!res.text) ctx.narrativeStatus = this.note(FAILURE_STATUS[res.failure ?? 'error']);
-          else {
-            const verdict = judgeNarrative(res.text, sent);
-            if ('text' in verdict) { ctx.narrative = { text: verdict.text, source: 'ollama', verified: false }; ctx.narrativeStatus = this.note('used'); }
-            else ctx.narrativeStatus = this.note(verdict.status, verdict.rule, res.text.length);
-          }
+        const chain = this.chatChain();
+        const names = chain.some((p) => p.external) ? await this.personNames() : [];
+        let failed: { id: ProviderId; status: NarrativeStatus } | undefined;
+        for (const provider of chain) {
+          const r = await this.narrate(provider, input, ctx.passages, names);
+          const noted = this.note(r.status, r.rule, r.chars, provider.id);
+          ctx.narrativeStatus = { ...noted, provider: provider.id, ...(r.status === 'used' && failed ? { fellBackFrom: failed.id, fallbackReason: failed.status } : {}) };
+          if (r.status === 'used') { ctx.narrative = { text: r.text!, source: provider.id, verified: false }; break; }
+          // Só indisponibilidade passa para o provedor seguinte; descarte de segurança não é "tentar outro".
+          if (!FALLBACK_STATUS.has(r.status)) break;
+          failed ??= { id: provider.id, status: r.status };
         }
       }
       return ctx;

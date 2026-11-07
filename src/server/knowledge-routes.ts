@@ -6,6 +6,7 @@ import type { Principal } from './auth.js';
 const statuses = { INVALID: 400, NOT_FOUND: 404, UNAVAILABLE: 503, FORBIDDEN: 403, UNAUTHORIZED: 401, BUSY: 409 } as const;
 const searchBody = z.strictObject({ query: z.string().trim().min(2).max(300) });
 const micBody = z.strictObject({ channel: z.number().int().min(1).max(12), modelId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).nullable() });
+const providerBody = z.strictObject({ chat: z.enum(['ollama', 'gemini']), confirmExternal: z.boolean().optional() });
 const idParam = z.string().regex(/^d[a-z0-9]{3,40}$/);
 
 /**
@@ -54,6 +55,11 @@ export async function knowledgeRoutes(app: FastifyInstance, opts: {
   });
 
   app.get('/api/knowledge/status', () => opts.service.status());
+  app.get('/api/knowledge/providers', () => opts.service.providers());
+  app.post('/api/knowledge/providers', { bodyLimit: 1024 }, async (req) => {
+    const b = providerBody.parse(req.body);
+    return opts.service.setChatProvider(b.chat, b.confirmExternal === true);
+  });
   app.get('/api/knowledge/sources', async () => ({ sources: await opts.service.sources() }));
   app.get('/api/knowledge/documents', async () => ({ documents: await opts.service.documents() }));
   app.get('/api/knowledge/cases', async () => ({ cases: await opts.service.cases() }));

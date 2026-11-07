@@ -125,6 +125,19 @@ knowledge:
     timeoutMs: 8000      # embeddings e verificação de saúde
     narrativeTimeoutMs: 30000   # resumo do modelo (CPU gera devagar)
     minScore: 0.3        # similaridade mínima; depende do modelo de embedding (ver docs/lab/22)
+  # Provedores de IA. Padrão: tudo local (Ollama). O Gemini é um serviço EXTERNO do Google: só funciona com
+  # gemini.enabled: true E uma chave em config/secrets.yaml (geminiApiKey) ou na variável MIXAI_GEMINI_API_KEY.
+  # A chave NUNCA vai neste arquivo, no config.local.yaml, no Git, no log nem na tela. O operador escolhe o
+  # provedor do resumo no painel "Base de conhecimento" (com aviso e confirmação).
+  chatProvider: ollama    # ollama | gemini (provedor inicial do resumo)
+  embedProvider: ollama   # ollama | gemini (gemini exige outra "collection": os vetores não são compatíveis)
+  gemini:
+    enabled: false        # desligado: nenhum dado sai deste computador
+    chatModel: gemini-2.5-flash
+    embedModel: gemini-embedding-001
+    embedDimensions: 768
+    timeoutMs: 10000
+    narrativeTimeoutMs: 30000
   search: auto           # auto = vetor, depois palavras; hybrid = fusão dos dois
   inboxDir: knowledge/inbox   # relativa a data/
   maxDocumentMB: 30
