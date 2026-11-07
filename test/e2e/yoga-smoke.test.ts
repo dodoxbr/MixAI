@@ -70,7 +70,7 @@ it('Yoga LAB: HTTP/WS, PA/FONES, EQ, cenas, aprovação, consulta, fixture, logo
     expect(lab.loaded.config.server.httpsLab.enabled).toBe(false);
     expect((await lab.http('/api/state')).status).toBe(401);
     browser = await launch();
-    const op = await lab.login(OPERATOR_PIN), mus = await lab.login(MUSICIAN_PIN);
+    const op = await lab.login(OPERATOR_PIN), mus = await lab.login(MUSICIAN_PIN, lab.controller.names.inputs.configured());
     const ws = await wsClient(lab.base, op); sockets.push(ws);
     expect((await ws.next((m) => m.type === 'hello')).mode).toBe('lab');
     await ws.next((m) => m.type === 'snapshot');

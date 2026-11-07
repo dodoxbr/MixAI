@@ -86,7 +86,10 @@ export const NAMES = {
 
 /** Responde automaticamente ao list_names quando ele for pedido. */
 export function answerNames(s: FakeSocket): void {
-  const req = s.last('command');
+  // Legacy UI fixtures represent an explicit operator-assigned test musician.
+  const identity = s.sent.find(m => (m['command'] as any)?.type === 'musician_identity');
+  if (identity) s.receive({ type: 'result', requestId: identity['requestId'], result: { ok: true, code: 'OK', data: { sessionId: 'fixture-session', binding: { schemaVersion: 1, sessionId: 'fixture-session', musicianId: 'fixture', name: 'Músico de teste', channels: [1,2,3], mute: true, revision: 1 } } } });
+  const req = [...s.sent].reverse().find(m => (m['command'] as any)?.type === 'list_names');
   if (req && (req['command'] as { type: string }).type === 'list_names') {
     s.receive({ type: 'result', requestId: req['requestId'], result: NAMES });
   }

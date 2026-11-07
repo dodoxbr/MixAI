@@ -28,7 +28,7 @@ async function start(access?: 'fones_only' | 'pa_without_master', extra: Paramet
   return t;
 }
 async function screen(t: T, pin: string) {
-  const c = await wsClient(t.base, await t.login(pin));
+  const c = await wsClient(t.base, await t.login(pin, pin === MUSICIAN_PIN ? t.controller.names.inputs.configured() : undefined));
   clients.push(c);
   const hello = await c.next((m) => m.type === 'hello');
   const snap = await c.next((m) => m.type === 'snapshot');
@@ -136,7 +136,7 @@ describe('pa_without_master: músico edita PA e FONES, nunca o master', () => {
     expect(big.message).toContain('3 dB');
     expect(v(t, SURDO_PA)).toBe(-10); // nada mudou
     const card = (await op.c.next((x) => x.type === 'pending')).card;
-    expect(card.requestedBy.label).toMatch(/^músico · sessão [0-9a-f]{6}$/); // perfil + sessão, nunca o PIN
+    expect(card.requestedBy.label).toMatch(/^músico \(fixture-musician\) · sessão [0-9a-f]{6}$/); // perfil + sessão, nunca o PIN
     expect(card.summary).toContain('limite do músico no PA');
     // o músico não aprova (nem a própria)
     expect((await m.c.request({ type: 'approve', pendingId: card.pendingId })).result.code).toBe('FORBIDDEN');
@@ -188,8 +188,8 @@ describe('pa_without_master: músico edita PA e FONES, nunca o master', () => {
     expect(drag.message).toContain('passos');
     expect((await m.fader({ channel: 9, db: -9.5 })).code).toBe('FORBIDDEN');
     expect(v(t, SURDO_PA)).toBe(-10);
-    // nos fones o arraste continua valendo
-    expect((await m.fader({ channel: 9, aux: 1, db: -15 })).code).toBe('OK');
+    // Também nos fones, músicos usam somente passos discretos vinculados
+    expect((await m.fader({ channel: 9, aux: 1, db: -15 })).code).toBe('FORBIDDEN');
     // confirmação embutida no comando
     expect((await m.cmd({ type: 'set_level', channel: 'surdo', deltaDB: 10, confirmationId: 'x' })).code).toBe('FORBIDDEN');
     // parâmetros físicos não existem no esquema
@@ -204,7 +204,7 @@ describe('pa_without_master: músico edita PA e FONES, nunca o master', () => {
 
   it('HTTP forjado também passa pela mesma política', async () => {
     const t = await start('pa_without_master');
-    const tok = await t.login(MUSICIAN_PIN);
+    const tok = await t.login(MUSICIAN_PIN, t.controller.names.inputs.configured());
     expect((await t.command(tok, { type: 'set_master', db: 0 })).json.result.code).toBe('FORBIDDEN');
     expect((await t.command(tok, { type: 'set_level', channel: 'surdo', deltaDB: 8 })).json.result.code).toBe('NEEDS_CONFIRMATION');
     expect((await t.command(tok, { type: 'set_level', channel: 'surdo', deltaDB: 1 })).json.result.code).toBe('OK');
@@ -234,8 +234,8 @@ describe('pa_without_master: músico edita PA e FONES, nunca o master', () => {
     await m.cmd({ type: 'set_master', db: 0 }); // recusa também fica registrada
     const entries = (await op.cmd({ type: 'history', limit: 20 })).data.entries as Array<{ action: string; ok: boolean; details?: { by?: string } }>;
     const by = entries.map((e) => e.details?.by).filter(Boolean) as string[];
-    expect(by.filter((b) => /^músico · sessão [0-9a-f]{6}$/.test(b)).length).toBeGreaterThanOrEqual(3);
-    expect(by.some((b) => /^músico · sessão [0-9a-f]{6}; aprovado por operador · sessão [0-9a-f]{6}$/.test(b))).toBe(true);
+    expect(by.filter((b) => /^músico \(fixture-musician\) · sessão [0-9a-f]{6}$/.test(b)).length).toBeGreaterThanOrEqual(3);
+    expect(by.some((b) => /^músico \(fixture-musician\) · sessão [0-9a-f]{6}; aprovado por operador · sessão [0-9a-f]{6}$/.test(b))).toBe(true);
     expect(JSON.stringify(entries)).not.toContain(MUSICIAN_PIN);
   });
 });
