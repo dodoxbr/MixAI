@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { parse } from 'yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseChannels, PROJECT_ROOT } from '../src/core/config.js';
+import { symptomSchema } from '../src/knowledge/sound-engineer/index.js';
 import { MockMixer } from '../src/mixer/mock.js';
 import { MUSICIAN_PIN, OPERATOR_PIN, startTestServer, wsClient } from './server-support.js';
 
@@ -91,7 +92,7 @@ describe('B3A: consulta autorizada, offline e sem escrita', () => {
     const unknown = await ask({ type: 'assistant', text: 'O que podemos fazer pelo cavaco?' });
     expect(unknown.kind).toBe('diagnosis');
     expect(unknown.diagnosis).toBeUndefined();
-    expect(unknown.diagnosticOptions).toHaveLength(5);
+    expect(unknown.diagnosticOptions).toHaveLength(symptomSchema.options.length);
     const ambiguous = await ask({ type: 'assistant', text: 'Meu cavaco está estridente no PA e nos fones' });
     expect(ambiguous.diagnosis.status).toBe('needs_context');
     expect(ambiguous.diagnosticOptions.map((o: { label: string }) => o.label)).toEqual(['PA', 'Fones']);

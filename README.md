@@ -156,6 +156,7 @@ Após a pergunta PA/FONES, basta responder **"PA"** ou **"Fones"**. O contexto �
 temporário, isolado por sessão e pode ser cancelado; não cria ajustes.
 Detalhes: [consulta técnica](docs/sound-engineer/CHAT-READONLY.md) e
 [conversa contextual](docs/sound-engineer/CONTEXT.md).
+A [base técnica v2](docs/sound-engineer/ISSUE-48-KNOWLEDGE.md) amplia sintomas, perfis de samba/pagode e contratos consultivos, com fontes e limites explícitos.
 
 ## Ligar no Claude Desktop
 
