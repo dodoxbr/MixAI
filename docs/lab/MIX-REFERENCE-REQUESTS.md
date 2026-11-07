@@ -80,8 +80,10 @@ confiável para testes/integração, não uma configuração por HTTP.
 - `ReferenceRecommendationPort.recommend(...)` recebe relato/canal/destino/revisão e retorna
   texto, origem `diagnosis`, status `needs_context`/`theoretical_guidance` e fontes HTTP(S).
   Usa `parseConsultation`/`consult` puros do #51, sem chamar `ask`, `apply`, parser de comandos,
-  Claude, controlador ou mixer. Evidências ficam vazias: relato de músico não é promovido
-  a relato confirmado do operador nem medição. Informação insuficiente é explícita.
+  Claude, controlador ou mixer. Relatos afirmativos recebem o tipo `musician_report`, com `verification: unverified`.
+  Geram apenas inspeções condicionais de baixa confiança, nunca ensaios de ajuste. Negativas
+  e perguntas permanecem sem evidência afirmativa. O relato não é confirmação do operador
+  nem medição; `theoretical_guidance` não significa validação acústica.
   A orientação completa e suas fontes são exibidas em seção própria na bandeja.
 
 Após aguardar uma recomendação, o serviço revalida sessão do operador, versão do pedido,

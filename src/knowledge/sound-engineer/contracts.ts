@@ -12,6 +12,7 @@ const evidenceBase = { id: z.string().min(1), detail: z.string().min(1) };
 /** Sem captura de áudio ou medidores reais nesta entrega. Estado não é sinal. */
 export const evidenceSchema = z.discriminatedUnion('kind', [
   z.strictObject({ ...evidenceBase, kind: z.literal('operator_report'), symptom: symptomSchema }),
+  z.strictObject({ ...evidenceBase, kind: z.literal('musician_report'), symptom: symptomSchema, verification: z.literal('unverified') }),
   z.strictObject({ ...evidenceBase, kind: z.literal('control_state'), parameter: z.string().min(1), value: z.union([z.number().finite(), z.boolean()]), revision: z.number().int().nonnegative(), observedAt: z.string().datetime().optional() }),
   z.strictObject({ ...evidenceBase, kind: z.literal('simulated_meter'), valueDB: z.number().finite() }),
 ]);
@@ -34,7 +35,7 @@ export interface Confidence {
   level: 'insufficient' | 'low' | 'moderate' | 'high';
   rationale: string;
   /** Confiança qualitativa na hipótese; nunca probabilidade calibrada. */
-  basis: 'no_matching_report' | 'operator_report_only';
+  basis: 'no_matching_report' | 'operator_report_only' | 'musician_report_only';
 }
 export interface Hypothesis {
   id: string;
@@ -115,7 +116,7 @@ export type DiagnosticRecommendation = z.infer<typeof diagnosticRecommendationSc
 export const diagnosticHypothesisSchema = z.strictObject({
   id: z.string().min(1), explanation: z.string().min(1), supportingEvidenceIds: z.array(z.string()),
   missingEvidence: z.array(z.string()),
-  confidence: z.strictObject({ level: z.enum(['insufficient', 'low']), basis: z.enum(['no_matching_report', 'operator_report_only']), rationale: z.string() }),
+  confidence: z.strictObject({ level: z.enum(['insufficient', 'low']), basis: z.enum(['no_matching_report', 'operator_report_only', 'musician_report_only']), rationale: z.string() }),
   references: z.array(sourceCitationSchema).min(1),
 });
 export const diagnosticConsultationSchema = z.strictObject({
@@ -126,16 +127,16 @@ export const diagnosticConsultationSchema = z.strictObject({
     roleBasis: z.enum(['configuration_label_match', 'unconfirmed']), interactionIds: z.array(z.string()), profileIds: z.array(z.string()),
   }),
   evidence: z.strictObject({
-    reports: z.array(evidenceSchema.options[0]),
-    controlReadings: z.array(z.strictObject({ evidence: evidenceSchema.options[1], verification: z.literal('caller_declared_not_verified') })),
-    simulated: z.array(evidenceSchema.options[2]),
+    reports: z.array(z.union([evidenceSchema.options[0], evidenceSchema.options[1]])),
+    controlReadings: z.array(z.strictObject({ evidence: evidenceSchema.options[2], verification: z.literal('caller_declared_not_verified') })),
+    simulated: z.array(evidenceSchema.options[3]),
     unavailableMeasurements: z.array(z.enum(['audio', 'rta', 'spl', 'real_input_meter', 'gain_reduction'])).min(1),
   }),
   nextQuestions: z.array(z.string()).max(3),
   recommendations: z.array(diagnosticRecommendationSchema), references: z.array(sourceCitationSchema),
   proposal: z.null(), requiresApproval: z.literal(true), authorizedActions: z.tuple([]),
   rollback: z.strictObject({ automatic: z.literal(false), instruction: z.string().min(1) }),
-  confidence: z.strictObject({ level: z.enum(['insufficient', 'low']), basis: z.enum(['no_matching_report', 'operator_report_only']), rationale: z.string() }),
+  confidence: z.strictObject({ level: z.enum(['insufficient', 'low']), basis: z.enum(['no_matching_report', 'operator_report_only', 'musician_report_only']), rationale: z.string() }),
 }).superRefine((value, ctx) => {
   const evidenceIds = [...value.evidence.reports, ...value.evidence.controlReadings.map(r => r.evidence), ...value.evidence.simulated].map(e => e.id);
   const hypotheses = value.diagnostic.hypotheses;

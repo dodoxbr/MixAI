@@ -14,7 +14,7 @@ export function referencePortsOf(core: ServerCore): ReferencePorts {
     recommendations: { async recommend(input) {
       const parsed = parseConsultation(input.report, core.controller.names);
       const reply = consult({ symptom: parsed?.symptom, channel: input.channel,
-        destination: input.destination === 'PA' ? 'pa' : 'fones', evidence: [],
+        destination: input.destination === 'PA' ? 'pa' : 'fones', evidence: (parsed?.evidence ?? []).flatMap(e => e.kind === 'operator_report' ? [{ id: e.id, kind: 'musician_report' as const, symptom: e.symptom, detail: e.detail, verification: 'unverified' as const }] : []),
       }, core.controller.names, core.policy.musicianAux);
       // A musician report is not promoted to operator-confirmed evidence or measured audio.
       return { source: 'diagnosis', status: reply.clarification ? 'needs_context' : reply.diagnosis?.status ?? 'needs_context',

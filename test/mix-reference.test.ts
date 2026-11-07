@@ -177,7 +177,7 @@ it('integrates server bindings (Lucius 1+4, Fred 3), own writes, technical advic
   const execute = vi.spyOn(s.t.server.core, 'execute'); const write = vi.spyOn(s.t.mixer, 'write');
   const assess = (version: number) => s.t.http(`/api/mix-requests/${r.id}/assess`, { token: s.op, body: { ...s.base, expectedVersion: version, expectedStateRevision: s.t.server.core.snapshotFor('operator').revision } });
   const advice = await assess(1); expect(advice.status).toBe(200);
-  expect(advice.json.recommendation).toMatchObject({ source: 'diagnosis', status: 'needs_context' });
+  expect(advice.json.recommendation).toMatchObject({ source: 'diagnosis', status: 'theoretical_guidance' });
   expect(advice.json.recommendation.text).toContain('não confirmado pelo operador');
   expect(advice.json.recommendation.text).toContain('somente leitura'); expect(advice.json.recommendation.references.length).toBeGreaterThan(0);
   expect((await s.decide(advice.json, 'approved')).status).toBe(200);
@@ -206,4 +206,24 @@ it('rechecks binding revision after an asynchronous diagnosis even when mixer st
   const pending = s.t.http(`/api/mix-requests/${r.id}/assess`, { token: s.op, body: { ...s.base, expectedVersion: 1, expectedStateRevision: s.t.server.core.snapshotFor('operator').revision } });
   await started; await s.t.command(s.op, { type: 'musician_revoke', sessionId: identity.sessionId }); done({ source: 'diagnosis', text: 'Orientação sem execução.' });
   expect((await pending).status).toBe(409); expect((await s.view()).requests[0].version).toBe(1);
+});
+it('triages affirmative musician voice/feedback reports as unverified inspections, while negatives/questions remain without recommendations', async () => {
+  const s = await boot();
+  const identity = (await s.t.command(s.music, { type: 'musician_identity' })).json.result.data;
+  await s.t.command(s.op, { type: 'musician_bind', sessionId: identity.sessionId, musicianId: 'lucius', name: 'Lucius', channels: [1, 4], mute: true });
+  const execute = vi.spyOn(s.t.server.core, 'execute'); const write = vi.spyOn(s.t.mixer, 'write');
+  for (const [report, affirmative] of [['Minha voz está abafada no retorno', true], ['Minha voz está microfonando no retorno', true], ['Minha voz não está microfonando', false], ['Minha voz não está abafada', false], ['Por que minha voz está abafada?', false]] as const) {
+    const request = (await s.create({ type: 'meu_canal', channel: 4, report })).json;
+    const advice = await s.t.http(`/api/mix-requests/${request.id}/assess`, { token: s.op, body: { ...s.base, expectedVersion: 1, expectedStateRevision: s.t.server.core.snapshotFor('operator').revision } });
+    expect(advice.status).toBe(200);
+    expect(advice.json.recommendation.status).toBe(affirmative ? 'theoretical_guidance' : 'needs_context');
+    expect(advice.json.recommendation.text.includes('Inspeção:')).toBe(affirmative);
+    expect(advice.json.recommendation.text).toContain('não confirmado pelo operador');
+    expect(advice.json.recommendation.text).not.toContain('Ensaio teórico para revisão humana:');
+    if (affirmative) { expect(advice.json.recommendation.text).toContain('relato do músico não verificado'); expect(advice.json.recommendation.references.length).toBeGreaterThan(0); }
+  }
+  expect(execute).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled();
+  execute.mockRestore();
+  await s.t.command(s.op, { type: 'musician_revoke', sessionId: identity.sessionId });
+  expect((await s.create({ type: 'meu_canal', channel: 4, report: 'Minha voz está abafada' })).status).toBe(403);
 });

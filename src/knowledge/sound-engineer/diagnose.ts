@@ -8,9 +8,9 @@ import { citations, KNOWLEDGE_VERSION, modulesFor, technicalModules } from './te
 export function diagnose(input: unknown): Diagnosis {
   const context = diagnosticInputSchema.parse(input);
   const procedure = procedures[context.symptom];
-  const reports = context.evidence.filter(e => e.kind === 'operator_report' && e.symptom === context.symptom);
+  const reports = context.evidence.filter(e => (e.kind === 'operator_report' || e.kind === 'musician_report') && e.symptom === context.symptom);
   const confidence: Confidence = reports.length ? {
-    level: 'low', basis: 'operator_report_only',
+    level: 'low', basis: reports.some(e => e.kind === 'operator_report') ? 'operator_report_only' : 'musician_report_only',
     rationale: 'Relato humano compatível; causas alternativas ainda não verificadas. Não houve análise de áudio.',
   } : {
     level: 'insufficient', basis: 'no_matching_report',
@@ -35,7 +35,7 @@ export function diagnose(input: unknown): Diagnosis {
       stopOrRevert: 'Se faltar contexto, interromper a investigação e pedir esclarecimento.',
       execution: 'not_executable' as const, requiresHumanReview: true as const, references: procedure.references,
     })),
-    ...(ready ? [{
+    ...(ready && reports.some(e => e.kind === 'operator_report') ? [{
       id: `${context.symptom}.trial`, kind: 'theoretical_trial' as const, instruction: procedure.trial,
       hypothesisIds: hypotheses.map(h => h.id), preconditions,
       expectedObservation: procedure.expectedObservation, stopOrRevert: procedure.stopOrRevert,
@@ -56,7 +56,7 @@ export function diagnose(input: unknown): Diagnosis {
       voiceRole: role, roleBasis: role === 'unknown' ? 'unconfirmed' : 'configuration_label_match',
       interactionIds: related.map(i => i.id), profileIds: profiles.map(p => p.id) },
     evidence: {
-      reports: context.evidence.filter(e => e.kind === 'operator_report'),
+      reports: context.evidence.filter(e => e.kind === 'operator_report' || e.kind === 'musician_report'),
       controlReadings: context.evidence.filter(e => e.kind === 'control_state').map(evidence => ({ evidence, verification: 'caller_declared_not_verified' })),
       simulated: context.evidence.filter(e => e.kind === 'simulated_meter'),
       unavailableMeasurements: ['audio', 'rta', 'spl', 'real_input_meter', 'gain_reduction'],
