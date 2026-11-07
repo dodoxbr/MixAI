@@ -54,6 +54,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          ./scripts/ui16-route-preflight.ps1 -SelfTest
           ./scripts/yoga-preflight.ps1 -SelfTest
           ./scripts/yoga-preflight.ps1
 

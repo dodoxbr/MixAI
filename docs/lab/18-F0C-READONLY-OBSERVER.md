@@ -5,6 +5,11 @@ Issue [#34](https://github.com/dodoxbr/MixAI/issues/34). Branch exclusiva
 `AGENTS.md`. PRs #31 (`0fa3845`) e #32 (`3e59796`) confirmados mesclados e ancestrais.
 **F0 físico continua pendente. Esta implementação não inicia E6 nem autoriza escrita REAL.**
 
+Atualização F0D: [Ethernet e Wi-Fi](19-F0D-DUAL-TRANSPORT-READONLY.md) são caminhos
+permanentes e explícitos no mesmo observador. As instruções Ethernet antigas abaixo
+continuam retrocompatíveis; para Wi-Fi usar confirmações próprias e preflight do F0D.
+Novos relatórios são v2; o leitor preserva v1, sem inventar transporte retroativo.
+
 ## Arquitetura e limites
 
 `Ui16ReadOnlyObserver` é uma sessão de observação, não um segundo `RealMixer`, controlador

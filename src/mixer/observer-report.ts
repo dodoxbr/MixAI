@@ -15,7 +15,7 @@ export const ScopeSchema = z.object({
 }).strict().refine((s) => new Set(s.channels).size === s.channels.length && new Set(s.aux).size === s.aux.length);
 export type ObserverScope = z.infer<typeof ScopeSchema>;
 const Link = z.enum(['DISCONNECTED', 'CONNECTING', 'SYNCING', 'DEGRADED_READ_ONLY', 'READY', 'LOST', 'STOPPED']);
-export const StopReasonSchema = z.enum(['operator', 'duration', 'connect_failed', 'recovery_timeout', 'event_limit', 'outbound_blocked', 'invalid_sample', 'supervisor_stopped', 'output_error']);
+export const StopReasonSchema = z.enum(['operator', 'duration', 'connect_failed', 'recovery_timeout', 'event_limit', 'outbound_blocked', 'invalid_sample', 'supervisor_stopped', 'output_error', 'route_mismatch']);
 export type ObserverStopReason = z.infer<typeof StopReasonSchema>;
 const Reading = z.discriminatedUnion('state', [
   z.object({ state: z.literal('observed'), value: z.union([z.number().finite(), z.boolean(), z.literal('-inf')]) }).strict(),
@@ -34,7 +34,7 @@ export const ObserverEventSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('link'), link: Link }).strict(),
   z.object({ ...base, type: z.literal('parameter'), origin: z.enum(['external', 'resync']), sample: Sample }).strict(),
   z.object({ ...base, type: z.literal('snapshot'), link: Link, complete: z.boolean(), samples: z.array(Sample).max(181) }).strict(),
-  z.object({ ...base, type: z.literal('safety'), reason: z.enum(['outbound_blocked', 'invalid_sample']) }).strict(),
+  z.object({ ...base, type: z.literal('safety'), reason: z.enum(['outbound_blocked', 'invalid_sample', 'route_mismatch']) }).strict(),
   z.object({ ...base, type: z.literal('end'), reason: StopReasonSchema, link: z.literal('DISCONNECTED') }).strict(),
 ]);
 export type ObserverEvent = z.infer<typeof ObserverEventSchema>;
@@ -42,8 +42,8 @@ const Counters = z.object({
   link: z.number().int().nonnegative(), parameter: z.number().int().nonnegative(), snapshot: z.number().int().nonnegative(),
   safety: z.number().int().nonnegative(), end: z.number().int().nonnegative(), duplicatesSuppressed: z.number().int().nonnegative(),
 }).strict();
-export const ObserverReportSchema = z.object({
-  schemaVersion: z.literal(1), kind: z.literal('mixai-f0c-readonly-evidence'),
+const ObserverReportBase = z.object({
+  schemaVersion: z.union([z.literal(1), z.literal(2)]), kind: z.literal('mixai-f0c-readonly-evidence'),
   appVersion: z.string().max(32).regex(/^\d+\.\d+\.\d+$/), libraryVersion: z.literal('7.1.0'),
   source: z.enum(['fake_websocket', 'manual_device_stream']),
   readOnly: z.literal(true), hardwareValidation: z.literal('pending'), configuredModel: z.literal('ui16'),
@@ -52,7 +52,8 @@ export const ObserverReportSchema = z.object({
   ended: z.boolean(), elapsedMs: z.number().int().nonnegative(),
   maxEvents: z.number().int().min(8).max(2000), stopReason: StopReasonSchema.nullable(),
   counters: Counters, events: z.array(ObserverEventSchema).max(2000),
-}).strict().superRefine((r, ctx) => {
+}).strict();
+function checkEvidence(r: z.infer<typeof ObserverReportBase>, ctx: z.RefinementCtx) {
   const issue = () => ctx.addIssue({ code: 'custom', message: 'inconsistent evidence' });
   if (Buffer.byteLength(JSON.stringify(r)) > MAX_OBSERVER_BYTES) issue();
   const keys = observerKeys(r.scope);
@@ -72,8 +73,20 @@ export const ObserverReportSchema = z.object({
   }
   const last = r.events.at(-1);
   if (r.ended ? last?.type !== 'end' || last.reason !== r.stopReason || r.counters.end !== 1 : r.stopReason !== null || r.counters.end !== 0) issue();
+}
+export const LegacyObserverReportSchema = ObserverReportBase.extend({ schemaVersion: z.literal(1) }).superRefine(checkEvidence);
+export const ObserverReportSchema = ObserverReportBase.extend({
+  schemaVersion: z.literal(2), transport: z.enum(['ethernet', 'wifi']),
+  routeCheck: z.enum(['each_connection_gate', 'legacy_ethernet_declaration', 'simulated']),
+}).superRefine((r, ctx) => {
+  checkEvidence(r, ctx);
+  if (r.routeCheck === 'legacy_ethernet_declaration' && r.transport !== 'ethernet' ||
+    (r.source === 'fake_websocket') !== (r.routeCheck === 'simulated')) {
+    ctx.addIssue({ code: 'custom', message: 'inconsistent transport provenance' });
+  }
 });
 export type ObserverReport = z.infer<typeof ObserverReportSchema>;
+export type ObserverEvidence = ObserverReport | z.infer<typeof LegacyObserverReportSchema>;
 
 export function observerKeys(scope: ObserverScope): ParamKey[] {
   const keys: ParamKey[] = scope.master ? ['master.level'] : [];
@@ -89,7 +102,12 @@ export function observerLabel(key: ParamKey): string {
   if (p.kind !== 'channel') return 'não suportado';
   return `CH ${p.channel} · ${p.aux ? `AUX ${p.aux} (bus, saída não verificada)` : 'PA'} · ${p.param}`;
 }
-export function parseObserverReport(input: unknown): ObserverReport {
+export function parseObserverReport(input: unknown): ObserverEvidence {
+  const r = z.union([ObserverReportSchema, LegacyObserverReportSchema]).safeParse(input);
+  if (!r.success) throw new Error('F0C_INVALID_REPORT');
+  return r.data;
+}
+export function parseCurrentObserverReport(input: unknown): ObserverReport {
   const r = ObserverReportSchema.safeParse(input);
   if (!r.success) throw new Error('F0C_INVALID_REPORT');
   return r.data;
@@ -100,13 +118,14 @@ export function exportObserverReport(input: unknown, format: 'json' | 'markdown'
   if (format !== 'markdown') throw new Error('F0C_INVALID_FORMAT');
   const show = (s: z.infer<typeof Sample>) => `${observerLabel(s.key as ParamKey)}: ${s.reading.state === 'observed' ? s.reading.value === '-inf' ? '−∞' : String(s.reading.value) : s.reading.state === 'unknown' ? `unknown (${s.reading.reason})` : 'unavailable'}`;
   return ['# F0C — evidências somente leitura', '', `Fonte: ${r.source}; MixAI ${r.appVersion}; biblioteca ${r.libraryVersion}.`,
+    `Transporte: ${r.schemaVersion === 2 ? r.transport : 'não registrado (formato legado v1)'}; preflight: ${r.schemaVersion === 2 ? r.routeCheck : 'não registrado'}.`,
     'Hardware/firmware e saídas AUX: validação pendente. Origem external não identifica quem operou.',
     `Encerrado: ${r.ended}; motivo: ${r.stopReason ?? 'em andamento'}; duração relativa: ${r.elapsedMs} ms.`,
     `Contadores: ${JSON.stringify(r.counters)}. Limite: ${r.maxEvents} eventos.`, '',
     '| # | t+ ms | Geração | Evento | Evidência |', '| --- | --- | --- | --- | --- |',
     ...r.events.map((e) => `| ${e.index} | ${e.elapsedMs} | ${e.generation} | ${e.type} | ${
       e.type === 'link' ? e.link : e.type === 'parameter' ? `${e.origin}: ${show(e.sample)}` : e.type === 'snapshot' ? `${e.link}; completo=${e.complete}; ${e.samples.map(show).join('; ')}` : e.reason} |`),
-    '', 'Checklist manual: [ ] PA/HA800/fones desconectados [ ] modelo/firmware/IP Ethernet conferidos [ ] comparar UI oficial e eventos [ ] revisar arquivo antes de anexar.',
+    '', 'Checklist manual: [ ] PA/HA800/fones desconectados [ ] modelo/firmware/IP e interface selecionada conferidos [ ] comparar UI oficial e eventos [ ] revisar arquivo antes de anexar.',
     'Sem payload bruto, áudio, nomes da mesa/rede, IP, PIN ou tokens. Contadores refletem notificações observadas, não todos os frames.', '',
   ].join('\n');
 }
