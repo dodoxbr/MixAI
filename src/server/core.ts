@@ -1,3 +1,4 @@
+import { MusicianAccess as MusicianBindings, musicianRoster } from './musician-access.js';
 import { randomUUID } from 'node:crypto';
 import type { Expectation, MixController, Result } from '../core/controller.js';
 import { jsonSafe, type ActionLog } from '../core/log.js';
@@ -7,7 +8,7 @@ import type { MixerAdapter } from '../mixer/types.js';
 import type { Auth, Principal, Role } from './auth.js';
 import { authorizeCommand, CommandSchema, describeCommand, dispatch, isSceneCommand, visibleKey, type Command } from './commands.js';
 import type { ScenesService } from './scenes.js';
-import { actorOf, DEFAULT_POLICY, MUSICIAN_PA_STEP_MAX_DB, musicianHasPA, stepLimitFor, type AccessPolicy, type MusicianAccess } from './policy.js';
+import { actorOf, DEFAULT_POLICY, MUSICIAN_PA_STEP_MAX_DB, stepLimitFor, type AccessPolicy, type MusicianAccess } from './policy.js';
 import type { MeterSource } from './meters.js';
 import type { AssistantService } from '../assistant/service.js';
 
@@ -45,6 +46,7 @@ interface PendingRecord {
   requesterId: string;
   expiresAtMs: number;
   state: 'open' | 'approving' | PendingStatus;
+  bindingRevision?: number;
 }
 
 export interface CommandRequest {
@@ -74,6 +76,7 @@ const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,64}$/;
 export class ServerCore {
   /** Muda a cada início: o cliente que vê outro serverId descarta tudo e pede snapshot. */
   readonly serverId = randomUUID();
+  musicians = new MusicianBindings();
   private pendings = new Map<string, PendingRecord>();
   private requests = new Map<string, { at: number; response: Promise<CommandResponse> }>();
   private noticeListeners = new Set<(n: Notice, audience: { roles: Role[]; principalId?: string }) => void>();
@@ -98,7 +101,7 @@ export class ServerCore {
       musicianAccess?: MusicianAccess;
       musicianPaStepDB?: number;
     },
-  ) {}
+  ) { this.auth.onRevoke(id => this.musicians.end(id)); }
 
   /** Política de acesso em vigor (fixa durante a execução do servidor). */
   get policy(): AccessPolicy {
@@ -148,16 +151,22 @@ export class ServerCore {
 
   // ---------- estado ----------
 
-  snapshotFor(role: Role): WireSnapshot {
-    const visible = visibleKey(role, this.policy);
+  snapshotFor(subject: Role | Principal): WireSnapshot {
+    const role = typeof subject === 'string' ? subject : subject.role;
+    const binding = typeof subject === 'string' ? undefined : this.musicians.get(subject);
+    const base = visibleKey(role, this.policy);
+    const visible = (key: ParamKey) => base(key) && (role !== 'musician' || !!binding?.channels.includes(Number(key.split('.')[1])));
     const keys = this.controller.registry.keys().filter(visible);
     return snapshotToWire(this.controller.state.snapshot(keys));
   }
 
   /** Evento já filtrado para o perfil (a sequência de revisões continua íntegra). */
-  eventFor(role: Role, ev: StateEvent): WireEvent {
+  eventFor(subject: Role | Principal, ev: StateEvent): WireEvent {
+    const role = typeof subject === 'string' ? subject : subject.role;
     if (ev.type === 'params' && role === 'musician') {
-      const visible = visibleKey(role, this.policy);
+      const binding = typeof subject === 'string' ? undefined : this.musicians.get(subject);
+      const base = visibleKey(role, this.policy);
+      const visible = (key: ParamKey) => base(key) && !!binding?.channels.includes(Number(key.split('.')[1]));
       return eventToWire({ ...ev, changes: ev.changes.filter((c) => visible(c.key as ParamKey)) });
     }
     return eventToWire(ev);
@@ -220,6 +229,32 @@ export class ServerCore {
     }
     const parsed = CommandSchema.safeParse(raw);
     if (!parsed.success) return reply(fail('INVALID', `Comando inválido: ${parsed.error.issues.map((i) => i.message).join('; ')}`));
+    this.musicians.observe(p);
+    const binding = this.musicians.get(p);
+    if (parsed.data.type.startsWith('musician_')) {
+      const cmd = parsed.data;
+      if (cmd.type === 'musician_identity') return reply({ ok: true, code: 'OK', message: 'Identidade vinculada pelo operador.', data: { schemaVersion: 1, sessionId: p.id, binding: binding ?? null, lab: this.mode === 'lab' } });
+      if (p.role !== 'operator') return reply(fail('FORBIDDEN', 'Só o operador administra vínculos.'));
+      if (this.mode !== 'lab') return reply(fail('MODE_MISMATCH', 'Vínculos disponíveis somente no LAB.'));
+      if (cmd.type === 'musician_sessions') return reply({ ok: true, code: 'OK', message: 'Sessões de músicos.', data: { sessions: this.musicians.list(), roster: musicianRoster } });
+      try {
+        if (cmd.type === 'musician_bind') {
+          if (!this.auth.isActive({ id: cmd.sessionId, role: 'musician', label: 'músico' })) return reply(fail('INVALID', 'Sessão encerrada.'));
+          const { type: _type, ...input } = cmd;
+          const assigned = this.musicians.bind(input, this.controller.names.inputs.list().map(c => c.number));
+          this.audit(p, 'musician_bind', 'Vínculo confirmado pelo operador.', { session: assigned.sessionId, musician: assigned.musicianId, channels: assigned.channels, mute: assigned.mute });
+        } else if (cmd.type === 'musician_revoke') {
+          this.musicians.revoke(cmd.sessionId);
+          this.audit(p, 'musician_revoke', 'Vínculo revogado pelo operador.', { session: cmd.sessionId });
+        }
+        return reply({ ok: true, code: 'OK', message: 'Vínculo atualizado no LAB.' });
+      } catch { return reply(fail('INVALID', 'Vínculo inválido; confira sessão e canais configurados.')); }
+    }
+    const access = this.authorizeMusicianCommand(p, parsed.data);
+    if (!access) {
+      this.audit(p, 'forbidden', 'Canal, destino ou vínculo não autorizado.', { command: parsed.data.type });
+      return reply(fail('FORBIDDEN', 'Sessão sem vínculo autorizado para este canal/destino no LAB. Peça ao operador.'));
+    }
     const auth = authorizeCommand(p.role, parsed.data, this.controller.names, this.policy);
     if (!auth.ok) {
       this.audit(p, 'forbidden', auth.message, { command: parsed.data.type });
@@ -241,8 +276,9 @@ export class ServerCore {
     }
     try {
       // Músico no PA: limite de passo próprio (3 dB); acima vira aprovação do operador.
-      const limit = stepLimitFor(p.role, command, this.policy);
-      result = await dispatch(this.controller, command, undefined, p.role, expect, { actor: actorOf(p), ...limit });
+      const limit = this.musicianStepLimit(p.role, command);
+      if (p.role === 'musician') expect = { ...expect, authorize: () => this.auth.isActive(p) && this.musicians.get(p)?.revision === binding?.revision && this.authorizeMusicianCommand(p, command) };
+      result = await dispatch(this.controller, command, undefined, p.role, expect, { actor: this.musicianActor(p), ...limit });
     } catch (err) {
       result = fail('INVALID', `Erro inesperado: ${(err as Error).message}`);
     }
@@ -252,7 +288,37 @@ export class ServerCore {
       const { master: _m, masterDB: _d, ...rest } = result.data as Record<string, unknown>;
       result = { ...result, data: rest };
     }
+    if (p.role === 'musician' && result.data) {
+      if (command.type === 'list_names') result = { ...result, data: { ...result.data, channels: this.controller.names.inputs.list().filter(c => binding?.channels.includes(c.number)) } };
+      if (command.type === 'mix_state') {
+        const data = result.data as Record<string, unknown>;
+        if (Array.isArray(data.channels)) result = { ...result, data: { ...data, channels: data.channels.filter((c: any) => binding?.channels.includes(c.channel)) } };
+      }
+    }
     return reply(result);
+  }
+
+  /** Versioned identity contract shared with the future request queue; never supplied by a client. */
+  musicianIdentity(p: Principal) { return { schemaVersion: 1 as const, sessionId: p.id, binding: this.musicians.get(p) ?? null }; }
+  private musicianActor(p: Principal) {
+    const b = this.musicians.get(p);
+    return b ? `${b.name} (${b.musicianId}) · sessão ${p.id.slice(0, 6)}` : actorOf(p);
+  }
+  private musicianStepLimit(role: Role, command: Command) {
+    return role === 'musician' && command.type === 'set_level'
+      ? { maxStepDB: Math.min(3, this.policy.musicianPaStepDB), stepRule: command.aux === undefined ? 'limite do músico no PA; precisa do operador' : 'limite do músico no AUX compartilhado; precisa do operador' }
+      : stepLimitFor(role, command, this.policy);
+  }
+  authorizeMusicianCommand(p: Principal, cmd: Command): boolean {
+    if (p.role !== 'musician') return true;
+    if (!['set_level', 'set_mute'].includes(cmd.type)) return true;
+    const b = this.musicians.get(p);
+    if (this.mode !== 'lab' || this.mixer.mode !== 'lab' || !b || !this.auth.isActive(p)) return false;
+    try {
+      if (cmd.type === 'set_level') return b.channels.includes(this.controller.names.channel(cmd.channel).number);
+      if (cmd.type === 'set_mute') return b.mute && cmd.channels.length === 1 && b.channels.includes(this.controller.names.channel(cmd.channels[0]!).number);
+    } catch { return false; }
+    return false;
   }
 
   // ---------- gesto de fader (arraste humano) ----------
@@ -274,16 +340,10 @@ export class ServerCore {
       return { result: fail('INVALID', 'Gesto de fader inválido (gestureId, channel e db obrigatórios).'), closed: true };
     }
     if (aux !== undefined && typeof aux !== 'string' && typeof aux !== 'number') return { result: fail('INVALID', 'aux inválido.'), closed: true };
+    if (p.role === 'musician') return { result: fail('FORBIDDEN', 'Músicos usam somente passos discretos nos canais vinculados.'), closed: true };
     if (p.role === 'agent') return { result: fail('FORBIDDEN', 'O assistente não move faders por arraste; use os comandos.'), closed: true };
     if (msg.targetMode !== undefined && msg.targetMode !== this.mode) {
       return { result: fail('MODE_MISMATCH', `Este servidor está em modo ${this.mode.toUpperCase()}.`), closed: true };
-    }
-    if (p.role === 'musician' && aux === undefined && musicianHasPA(this.policy)) {
-      // Um arraste é UM gesto que pode cruzar dezenas de dB: no PA, o músico só usa passos
-      // discretos (set_level, até musicianPaStepDB). Vale também para mensagens forjadas.
-      const message = `No PA, o músico ajusta em passos de até ${this.policy.musicianPaStepDB} dB (botões − e +), não arrastando o fader.`;
-      this.audit(p, 'forbidden', message, { command: 'fader' });
-      return { result: fail('FORBIDDEN', message), closed: true };
     }
     const auth = authorizeCommand(p.role, { type: 'set_level', channel, aux, db }, this.controller.names, this.policy);
     if (!auth.ok) {
@@ -341,11 +401,11 @@ export class ServerCore {
       summary,
       title: describeCommand(command),
       command,
-      requestedBy: { role: p.role, label: actorOf(p) },
+      requestedBy: { role: p.role, label: this.musicianActor(p) },
       createdAt: new Date(now).toISOString(),
       expiresAt: new Date(now + expiresInSec * 1000).toISOString(),
     };
-    this.pendings.set(id, { card, requesterId: p.id, expiresAtMs: now + expiresInSec * 1000, state: 'open' });
+    this.pendings.set(id, { card, requesterId: p.id, expiresAtMs: now + expiresInSec * 1000, state: 'open', bindingRevision: this.musicians.get(p)?.revision });
     this.notify({ type: 'pending', card }, { roles: ['operator'] });
     return {
       ...result,
@@ -412,6 +472,7 @@ export class ServerCore {
         const code = rec.state === 'expired' ? 'CONFIRMATION_EXPIRED' : rec.state === 'invalidated' ? 'CONFIRMATION_STALE' : 'CONFIRMATION_USED';
         return reply(fail(code, `Esta pendência não está mais aberta (${rec.state}). Peça de novo.`));
       }
+      if (rec.card.requestedBy.role === 'musician' && !this.musicians.list().some(s => s.sessionId === rec.requesterId && s.observed && s.binding?.revision === rec.bindingRevision)) return reply(fail('FORBIDDEN', 'Vínculo revogado; solicite novamente.'));
       rec.state = 'approving';
       if (!approve) {
         this.controller.cancelPending(pendingId);
@@ -430,9 +491,9 @@ export class ServerCore {
             ? this.scenes
               ? await this.scenes.applyApproved(requester, cmd, pendingId, p)
               : fail('NOT_CONFIGURED', 'Cenas indisponíveis neste servidor.')
-            : await dispatch(this.controller, cmd, pendingId, requester.role, undefined, {
+            : await dispatch(this.controller, cmd, pendingId, requester.role, requester.role === 'musician' ? { authorize: () => { const owner = { id: rec.requesterId, role: 'musician' as const, label: requester.label }; return this.auth.isActive(owner) && this.musicians.get(owner)?.revision === rec.bindingRevision && this.authorizeMusicianCommand(owner, cmd); } } : undefined, {
                 actor: `${requester.label}; aprovado por ${actorOf(p)}`,
-                ...stepLimitFor(requester.role, cmd, this.policy),
+                ...this.musicianStepLimit(requester.role, cmd),
               });
       } catch (err) {
         result = fail('INVALID', `Erro inesperado: ${(err as Error).message}`);
@@ -487,7 +548,7 @@ export class ServerCore {
 
   /** Registro no histórico. Nunca inclui PIN nem token. */
   audit(p: Principal | undefined, action: string, message: string, details: Record<string, unknown> = {}) {
-    this.log.add({ action: `server_${action}`, ok: false, message, details: { ...details, role: p?.role, ...(p ? { by: actorOf(p) } : {}) } });
+    this.log.add({ action: `server_${action}`, ok: false, message, details: { ...details, role: p?.role, ...(p ? { by: this.musicianActor(p) } : {}) } });
   }
 }
 

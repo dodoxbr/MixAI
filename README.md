@@ -338,3 +338,7 @@ Bancada offline de STT E9C (whisper.cpp configurado manualmente, sem execução 
 
 Push-to-talk privado E9D (opt-in server-side, operador em HTTPS LAB, prévia sem comandos):
 [configuração e validação Yoga/Android](docs/lab/18-E9D-PRIVATE-PTT-LAB.md).
+
+No LAB, o operador pode vincular uma sessão de músico aos canais autorizados, sem mudar os
+dois PINs existentes. Veja [músicos e canais vinculados](docs/musicians/session-channel-access.md).
+AUX1 continua sendo o retorno compartilhado de todos no HA800.

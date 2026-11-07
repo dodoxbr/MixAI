@@ -1,3 +1,4 @@
+import { MusicianAccess } from './musician-access.js';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -73,6 +74,8 @@ export async function startServer(
       clock: opts.clock,
       meters,
     });
+
+    core.musicians = new MusicianAccess(mode === 'lab' ? join(dataDir, 'musician-bindings.json') : undefined);
 
     // Assistente (E4): parser local sempre; Claude só com ai.enabled e chave (só no servidor).
     const ai = new ClaudeClient(

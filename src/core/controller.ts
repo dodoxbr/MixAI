@@ -63,6 +63,8 @@ export interface Result {
  * resultado é STATE_CHANGED. Uso interno do servidor (propostas do assistente); não vem do cliente.
  */
 export interface Expectation {
+  /** Server-owned authorization, rechecked inside the write queue. */
+  authorize?: () => boolean;
   revisions?: Array<[ParamKey, number]>;
   undoId?: number;
 }
@@ -976,6 +978,7 @@ export class MixController {
   /** Precondição de estado (ver Expectation). Só chamada DENTRO de queue.run. */
   private checkExpectation(expect: Expectation | undefined): Result | undefined {
     if (!expect) return undefined;
+    if (expect.authorize && !expect.authorize()) return { ok: false, code: 'FORBIDDEN', message: 'Vínculo ou sessão mudou antes de aplicar. Nada foi alterado.' };
     const moved = (expect.revisions ?? []).filter(([k, rev]) => this.tracker.revisionOf(k) !== rev).map(([k]) => k);
     const undoMoved = expect.undoId !== undefined && this.undoStack.peek(1)[0]?.id !== expect.undoId;
     if (!moved.length && !undoMoved) return undefined;

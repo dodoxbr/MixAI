@@ -16,6 +16,10 @@ const delta = z.number().min(-40).max(20);
  */
 export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('status') }).strict(),
+  z.object({ type: z.literal('musician_identity') }).strict(),
+  z.object({ type: z.literal('musician_sessions') }).strict(),
+  z.object({ type: z.literal('musician_bind'), sessionId: z.string().regex(/^[a-f0-9]{16}$/), musicianId: z.string().regex(/^[a-z0-9-]{1,40}$/), name: z.string().trim().min(1).max(60), channels: z.array(z.number().int().min(1).max(12)).min(1).max(12), mute: z.boolean() }).strict(),
+  z.object({ type: z.literal('musician_revoke'), sessionId: z.string().regex(/^[a-f0-9]{16}$/) }).strict(),
   z.object({ type: z.literal('list_names') }).strict(),
   z.object({ type: z.literal('mix_state'), aux: target.optional() }).strict(),
   z.object({ type: z.literal('history'), limit: z.number().int().min(1).max(100).optional() }).strict(),
@@ -142,6 +146,8 @@ export function authorizeCommand(
   policy: AccessPolicy,
 ): { ok: true; command: Command } | ({ ok: false } & Denial) {
   if (role === 'operator') return { ok: true, command: cmd };
+  if (cmd.type.startsWith('musician_') && cmd.type !== 'musician_identity') return deny('Vínculos são exclusivos do operador.');
+  if (cmd.type === 'musician_identity') return { ok: true, command: cmd };
   if (cmd.type === 'set_lab_eq' || cmd.type === 'reset_lab_eq') return deny('EQ do laboratório é exclusivo do operador.');
   if (isSceneCommand(cmd)) {
     // Cenas do MixAI: criar, administrar, importar/exportar, carregar e aprovar são só do

@@ -143,7 +143,7 @@ describe('requestId: proteção contra execução duplicada', () => {
 describe('perfis: autorização verificada no servidor', () => {
   it('músico tentando alterar master ou PA: recusado (nada muda)', async () => {
     const t = await start();
-    const mus = await t.login(MUSICIAN_PIN);
+    const mus = await t.login(MUSICIAN_PIN, t.controller.names.inputs.configured());
     const masterBefore = num(t, MASTER_KEY);
     for (const cmd of [
       { type: 'set_master', deltaDB: -1 },
@@ -166,7 +166,7 @@ describe('perfis: autorização verificada no servidor', () => {
 
   it('músico alterando o AUX 1 (fones): permitido; vê só o AUX 1 no estado', async () => {
     const t = await start();
-    const mus = await t.login(MUSICIAN_PIN);
+    const mus = await t.login(MUSICIAN_PIN, t.controller.names.inputs.configured());
     const before = num(t, paramKey.level(2, auxBus(1)));
     const r = await t.command(mus, { type: 'set_level', channel: 'voz 2', aux: 1, deltaDB: 2 });
     expect(r.json.result.code).toBe('OK');
@@ -226,7 +226,7 @@ describe('confirmação humana', () => {
     const viaApprove = await t.http(`/api/pending/${id}/approve`, { token: agentToken(t), body: { requestId: 'ag-3' } });
     expect(viaApprove.status).toBe(403);
     expect(viaApprove.json.result.code).toBe('FORBIDDEN');
-    const mus = await t.login(MUSICIAN_PIN);
+    const mus = await t.login(MUSICIAN_PIN, t.controller.names.inputs.configured());
     expect((await t.http(`/api/pending/${id}/approve`, { token: mus, body: { requestId: 'm-1' } })).json.result.code).toBe('FORBIDDEN');
     expect(num(t, MASTER_KEY)).toBe(LAB_MASTER);
     expect(t.controller.isPendingOpen(id)).toBe(true); // as tentativas não consumiram a pendência

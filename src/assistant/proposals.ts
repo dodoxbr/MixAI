@@ -59,6 +59,7 @@ export class ProposalBuilder {
     private policy: AccessPolicy,
     private ttlMs: number,
     private clock: () => number = Date.now,
+    private channelAccess: (p: Principal, cmd: Command) => boolean = () => true,
   ) {}
 
   build(p: Principal, intent: Intent, source: ProposalCard['source']): BuildResult {
@@ -71,6 +72,7 @@ export class ProposalBuilder {
     const aux = (dest: 'pa' | 'fones') => (dest === 'fones' ? this.policy.musicianAux : undefined);
     const destName = (dest: 'pa' | 'fones') => (dest === 'fones' ? 'FONES' : 'PA');
     const check = (command: Command): BuildResult | undefined => {
+      if (!this.channelAccess(p, command)) return { ok: false, code: 'FORBIDDEN', message: 'Canal não vinculado a esta sessão no LAB. Peça ao operador.' };
       const auth = authorizeCommand(p.role, command, names, this.policy);
       return auth.ok ? undefined : { ok: false, code: 'FORBIDDEN', message: auth.message };
     };

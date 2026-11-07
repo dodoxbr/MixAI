@@ -68,17 +68,17 @@ describe('arraste de fader (gesto humano)', () => {
     expect(value(t, VOZ1)).toBe(-Infinity);
   });
 
-  it('músico: arraste no PA recusado; no AUX 1 permitido', async () => {
+  it('músico: arraste recusado no PA e AUX; somente passos discretos', async () => {
     const t = await start();
-    const mus = await t.login(MUSICIAN_PIN);
+    const mus = await t.login(MUSICIAN_PIN, t.controller.names.inputs.configured());
     const c = await ws(t, mus);
     const pa = await drag(c, 'm1', -10, -20, 2);
     expect(pa.result.code).toBe('FORBIDDEN');
     expect(value(t, VOZ1)).toBe(-10);
     const before = value(t, paramKey.level(1, auxBus(1)))!;
     const fones = await drag(c, 'm2', before, before - 6, 3, { aux: 1 });
-    expect(fones.result.code).toBe('OK');
-    expect(value(t, paramKey.level(1, auxBus(1)))).toBe(before - 6);
+    expect(fones.result.code).toBe('FORBIDDEN');
+    expect(value(t, paramKey.level(1, auxBus(1)))).toBe(before);
   });
 
   it('assistente não arrasta fader', async () => {

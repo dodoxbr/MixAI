@@ -22,7 +22,7 @@ async function start(opts: Parameters<typeof startTestServer>[0] = {}) {
   return t;
 }
 async function screen(t: T, pin = OPERATOR_PIN) {
-  const c = await wsClient(t.base, await t.login(pin));
+  const c = await wsClient(t.base, await t.login(pin, pin === MUSICIAN_PIN ? t.controller.names.inputs.configured() : undefined));
   clients.push(c);
   await c.next((m) => m.type === 'snapshot');
   let n = 0;

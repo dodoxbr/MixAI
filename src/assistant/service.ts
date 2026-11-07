@@ -68,7 +68,7 @@ export class AssistantService {
       clock?: () => number;
     },
   ) {
-    this.builder = new ProposalBuilder(core.controller, core.policy, opts.ttlMs, opts.clock);
+    this.builder = new ProposalBuilder(core.controller, core.policy, opts.ttlMs, opts.clock, (p, cmd) => core.authorizeMusicianCommand(p, cmd));
     this.diagnosticContexts = new DiagnosticContexts(core.controller.names, core.policy.musicianAux, { clock: opts.clock });
     this.removeRevokeListener = core.auth.onRevoke(id => this.diagnosticContexts.revoke(id));
   }
@@ -277,7 +277,8 @@ export class AssistantService {
     const aux = policy.musicianAux;
     const musician = p.role === 'musician';
     const showPA = !musician || musicianHasPA(policy);
-    const keys = this.opts.channels.flatMap((ch) => [
+    const channels = this.opts.channels.filter(ch => !musician || this.core.musicianIdentity(p).binding?.channels.includes(ch.number));
+    const keys = channels.flatMap((ch) => [
       paramKey.level(ch.number, MASTER),
       paramKey.mute(ch.number, MASTER),
       paramKey.level(ch.number, auxBus(aux)),
@@ -289,7 +290,7 @@ export class AssistantService {
       if (!v || v.status !== 'known') return '?';
       return typeof v.value === 'boolean' ? (v.value ? 'mutado' : 'aberto') : fmtDb(v.value);
     };
-    const lines = this.opts.channels.map((ch) => {
+    const lines = channels.map((ch) => {
       const fones = `Fones ${val(paramKey.level(ch.number, auxBus(aux)))} ${val(paramKey.mute(ch.number, auxBus(aux)))}`;
       return showPA ? `${ch.number} ${ch.name}: PA ${val(paramKey.level(ch.number, MASTER))} ${val(paramKey.mute(ch.number, MASTER))} | ${fones}` : `${ch.number} ${ch.name}: ${fones}`;
     });
@@ -298,7 +299,7 @@ export class AssistantService {
       role: musician ? 'musician' : 'operator',
       musicianPA: musician && musicianHasPA(policy),
       musicianPaStepDB: policy.musicianPaStepDB,
-      channels: this.opts.channels,
+      channels,
       state: lines.join('\n'),
       steps: this.opts.steps,
     };
