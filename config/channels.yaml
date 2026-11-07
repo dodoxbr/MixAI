@@ -1,12 +1,20 @@
 # Nomes da banda para os canais e retornos.
-# Edite à vontade: depois de salvar, reinicie o Claude Desktop para o MixAI ler de novo.
-# Acentos, maiúsculas e espaços são ignorados ("Violão" = "violao" = "VIOLAO").
+# A ordem abaixo segue o numero da ENTRADA FISICA da Soundcraft Ui16.
+# Nao altera a configuracao salva na mesa; nomes locais usados pelo MixAI.
+# Acentos, maiusculas e espacos sao ignorados ("Violao" = "violao").
 #
-# Ligação proposta na Ui16 (12 entradas):
-#   - Cavaco e violão nas entradas combo (aceitam P10). Se o captador for passivo,
-#     use as entradas marcadas como Hi-Z no painel e troque os números aqui.
-#   - Vozes e percussão em microfone (XLR).
-#   - Canal 10 do Laviquinho (quando ele aparece); 11 reserva para convidado; 12 livre.
+# Mapa informado pelo operador em 07/11/2026:
+# CH1 Cavaco (Lucius), CH2 Violao, CH3 Fred, CH4 Lucius,
+# CH5 Leandro, CH6 Fernando, CH7 Leandro, CH8 Surdo,
+# CH9 Pandeiro, CH10 Tanta, CH11 Reserva, CH12 Livre (sem mapeamento).
+# IMPORTANTE: o operador citou "Leandro" para CH5 e CH7.
+# Mantemos os dois canais, com nomes/aliases distintos para evitar
+# comandos ambiguos. Confirmar futuramente a funcao do CH7.
+# Laviquinho nao tem canal atribuido neste novo mapa; NAO inferir CH10.
+#
+# Prioridade vocal e ordenacao visual sao configuracoes separadas:
+# Fred (CH3) e vocal principal; Lucius (CH4) e Fernando (CH6) sao coros.
+# Nao interpretar a ordem nem o papel como ajuste automatico de volume.
 
 channels:
   - number: 1
@@ -23,29 +31,28 @@ channels:
     aliases: [lucius, voz do lucius, voz lucius]
   - number: 5
     name: Voz Leandro
-    aliases: [leandro, voz do leandro, voz leandro]
+    aliases: [leandro, voz do leandro, voz leandro, leandro ch5]
   - number: 6
     name: Voz Fernando
     aliases: [fernando, voz do fernando, voz fernando]
   - number: 7
-    name: Pandeiro
-    aliases: [pandeiro, pandeirista]
+    name: Leandro CH7
+    aliases: [leandro ch7, leandro canal 7]
   - number: 8
-    name: Tantã
-    aliases: [tantã, tanta, tantan, tan tan]
-  - number: 9
     name: Surdo
     aliases: [surdo, surdão, surdao]
+  - number: 9
+    name: Pandeiro
+    aliases: [pandeiro, pandeirista]
   - number: 10
-    name: Laviquinho
-    aliases: [laviquinho, lavi, voz do laviquinho, mic do laviquinho]
+    name: Tantã
+    aliases: [tantã, tanta, tantan, tan tan]
   - number: 11
     name: Reserva
     aliases: [reserva, convidado]
 
-# Retornos. Formato roda de samba: todo mundo no fone, pelo amplificador de fones (HA800),
-# que recebe uma mix só. Ligue a saída AUX 1 da Ui16 na entrada do amplificador.
-# Quando tiverem mais amplificadores de fone, acrescente o AUX 2, 3 e 4 aqui.
+# Retornos. Formato roda de samba: todo mundo no fone, pelo amplificador
+# de fones HA800, que recebe uma mix compartilhada no AUX 1.
 aux:
   - number: 1
     name: Fones
