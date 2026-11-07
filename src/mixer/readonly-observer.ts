@@ -1,14 +1,15 @@
 import { ParamRegistry } from '../core/params.js';
-import { isIP } from 'node:net';
+import { isObserverPrivateIP, type ObserverTransport } from './observer-network.js';
 import { sameValue, type ParamKey, type ParamValue } from '../core/revisions.js';
 import { encodeValue } from '../core/state.js';
 import { RealMixer } from './real.js';
 import { observerSocketGate, type ObserverSocketCtor } from './readonly-socket.js';
-import { MAX_OBSERVER_BYTES, observerKeys, parseObserverReport, ScopeSchema, type ObserverEvent, type ObserverReading, type ObserverReport, type ObserverScope, type ObserverStopReason } from './observer-report.js';
+import { MAX_OBSERVER_BYTES, observerKeys, parseCurrentObserverReport, ScopeSchema, type ObserverEvent, type ObserverReading, type ObserverReport, type ObserverScope, type ObserverStopReason } from './observer-report.js';
 import type { LinkState } from './types.js';
 
-type Target = { source: 'fake_websocket'; webSocketCtor: unknown } |
-  { source: 'manual_device_stream'; ethernetConfirmed: true; audioDisconnected: true; webSocketCtor?: never };
+type Target = { source: 'fake_websocket'; webSocketCtor: unknown; transport?: ObserverTransport; routeGuard?: () => boolean } |
+  { source: 'manual_device_stream'; ethernetConfirmed: true; transport?: never; routeGuard?: never; audioDisconnected: true; webSocketCtor?: never } |
+  { source: 'manual_device_stream'; transport: ObserverTransport; ipConfirmed: true; hotspotConfirmed?: true; routeGuard: () => boolean; ethernetConfirmed?: never; audioDisconnected: true; webSocketCtor?: never };
 export type ObserverOptions = Target & {
   ip: string; scope: ObserverScope; appVersion: string;
   durationMs?: number; maxEvents?: number;
@@ -18,11 +19,8 @@ export type ObserverOptions = Target & {
   onEvent?: (event: ObserverEvent) => void;
 };
 
-export function isObserverEthernetIP(ip: string): boolean {
-  if (isIP(ip) !== 4) return false;
-  const [a, b] = ip.split('.').map(Number);
-  return a === 10 || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
-}
+/** Alias retrocompatível: o endereço é privado, não comprova tipo de interface. */
+export const isObserverEthernetIP = isObserverPrivateIP;
 
 /** Sessão de observação, sem API de escrita e sem segundo controlador/implementação RealMixer. */
 export class Ui16ReadOnlyObserver {
@@ -58,7 +56,13 @@ export class Ui16ReadOnlyObserver {
     const duration = opts.durationMs ?? 60_000, limit = opts.maxEvents ?? 500;
     if (!scope.success || !/^\d+\.\d+\.\d+$/.test(opts.appVersion) || opts.appVersion.length > 32 ||
       !Number.isInteger(duration) || duration < 1 || duration > 900_000 || !Number.isInteger(limit) || limit < 8 || limit > 2000) throw new Error('F0C_INVALID_OPTIONS');
-    if (opts.source === 'manual_device_stream' && (opts.ethernetConfirmed !== true || opts.audioDisconnected !== true || opts.webSocketCtor !== undefined || !isObserverEthernetIP(opts.ip))) throw new Error('F0C_MANUAL_GATE_REQUIRED');
+    if (opts.transport !== undefined && !['ethernet', 'wifi'].includes(opts.transport)) throw new Error('F0D_INVALID_TRANSPORT');
+    if (opts.source === 'manual_device_stream') {
+      const legacy = opts.transport === undefined && opts.ethernetConfirmed === true && opts.routeGuard === undefined && !('ipConfirmed' in opts) && !('hotspotConfirmed' in opts);
+      const explicit = opts.ethernetConfirmed === undefined && 'ipConfirmed' in opts && opts.ipConfirmed === true &&
+        typeof opts.routeGuard === 'function' && (opts.transport === 'ethernet' && opts.hotspotConfirmed === undefined || opts.transport === 'wifi' && opts.hotspotConfirmed === true);
+      if ((!legacy && !explicit) || opts.audioDisconnected !== true || opts.webSocketCtor !== undefined || !isObserverPrivateIP(opts.ip)) throw new Error('F0C_MANUAL_GATE_REQUIRED');
+    }
     for (const time of [opts.connectTimeoutMs, opts.syncTimeoutMs, opts.reconnectBaseMs, opts.reconnectMaxDelayMs, opts.recoveryTimeoutMs]) {
       if (time !== undefined && (!Number.isInteger(time) || time < 1 || time > 900_000)) throw new Error('F0C_INVALID_OPTIONS');
     }
@@ -75,7 +79,10 @@ export class Ui16ReadOnlyObserver {
       this.#record({ type: 'parameter', origin: this.#mixer.link() === 'READY' ? 'external' : 'resync', sample: { key, reading: { state: 'unknown', reason: 'invalid_value' } } });
       this.#record({ type: 'safety', reason: 'invalid_sample' });
       void this.stop('invalid_sample');
-    } });
+    } }, opts.routeGuard ? { check: opts.routeGuard, onMismatch: () => {
+      this.#record({ type: 'safety', reason: 'route_mismatch' });
+      void this.stop('route_mismatch');
+    } } : undefined);
     this.#mixer = new RealMixer({ ip: opts.ip, model: 'ui16', readOnly: true,
       requiredKeys: [...this.#keys], watchedKeys: [...this.#keys], nameChannels: [], webSocketCtor: this.#gate.Ctor,
       connectTimeoutMs: opts.connectTimeoutMs, syncTimeoutMs: opts.syncTimeoutMs,
@@ -118,7 +125,8 @@ export class Ui16ReadOnlyObserver {
   report(): ObserverReport {
     const counters = { link: 0, parameter: 0, snapshot: 0, safety: 0, end: 0, duplicatesSuppressed: this.#duplicates };
     for (const e of this.#events) counters[e.type]++;
-    return parseObserverReport({ schemaVersion: 1, kind: 'mixai-f0c-readonly-evidence',
+    return parseCurrentObserverReport({ schemaVersion: 2, kind: 'mixai-f0c-readonly-evidence',
+      transport: this.#opts.transport ?? 'ethernet', routeCheck: this.#opts.source === 'fake_websocket' ? 'simulated' : this.#opts.routeGuard ? 'each_connection_gate' : 'legacy_ethernet_declaration',
       appVersion: this.#opts.appVersion, libraryVersion: '7.1.0', source: this.#opts.source, readOnly: true,
       hardwareValidation: 'pending', configuredModel: 'ui16', auxPhysicalSupport: 'not_verified', scope: this.#scope,
       excludedCapabilities: ['eq_hpf_simulated_only', 'preamp_phantom_not_monitored', 'physical_aux_routing_unverified'],

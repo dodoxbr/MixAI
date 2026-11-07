@@ -15,7 +15,7 @@ export function isObserverReadFrame(data: unknown): data is string {
 }
 
 /** Um bloqueio sela TODA a sessão, inclusive construtores futuros de reconexão. */
-export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => void, incoming?: { keys: ParamKey[]; onInvalid: (key: ParamKey) => void }) {
+export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => void, incoming?: { keys: ParamKey[]; onInvalid: (key: ParamKey) => void }, route?: { check: () => boolean; onMismatch: () => void }) {
   let sealed = false;
   // Só valida envelopes/campos numéricos selecionados; a biblioteca continua decodificando dB.
   const paths = new Map<string, { key: ParamKey; mute: boolean }>();
@@ -32,6 +32,15 @@ export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => vo
   };
   const Guarded = function (this: unknown, url: string, protocols?: string | string[]) {
     if (sealed) throw new Error('F0C_TRANSPORT_SEALED');
+    if (route) {
+      let valid = false;
+      try { valid = route.check() === true; } catch { /* sem dados da rede */ }
+      if (!valid) {
+        sealed = true;
+        try { route.onMismatch(); } finally { closeSockets(); }
+        throw new Error('F0D_ROUTE_MISMATCH');
+      }
+    }
     const socket = new Base(url, protocols);
     sockets.add(socket);
     const close = socket.close.bind(socket);

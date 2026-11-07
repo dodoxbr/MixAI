@@ -13,6 +13,11 @@ Para observar mudanças feitas **manualmente na UI oficial**, após os portões 
 usar [F0C — observador somente leitura](18-F0C-READONLY-OBSERVER.md). O MixAI permanece
 sem escrita; esse ensaio supervisionado não é executado pelo F0B/CI nem conclui F0 sozinho.
 
+F0D: a unidade foi recebida; isso não confirma ensaio físico. O
+[roteiro dual Ethernet/Wi-Fi](19-F0D-DUAL-TRANSPORT-READONLY.md) permite começar pelo
+hotspot da Ui16 sem adaptador RJ45, com confirmação própria e sem simular Ethernet.
+As evidências históricas de preparação offline não são validação de hardware.
+
 ## 1. Topologia e materiais
 
 ```text
