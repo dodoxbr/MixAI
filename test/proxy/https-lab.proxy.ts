@@ -230,3 +230,34 @@ it('transports bounded PCM through verified TLS only for the LAB operator, witho
   expect(t!.controller.state.snapshot()).toEqual(before);
   expect(diagnosticsContainSecret(diagnostics, ['Prévia simulada', ticket])).toBe(false);
 });
+
+it('keeps reference/request routes on central HTTPS auth, private sessions and read-only WSS observation', async () => {
+  const operator = (await http('/api/login', { body: { pin: OPERATOR_PIN } })).body.token;
+  const musician = (await http('/api/login', { body: { pin: MUSICIAN_PIN } })).body.token;
+  const other = (await http('/api/login', { body: { pin: MUSICIAN_PIN } })).body.token;
+  const agentToken = readFileSync(join(t!.dir, 'agent-lab.token'), 'utf8');
+  const workspace = await http('/api/reference-workspace', { token: operator });
+  expect(workspace.status).toBe(200); expect(workspace.headers['cache-control']).toBe('no-store');
+  expect((await http('/api/reference-workspace', { token: agentToken })).status).toBe(401);
+  expect((await t!.http('/api/reference-workspace', { token: agentToken })).status).toBe(403);
+  const base = { serverId: workspace.body.serverId };
+  const client = await socket(operator); expect((await client.next('hello')).role).toBe('operator');
+  const revision = t!.server.core.snapshotFor('operator').revision;
+  const capture = { ...base, eventId: 'tls-event-test', eventName: 'TLS LAB', eventDate: '2026-11-07', scope: 'PA', expectedVersion: 0, expectedStateRevision: revision, operatorApproved: true };
+  expect((await http('/api/mix-references', { token: musician, body: capture })).status).toBe(403);
+  const ref = await http('/api/mix-references', { token: operator, body: capture }); expect(ref.status).toBe(200);
+  expect((await http(`/api/mix-references/${ref.body.id}/compare`, { token: operator })).status).toBe(200);
+  const identity = (await t!.command(musician, { type: 'musician_identity' })).json.result.data;
+  expect((await t!.command(operator, { type: 'musician_bind', sessionId: identity.sessionId, musicianId: 'lucius', name: 'Lucius', channels: [1, 4], mute: true })).json.result.ok).toBe(true);
+  const created = await http('/api/mix-requests', { token: musician, body: { ...base, requestId: 'tls-request-test', type: 'meu_canal', channel: 4, report: 'A voz está abafada', destination: 'AUX1' } });
+  expect(created.status).toBe(200); expect(created.body.requestedBy).toMatchObject({ verified: true, boundChannels: [1, 4] });
+  const advice = await http(`/api/mix-requests/${created.body.id}/assess`, { token: operator, body: { ...base, expectedVersion: 1, expectedStateRevision: t!.server.core.snapshotFor('operator').revision } });
+  expect(advice.status).toBe(200); expect(advice.body.recommendation.source).toBe('diagnosis');
+  await t!.command(operator, { type: 'musician_revoke', sessionId: identity.sessionId });
+  expect((await http(`/api/mix-requests/${created.body.id}/decide`, { token: operator, body: { ...base, expectedVersion: advice.body.version, expectedStateRevision: t!.server.core.snapshotFor('operator').revision, state: 'approved', response: 'Não executar ajustes.' } })).status).toBe(409);
+  expect((await http(`/api/mix-requests/${created.body.id}`, { token: other })).status).toBe(404);
+  expect((await http('/api/mix-requests', { token: musician, body: { ...base, requestId: 'tls-forged-origin', type: 'mix_geral', report: 'Retorno', destination: 'AUX1' }, headers: { origin: 'https://foreign.invalid' } })).status).toBe(403);
+  expect(t!.server.core.snapshotFor('operator').revision).toBe(revision);
+  await http('/api/logout', { token: musician, body: {} });
+  expect((await http(`/api/mix-requests/${created.body.id}`, { token: musician })).status).toBe(401);
+});

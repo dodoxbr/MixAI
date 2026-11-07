@@ -5,6 +5,8 @@ import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import type { PrivatePtt } from '../speech/private-ptt.js';
 import { privatePttRoutes } from './private-ptt-routes.js';
+import type { ReferenceService } from '../reference/service.js';
+import { referenceRoutes } from './reference-routes.js';
 import type { WebSocket } from 'ws';
 import type { Result } from '../core/controller.js';
 import type { Principal, RevokeReason } from './auth.js';
@@ -61,7 +63,7 @@ function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) 
  * instância por endereço de escuta: 127.0.0.1 e, se configurado, o IP do Wi-Fi), sempre com o
  * MESMO core: um só controlador, um só estado, uma só fila.
  */
-export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string; labProxyOrigin?: string; privatePtt?: PrivatePtt } = {}): Promise<FastifyInstance> {
+export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string; labProxyOrigin?: string; privatePtt?: PrivatePtt; references?: ReferenceService } = {}): Promise<FastifyInstance> {
   // forceCloseConnections: ao desligar, encerra TODAS as conexões na hora. Sem isso, conexões
   // abertas pelo navegador sem requisição (pré-conexão) seguram o desligamento por até 60 s.
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 512 * 1024, forceCloseConnections: true });
@@ -130,6 +132,13 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
       principal: (req: FastifyRequest, reply: FastifyReply) => principalOf(core, req, reply),
       active: (p: Principal) => core.auth.isActive(p),
       onRevoke: (callback: (session: string) => void) => core.auth.onRevoke(id => callback(id)),
+    });
+  }
+
+  if (opts.references && core.mode === 'lab' && core.mixer.mode === 'lab') {
+    await app.register(referenceRoutes, { service: opts.references, origin: opts.labProxyOrigin,
+      principal: (req: FastifyRequest, reply: FastifyReply) => principalOf(core, req, reply),
+      active: (p: Principal) => core.auth.isActive(p),
     });
   }
 

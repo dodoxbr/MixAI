@@ -33,7 +33,7 @@ for(const [name, device] of [['celular',PHONE],['Yoga',YOGA]] as const) {
    await expect.poll(()=>t.mixer.read(`ch.${channel}.aux.1.level`)).toEqual({known:true,value:-18});
    await row.getByRole('button',{name:'Revogar vínculo',exact:true}).click();
    await expect.poll(()=>page.locator('.fones-row').count(), { timeout: 7000 }).toBe(0);
-   expect(await page.getByRole('button',{name:'Pedir ajuda ao mesário IA',exact:true}).count()).toBe(1);
+   expect(await page.getByRole('button',{name:'Chat dos meus canais',exact:true}).count()).toBe(1);
    const fresh=await enter(browser,t.base,MUSICIAN_PIN,device,undefined,false);
    await fresh.page.getByRole('status').filter({hasText:'Peça ao operador'}).waitFor();
    expect(await fresh.page.locator('.fones-row').count()).toBe(0);
