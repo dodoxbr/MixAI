@@ -5,15 +5,11 @@
 #
 # Mapa informado pelo operador em 07/11/2026:
 # CH1 Cavaco (Lucius), CH2 Violao, CH3 Fred, CH4 Lucius,
-# CH5 Leandro, CH6 Fernando, CH7 Leandro, CH8 Surdo,
+# CH5 Leandro, CH6 Fernando, CH7 Laviquinho, CH8 Surdo,
 # CH9 Pandeiro, CH10 Tanta, CH11 Reserva, CH12 Livre (sem mapeamento).
-# IMPORTANTE: o operador citou "Leandro" para CH5 e CH7.
-# Mantemos os dois canais, com nomes/aliases distintos para evitar
-# comandos ambiguos. Confirmar futuramente a funcao do CH7.
-# Laviquinho nao tem canal atribuido neste novo mapa; NAO inferir CH10.
-#
-# Prioridade vocal e ordenacao visual sao configuracoes separadas:
-# Fred (CH3) e vocal principal; Lucius (CH4) e Fernando (CH6) sao coros.
+# Confirmado pelo operador: Fred (CH3) e voz principal.
+# Lucius (CH4), Leandro (CH5), Fernando (CH6) e Laviquinho (CH7) sao coro.
+# Prioridade vocal e ordem fisica/visual nao sao ajustes de volume.
 # Nao interpretar a ordem nem o papel como ajuste automatico de volume.
 
 channels:
@@ -36,8 +32,8 @@ channels:
     name: Voz Fernando
     aliases: [fernando, voz do fernando, voz fernando]
   - number: 7
-    name: Leandro CH7
-    aliases: [leandro ch7, leandro canal 7]
+    name: Voz Laviquinho
+    aliases: [laviquinho, lavi, voz do laviquinho, voz laviquinho, mic do laviquinho]
   - number: 8
     name: Surdo
     aliases: [surdo, surdão, surdao]
