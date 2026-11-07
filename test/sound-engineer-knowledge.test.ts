@@ -116,6 +116,7 @@ describe('proveniência e limites de capacidade', () => {
   });
 
   it('base continua isolada e somente a consulta B3A importa conhecimento em produção', () => {
+    const LOCAL_KNOWLEDGE_CONSUMERS = ['src/assistant/service.ts', 'src/server/http.ts', 'src/server/start.ts', 'src/server/knowledge-routes.ts', 'src/knowledge-cli.ts'];
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(item =>
       item.isDirectory() ? files(join(dir, item.name)) : [join(dir, item.name)]);
     for (const file of files('src').filter(f => f.endsWith('.ts'))) {
@@ -126,7 +127,13 @@ describe('proveniência e limites de capacidade', () => {
         const imports = [...source.matchAll(/(?:from\s+|import\s*\()(['"])([^'"]+)\1/g)].map(m => m[2]);
         expect(imports.every(path => path === 'zod' || /^\.\/[\w-]+\.js$/.test(path)), file).toBe(true);
       } else if (normalizedFile !== 'src/assistant/sound-engineer.ts') {
-        expect(source, file).not.toMatch(/(?:from\s+|import\s*\()['"][^'"]*knowledge/);
+        const imports = [...source.matchAll(/(?:from\s+|import\s*\()(['"])([^'"]+)\1/g)].map(m => m[2]!);
+        for (const path of imports.filter(p => /knowledge/.test(p))) {
+          // A base local (RAG, opcional) é outro módulo e só entra por estes consumidores explícitos.
+          // A base determinística (knowledge/sound-engineer) continua restrita à consulta B3A.
+          if (/knowledge\/local\/|knowledge-routes/.test(path)) expect(LOCAL_KNOWLEDGE_CONSUMERS, file).toContain(normalizedFile);
+          else expect(path, file).not.toMatch(/knowledge/);
+        }
       }
     }
   });

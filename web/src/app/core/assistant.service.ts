@@ -1,4 +1,5 @@
 import { diagnosticView, presentationChoices, type DiagnosticView } from '../assistant/diagnostic-view';
+import { knowledgeView, type KnowledgeView } from '../knowledge/knowledge-view';
 import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { LiveService, type AssistantOutcome } from './live.service';
 import { SessionService } from './session.service';
@@ -13,6 +14,7 @@ export interface ChatItem {
   cards?: ProposalCard[];
   diagnostic?: boolean;
   presentation?: DiagnosticView;
+  knowledge?: KnowledgeView;
   diagnosticContext?: DiagnosticContext;
   references?: AssistantReply['references'];
   diagnosticOptions?: AssistantReply['diagnosticOptions'];
@@ -198,7 +200,7 @@ export class AssistantUiService {
     }
     if (r.diagnosticContext !== undefined) this.setContext(r.diagnosticContext ?? undefined);
     if (r.kind === 'diagnosis') {
-      return this.push({ from: 'assistant', source: 'local', diagnostic: true, presentation: diagnosticView(r), text: r.text, references: r.references, diagnosticOptions: r.diagnosticOptions ?? presentationChoices(r.conversation), diagnosticContext: r.diagnosticContext ?? undefined });
+      return this.push({ from: 'assistant', source: 'local', diagnostic: true, presentation: diagnosticView(r), knowledge: knowledgeView(r.knowledge), text: r.text, references: r.references, diagnosticOptions: r.diagnosticOptions ?? presentationChoices(r.conversation), diagnosticContext: r.diagnosticContext ?? undefined });
     }
     if (r.kind === 'proposals' && !r.proposals?.length) {
       return this.push({ from: 'assistant', source: r.source, text: r.text || 'Nada a ajustar.' });

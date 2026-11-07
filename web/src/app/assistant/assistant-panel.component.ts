@@ -1,4 +1,5 @@
 import { excerpt, safeReference } from './diagnostic-view';
+import { MODE_LABEL } from '../knowledge/knowledge-view';
 import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, inject, viewChild } from '@angular/core';
 import { AssistantUiService, type CardState } from '../core/assistant.service';
 
@@ -70,6 +71,21 @@ const STATE_TEXT: Record<CardState, string> = {
                     <li>@if (reference(ref.url); as href) { <a [href]="href" target="_blank" rel="noopener noreferrer">{{ ref.title }}</a> } @else { <span>{{ ref.title }} (link indisponível)</span> } — {{ ref.locator }}</li>
                   }
                 </ul>
+              }
+              @if (item.knowledge; as kn) {
+                <div class="knowledge-block" aria-label="Base de conhecimento local">
+                  <p><strong>Base local</strong> · {{ modeLabel(kn.mode) }}@if (kn.reason) { — {{ kn.reason }} }</p>
+                  @if (kn.microphone; as mic) { <p class="assist-text">{{ mic.channel }} {{ mic.musician }}: {{ mic.note }}</p> }
+                  @if (kn.caseTitle) { <p class="assist-text">Roteiro teórico relacionado: {{ kn.caseTitle }} (sem execução).</p> }
+                  @if (kn.narrative) { <p class="assist-text"><strong>Resumo do modelo local · não verificado, teoria a conferir:</strong> {{ kn.narrative }}</p> }
+                  @if (kn.passages.length) {
+                    <ul class="technical-references" aria-label="Trechos da base">
+                      @for (p of kn.passages; track p.locator + p.title + p.excerpt) {
+                        <li>@if (reference(p.url); as href) { <a [href]="href" target="_blank" rel="noopener noreferrer">{{ p.title }}</a> } @else { <strong>{{ p.title }}</strong> } · {{ p.locator }} — {{ p.excerpt }}</li>
+                      }
+                    </ul>
+                  }
+                </div>
               }
             </details>
           } @else if (item.text) {
@@ -143,6 +159,7 @@ export class AssistantPanelComponent {
   readonly latestDiagnostic = computed(() => this.assistant.items().filter(item => item.from === 'assistant').at(-1)?.id);
   readonly short = excerpt;
   readonly reference = safeReference;
+  readonly modeLabel = (mode: keyof typeof MODE_LABEL) => MODE_LABEL[mode];
   choiceLabel(label: string) { return label.replace(/^Voz (Fred|Lucius|Leandro|Fernando|Laviquinho)$/, '$1'); }
   back() {
     const elements = this.log()?.nativeElement.querySelectorAll<HTMLElement>('.assist-item');

@@ -24,6 +24,7 @@ import { SimulatedMeters } from './meters.js';
 import { ClaudeClient } from '../ai/claude.js';
 import { UsageTracker } from '../ai/usage.js';
 import { AssistantService } from '../assistant/service.js';
+import { openLocalKnowledge, type LocalKnowledge } from '../knowledge/local/index.js';
 
 /** Arquivo com o token do assistente (pasta de dados local, fora do Git; recriado a cada início). */
 export const agentTokenFile = (dataDir: string, mode: string) => join(dataDir, `agent-${mode}.token`);
@@ -43,7 +44,7 @@ export interface RunningServer {
  */
 export async function startServer(
   loaded: LoadedConfig,
-  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; referencePorts?: ReferencePorts } = {},
+  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; referencePorts?: ReferencePorts; knowledge?: LocalKnowledge } = {},
 ): Promise<RunningServer> {
   const { config } = loaded;
   const mode = config.mixer.mode;
@@ -97,7 +98,15 @@ export async function startServer(
       app.log,
       { mode, policy: () => core.policy, clock: opts.clock },
     );
+    // Base de conhecimento local (opcional, desligada por padrão). Falha dela nunca impede o início.
+    let knowledge: LocalKnowledge | undefined = opts.knowledge;
+    try {
+      knowledge ??= await openLocalKnowledge(loaded, { log: opts.log });
+    } catch (err) {
+      opts.log?.(`Base de conhecimento desativada: ${(err as Error).message.slice(0, 120).replace(/[\r\n\t]+/g, ' ')}`);
+    }
     core.assistant = new AssistantService(core, {
+      knowledge,
       steps: config.assistant,
       ttlMs: config.assistant.proposalTtlSec * 1000,
       channels: loaded.channels.channels,
@@ -121,7 +130,7 @@ export async function startServer(
 
     let boundPort = port;
     for (const host of hosts) {
-      const http = await buildHttp(core, { references, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const http = await buildHttp(core, { references, knowledge, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(http);
       await http.listen({ host, port: boundPort });
       const addr = http.server.address();
@@ -129,7 +138,7 @@ export async function startServer(
     }
     if (proxy) {
       if (proxy.port === boundPort) throw new Error('HTTPS LAB: porta do proxy deve diferir da porta HTTP local.');
-      const ingress = await buildHttp(core, { labProxyOrigin: proxy.origin, references, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const ingress = await buildHttp(core, { labProxyOrigin: proxy.origin, references, knowledge, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(ingress);
       await ingress.listen({ host: '127.0.0.1', port: proxy.port });
       opts.log?.(`HTTPS LAB: entrada do proxy em 127.0.0.1:${proxy.port}; origem HTTPS privada esperada: ${proxy.origin}`);
@@ -150,6 +159,7 @@ export async function startServer(
         if (closed) return;
         closed = true;
         core.stop();
+        await knowledge?.close().catch(() => undefined);
         for (const h of https) await h.close().catch(() => undefined);
         await appRef.mixer.disconnect().catch(() => undefined);
         rmSync(tokenFile, { force: true });

@@ -15,6 +15,18 @@ const SafetySchema = z.object({
   relativeFloorDB: z.number().default(-60),
 });
 
+const loopbackHost = z.string().refine((h) => ['127.0.0.1', 'localhost', '::1'].includes(h.toLowerCase()), 'somente loopback (127.0.0.1, localhost ou ::1)');
+const loopbackUrl = z
+  .string()
+  .refine((u) => {
+    try {
+      const url = new URL(u);
+      return url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !url.username && !url.password;
+    } catch {
+      return false;
+    }
+  }, 'somente http em loopback, sem credenciais na URL');
+
 const ConfigSchema = z.object({
   mixer: z
     .object({
@@ -124,6 +136,48 @@ const ConfigSchema = z.object({
       historyTurns: z.number().int().min(0).max(10).default(4),
     })
     .prefault({}),
+  /**
+   * Base de conhecimento local (RAG). Desligada por padrão. Só LEITURA de documentos técnicos:
+   * não conhece a mesa, o controlador nem a fila. Serviços (Ollama, PostgreSQL) só em loopback.
+   */
+  knowledge: z
+    .object({
+      enabled: z.boolean().default(false),
+      /** file = JSON em data/knowledge (sem Docker); postgres = PostgreSQL + pgvector local. */
+      store: z.enum(['file', 'postgres']).default('file'),
+      postgres: z
+        .object({
+          host: loopbackHost.default('127.0.0.1'),
+          port: z.number().int().min(1024).max(65535).default(5433),
+          database: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/).default('mixai'),
+          user: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/).default('mixai'),
+        })
+        .strict()
+        .prefault({}),
+      ollama: z
+        .object({
+          url: loopbackUrl.default('http://127.0.0.1:11434'),
+          embedModel: z.string().min(1).max(100).default('nomic-embed-text'),
+          chatModel: z.string().min(1).max(100).default('llama3.2:3b'),
+          /** Dimensão do vetor do modelo de embedding (nomic-embed-text = 768). */
+          embedDimensions: z.number().int().min(8).max(4096).default(768),
+          /** Redigir um texto de apoio com o modelo local. Desligado: só trechos recuperados. */
+          narrative: z.boolean().default(false),
+          timeoutMs: z.number().int().min(500).max(120_000).default(8000),
+        })
+        .strict()
+        .prefault({}),
+      /** Pasta (relativa a data/) com os documentos a ingerir. */
+      inboxDir: z
+        .string()
+        .min(1)
+        .default('knowledge/inbox')
+        .refine((p) => !isAbsolute(p) && !p.split(/[\\/]/).includes('..'), 'caminho relativo a data/, sem ".."'),
+      maxDocumentMB: z.number().min(1).max(100).default(30),
+      maxPassages: z.number().int().min(1).max(10).default(4),
+    })
+    .strict()
+    .prefault({}),
   safety: SafetySchema.prefault({}),
   logs: z.object({ dir: z.string().nullable().default('logs') }).prefault({}),
 });
@@ -164,7 +218,7 @@ function readYaml(path: string): unknown {
 }
 
 /** Campos que NUNCA podem ir no config.local.yaml (segredos ficam em secrets.yaml ou no ambiente). */
-const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
+const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|postgrespassword|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
@@ -205,6 +259,8 @@ const SecretsSchema = z.object({
   musicianPinHash: z.string().optional(),
   /** Chave da API da Anthropic (opcional). Só o servidor lê; nunca vai para o navegador nem para o log. */
   anthropicApiKey: z.string().optional(),
+  /** Senha do PostgreSQL local da base de conhecimento (opcional; ou MIXAI_PG_PASSWORD). */
+  postgresPassword: z.string().min(8).max(200).optional(),
 });
 export type Secrets = z.infer<typeof SecretsSchema>;
 
@@ -265,6 +321,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
   if (env.MIXAI_OPERATOR_PIN_HASH) secrets.operatorPinHash = env.MIXAI_OPERATOR_PIN_HASH;
   if (env.MIXAI_MUSICIAN_PIN_HASH) secrets.musicianPinHash = env.MIXAI_MUSICIAN_PIN_HASH;
   if (env.ANTHROPIC_API_KEY) secrets.anthropicApiKey = env.ANTHROPIC_API_KEY;
+  if (env.MIXAI_PG_PASSWORD) secrets.postgresPassword = env.MIXAI_PG_PASSWORD;
   const dataDir = env.MIXAI_DATA_DIR ? resolve(env.MIXAI_DATA_DIR) : join(PROJECT_ROOT, 'data');
 
   let logDir: string | null = env.MIXAI_LOG_DIR ?? config.logs.dir;

@@ -1,0 +1,82 @@
+[
+  {
+    "id": "akg-p3",
+    "title": "AKG P3 S",
+    "url": "https://br.akg.com/P3.html",
+    "description": "AKG oficial, ficha técnica",
+    "verifiedOnline": "2026-11-07",
+    "downloaded": false
+  },
+  {
+    "id": "akg-p5",
+    "title": "AKG P5 S",
+    "url": "https://br.akg.com/P5S.html",
+    "description": "AKG oficial, ficha técnica",
+    "verifiedOnline": "2026-11-07",
+    "downloaded": false
+  },
+  {
+    "id": "akg-p5-pdf",
+    "title": "AKG P5 S PDF",
+    "url": "https://www.akg.com/on/demandware.static/-/Sites-masterCatalog_Harman/default/dw972de3d4/pdfs/AKG_CutSheet_Mic_P5S.pdf",
+    "description": "AKG oficial, PDF",
+    "verifiedOnline": "2026-11-07",
+    "downloaded": false
+  },
+  {
+    "id": "akg-family-pdf",
+    "title": "AKG Perception P3/P5 PDF",
+    "url": "https://www.akg.com/on/demandware.static/-/Sites-masterCatalog_Harman/default/dwc810b38b/pdfs/AKG_P2_P3_P4_P5_P5S_Cutsheet.pdf",
+    "description": "AKG oficial, PDF",
+    "verifiedOnline": "2026-11-07",
+    "downloaded": false
+  },
+  {
+    "id": "soundcraft-ui16",
+    "title": "Ui16 manuais",
+    "url": "https://www.soundcraft.com/en-US/support_downloads/products/ui16.html",
+    "description": "Soundcraft oficial, downloads manuais v3 inglês e v2.8 português",
+    "verifiedOnline": "2026-11-07",
+    "downloaded": false
+  },
+  {
+    "id": "soundcraft-pt-pdf",
+    "title": "Ui12/16 Manual PT",
+    "url": "https://www.soundcraft.com/en-US/product_documents/ui_manual_v2-8_portuguese-pdf",
+    "description": "Soundcraft PDF PT",
+    "verifiedOnline": "2026-11-07",
+    "downloaded": false
+  },
+  {
+    "id": "shure-live",
+    "title": "Shure Microphone Techniques",
+    "url": "https://www.shure.com/publications/microphone_techniques_for_live_sound_reinforcement_english.pdf",
+    "description": "Shure, guia de captação",
+    "verifiedOnline": "2026-11-07",
+    "downloaded": false
+  },
+  {
+    "id": "yamaha-eq",
+    "title": "Yamaha Equalization",
+    "url": "https://hub.yamaha.com/proaudio/livesound/eq/",
+    "description": "Yamaha, fundamentos EQ",
+    "verifiedOnline": "2026-11-07",
+    "downloaded": false
+  },
+  {
+    "id": "yamaha-gain",
+    "title": "Yamaha Gain Staging",
+    "url": "https://hub.yamaha.com/proaudio/livesound/gain-staging/",
+    "description": "Yamaha, ganho",
+    "verifiedOnline": "2026-11-07",
+    "downloaded": false
+  },
+  {
+    "id": "yamaha-comp",
+    "title": "Yamaha Compressor",
+    "url": "https://hub.yamaha.com/proaudio/livesound/tools-of-the-trade-how-to-use-a-compressor/",
+    "description": "Yamaha, compressão",
+    "verifiedOnline": "2026-11-07",
+    "downloaded": false
+  }
+]

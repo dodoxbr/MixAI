@@ -11,6 +11,12 @@ import type { WebSocket } from 'ws';
 import type { Result } from '../core/controller.js';
 import type { Principal, RevokeReason } from './auth.js';
 import { fail, type CommandResponse, type ServerCore } from './core.js';
+import type { AssistantReply } from '../assistant/service.js';
+import type { LocalKnowledge } from '../knowledge/local/index.js';
+import { knowledgeRoutes } from './knowledge-routes.js';
+
+/** Texto do corpo de uma conversa (só para consultar a base); qualquer outra forma vira vazio. */
+const textOf = (body: unknown): string => (body && typeof body === 'object' && typeof (body as { text?: unknown }).text === 'string' ? (body as { text: string }).text.slice(0, 500) : '');
 
 /** Fechamentos do WebSocket com motivo (o cliente decide o que fazer). */
 export const WS_CLOSE = {
@@ -63,7 +69,7 @@ function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) 
  * instância por endereço de escuta: 127.0.0.1 e, se configurado, o IP do Wi-Fi), sempre com o
  * MESMO core: um só controlador, um só estado, uma só fila.
  */
-export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string; labProxyOrigin?: string; privatePtt?: PrivatePtt; references?: ReferenceService } = {}): Promise<FastifyInstance> {
+export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string; labProxyOrigin?: string; privatePtt?: PrivatePtt; references?: ReferenceService; knowledge?: LocalKnowledge } = {}): Promise<FastifyInstance> {
   // forceCloseConnections: ao desligar, encerra TODAS as conexões na hora. Sem isso, conexões
   // abertas pelo navegador sem requisição (pré-conexão) seguram o desligamento por até 60 s.
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 512 * 1024, forceCloseConnections: true });
@@ -142,6 +148,13 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
     });
   }
 
+  if (opts.knowledge) {
+    await app.register(knowledgeRoutes, { service: opts.knowledge, origin: opts.labProxyOrigin,
+      principal: (req: FastifyRequest, reply: FastifyReply) => principalOf(core, req, reply),
+      active: (p: Principal) => core.auth.isActive(p),
+    });
+  }
+
   app.get('/api/hello', async () => core.hello());
 
   app.post('/api/login', async (req, reply) => {
@@ -180,7 +193,8 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
   app.post('/api/assistant/conversation', async (req, reply) => {
     const p = principalOf(core, req, reply);
     if (!p) return reply;
-    const answer = core.assistant?.conversation(p, req.body) ?? { kind: 'error', source: 'local', code: 'NOT_CONFIGURED', text: 'Assistente indisponível.' };
+    const base: AssistantReply = core.assistant?.conversation(p, req.body) ?? { kind: 'error', source: 'local', code: 'NOT_CONFIGURED', text: 'Assistente indisponível.' };
+    const answer = core.assistant ? await core.assistant.withKnowledge(p, base, textOf(req.body)) : base;
     const status = ASSISTANT_STATUS[answer.code ?? ''] ?? 200;
     return reply.code(status).send({ serverId: core.serverId, reply: answer });
   });
@@ -189,7 +203,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
     const p = principalOf(core, req, reply);
     if (!p) return reply;
     if (!core.assistant) return reply.code(503).send({ serverId: core.serverId, reply: { kind: 'error', source: 'local', code: 'NOT_CONFIGURED', text: 'Assistente indisponível.' } });
-    const answer = core.assistant.diagnose(p, req.body);
+    const answer = await core.assistant.withKnowledge(p, core.assistant.diagnose(p, req.body), '');
     return reply.code(ASSISTANT_STATUS[answer.code ?? ''] ?? 200).send({ serverId: core.serverId, reply: answer });
   });
 
@@ -345,13 +359,14 @@ function wsSession(core: ServerCore, socket: WebSocket, authenticate: (token: un
         return void a.ask(p, msg.text, msg.context).then((reply) => send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply }));
       }
       case 'assistant_conversation': {
-        const reply = core.assistant?.conversation(p, msg.input) ?? { kind: 'error', source: 'local', text: 'Assistente indisponível.' };
-        return send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply });
+        const a = core.assistant;
+        if (!a) return send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply: { kind: 'error', source: 'local', text: 'Assistente indisponível.' } });
+        return void a.withKnowledge(p, a.conversation(p, msg.input), textOf(msg.input)).then((reply) => send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply }));
       }
       case 'assistant_diagnose': {
         const a = core.assistant;
-        const reply = a ? a.diagnose(p, msg.input) : { kind: 'error', source: 'local', text: 'Assistente indisponível.' };
-        return send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply });
+        if (!a) return send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply: { kind: 'error', source: 'local', text: 'Assistente indisponível.' } });
+        return void a.withKnowledge(p, a.diagnose(p, msg.input), '').then((reply) => send({ type: 'assistant_reply', serverId: core.serverId, requestId: msg.requestId, reply }));
       }
       case 'proposal_apply': {
         const a = core.assistant;

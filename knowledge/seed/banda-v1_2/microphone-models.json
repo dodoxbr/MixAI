@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "bandMicModel": "AKG Perception P3 S (confirmado pelo operador em 2026-11-07)",
+  "verifiedModel": "akg-p3s",
+  "candidateModels": {
+    "akg-p3s": {
+      "model": "AKG Perception P3 S",
+      "pattern": "cardioid",
+      "responseHz": [
+        40,
+        20000
+      ],
+      "sensitivityMvPa": 2.5,
+      "impedanceOhm": 600,
+      "recommendedLoadOhm": 2000,
+      "connector": "balanced XLR 3pin",
+      "sourceId": "akg-p3",
+      "status": "manufacturer_specification"
+    }
+  },
+  "channelAssignments": {
+    "CH3": {
+      "musician": "Fred",
+      "modelId": "akg-p3s",
+      "role": "lead",
+      "evidence": "operator_report"
+    },
+    "CH4": {
+      "musician": "Lucius",
+      "modelId": "akg-p3s",
+      "role": "backing",
+      "evidence": "operator_report"
+    },
+    "CH5": {
+      "musician": "Leandro",
+      "modelId": null,
+      "role": "backing",
+      "evidence": "unconfirmed"
+    },
+    "CH6": {
+      "musician": "Fernando",
+      "modelId": "akg-p3s",
+      "role": "backing",
+      "evidence": "operator_report"
+    },
+    "CH7": {
+      "musician": "Laviquinho",
+      "modelId": null,
+      "role": "backing",
+      "evidence": "unconfirmed"
+    }
+  },
+  "safety": "CH3/CH4/CH6 identificados pelo relato do operador; CH5/CH7 desconhecidos. Não aplicar EQ/preset uniforme só pelo modelo do microfone; não alterar phantom automaticamente.",
+  "confirmationSource": "operator_report"
+}

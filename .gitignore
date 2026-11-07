@@ -6,6 +6,7 @@ logs/
 # Segredos e dados locais (nunca publicar)
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 data/

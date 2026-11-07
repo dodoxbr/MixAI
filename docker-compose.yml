@@ -1,0 +1,48 @@
+# Infraestrutura LOCAL da base de conhecimento do MixAI (PostgreSQL + pgvector e Ollama).
+# Nada aqui toca na mesa Soundcraft Ui16. Portas só em 127.0.0.1 (nunca expostas na rede).
+# Uso (Windows, Docker Desktop):
+#   copy .env.example .env      -> edite .env e troque MIXAI_PG_PASSWORD
+#   docker compose up -d
+#   docker compose exec ollama ollama pull nomic-embed-text
+# Detalhes: docs/lab/21-LOCAL-KNOWLEDGE-INFRASTRUCTURE.md
+name: mixai-knowledge
+
+services:
+  postgres:
+    image: ${MIXAI_PG_IMAGE:-pgvector/pgvector:pg16}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mixai
+      POSTGRES_USER: mixai
+      POSTGRES_PASSWORD: ${MIXAI_PG_PASSWORD:?defina MIXAI_PG_PASSWORD no arquivo .env (copie .env.example)}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - mixai_pg:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mixai -d mixai"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    security_opt:
+      - no-new-privileges:true
+
+  ollama:
+    image: ${MIXAI_OLLAMA_IMAGE:-ollama/ollama:latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - mixai_ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 8s
+      retries: 6
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  mixai_pg:
+  mixai_ollama:
