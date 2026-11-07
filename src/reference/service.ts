@@ -48,12 +48,22 @@ export class ReferenceService {
   private identity(p: Principal) {
     const linked = this.ports.identity?.resolve(p);
     // No shared-PIN identity inference; only a trusted adapter can assert a binding.
-    return linked?.verified && linked.musicianId ? { sourceSessionId: p.id, verified: true, musicianId: linked.musicianId, displayName: linked.displayName, boundChannel: linked.channel } : { sourceSessionId: p.id, verified: false };
+    return linked?.verified && linked.musicianId ? { sourceSessionId: p.id, verified: true, musicianId: linked.musicianId, displayName: linked.displayName, boundChannels: linked.channels, bindingRevision: linked.bindingRevision } : { sourceSessionId: p.id, verified: false };
+  }
+  private currentBinding(request: HelpRequest) {
+    if (!request.requestedBy.verified) return;
+    const current = this.identity({ id: request.requestedBy.sourceSessionId, role: 'musician', label: 'músico' });
+    if (!current.verified || current.musicianId !== request.requestedBy.musicianId
+      || current.bindingRevision !== request.requestedBy.bindingRevision
+      || JSON.stringify(current.boundChannels) !== JSON.stringify(request.requestedBy.boundChannels)
+      || (request.type === 'meu_canal' && !current.boundChannels?.includes(request.channel!))) throw new ReferenceError('STALE_STATE');
   }
   private owns(p: Principal, request: HelpRequest): boolean {
     if (p.role === 'operator') return true;
     const linked = this.identity(p);
-    return request.requestedBy.sourceSessionId === p.id || (linked.verified && request.requestedBy.verified && linked.musicianId === request.requestedBy.musicianId);
+    return request.requestedBy.verified
+      ? !!(linked.verified && linked.musicianId === request.requestedBy.musicianId)
+      : request.requestedBy.sourceSessionId === p.id;
   }
   private request(document: Document, p: Principal, id: string, version: number) {
     const request = document.requests.find(r => r.id === id);
@@ -120,12 +130,12 @@ export class ReferenceService {
   create(p: Principal, raw: unknown) {
     this.guard(p); const input = this.parse(RequestInput, raw); const document = this.document(); const identity = this.identity(p);
     if (input.channel !== undefined && !this.read.channels().some(c => c.number === input.channel)) throw new ReferenceError('INVALID');
-    if (input.type === 'meu_canal' && identity.verified && identity.boundChannel !== undefined && identity.boundChannel !== input.channel) throw new ReferenceError('FORBIDDEN');
+    if (input.type === 'meu_canal' && this.ports.identity && (!identity.verified || input.channel === undefined || !identity.boundChannels?.includes(input.channel))) throw new ReferenceError('FORBIDDEN');
     const fingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     const duplicate = document.requests.find(r => r.requestedBy.sourceSessionId === p.id && r.requestId === input.requestId);
-    if (duplicate) { if (duplicate.fingerprint !== fingerprint) throw new ReferenceError('CONFLICT'); return duplicate; }
+    if (duplicate) { if (!this.owns(p, duplicate)) throw new ReferenceError('NOT_FOUND'); if (duplicate.fingerprint !== fingerprint) throw new ReferenceError('CONFLICT'); return duplicate; }
     if (document.requests.length >= 500) throw new ReferenceError('CAPACITY');
-    const needs = input.type === 'meu_canal' && (!identity.verified || identity.boundChannel === undefined || input.channel === undefined);
+    const needs = input.type === 'meu_canal' && (!identity.verified || !identity.boundChannels?.length || input.channel === undefined);
     const state = needs ? 'needs_information' : 'received'; const now = this.now();
     const request: HelpRequest = { id: randomUUID(), requestId: input.requestId, fingerprint, type: input.type, report: input.report, channel: input.channel, destination: input.destination, requestedBy: identity,
       createdAt: now, expiresAt: new Date(this.clock() + 600000).toISOString(), version: 1, state, basis: { serverId: this.read.serverId, stateRevision: this.snapshot().revision },
@@ -140,10 +150,11 @@ export class ReferenceService {
     if (!transitions[request.state]?.includes(input.state)) throw new ReferenceError('CONFLICT');
     if (request.state === input.state && input.state !== 'suggested') throw new ReferenceError('CONFLICT');
     if (input.state === 'suggested' || input.state === 'approved') {
+      this.currentBinding(request);
       const snapshot = this.snapshot(input.expectedStateRevision);
       if (input.state === 'approved' && request.state === 'suggested' && (request.basis.serverId !== this.read.serverId || request.basis.stateRevision !== snapshot.revision)) throw new ReferenceError('STALE_STATE');
       request.basis = { serverId: this.read.serverId, stateRevision: snapshot.revision };
-      request.recommendation = { source: 'operator', text: input.response };
+      if (input.state !== 'approved' || !request.recommendation) request.recommendation = { source: 'operator', text: input.response };
     }
     request.response = input.response; request.state = input.state; this.history(request, input.state, p, input.response);
     this.store.commit(document, document.revision); return request;
@@ -161,12 +172,14 @@ export class ReferenceService {
     this.guard(p, true); const input = this.parse(DecisionInput.omit({ state: true, response: true }), raw);
     if (!this.ports.recommendations) throw new ReferenceError('DEPENDENCY_UNAVAILABLE');
     const document = this.document(); const request = this.request(document, p, id, input.expectedVersion); const snapshot = this.snapshot(input.expectedStateRevision);
+    this.currentBinding(request);
     const advice = await this.ports.recommendations.recommend({ report: request.report, channel: request.channel, destination: request.destination, stateRevision: snapshot.revision });
     const parsed = RequestSchema.shape.recommendation.unwrap().safeParse(advice);
     if (!parsed.success || parsed.data.source !== 'diagnosis') throw new ReferenceError('INVALID');
     this.guard(p, true); this.snapshot(snapshot.revision);
     const latest = this.document(); const current = this.request(latest, p, id, input.expectedVersion);
-    current.recommendation = parsed.data; current.response = parsed.data.text; current.state = 'suggested'; current.basis = { serverId: this.read.serverId, stateRevision: snapshot.revision };
-    this.history(current, 'suggested', p, parsed.data.text); this.store.commit(latest, latest.revision); return current;
+    this.currentBinding(current);
+    current.recommendation = parsed.data; current.response = 'Consulta técnica anexada; orientação somente leitura, sem ajuste automático.'; current.state = 'suggested'; current.basis = { serverId: this.read.serverId, stateRevision: snapshot.revision };
+    this.history(current, 'suggested', p, 'Consulta técnica anexada; sem execução.'); this.store.commit(latest, latest.revision); return current;
   }
 }

@@ -2,7 +2,7 @@ import { devices, type Browser, type Page } from 'playwright';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { paramKey } from '../../src/core/revisions.js';
 import { auxBus, MASTER } from '../../src/mixer/types.js';
-import { bandChannels, launch, MUSICIAN_PIN, OPERATOR_PIN, startLab, YOGA } from './harness.js';
+import { bandChannels, enrollMusicianFixture, launch, MUSICIAN_PIN, OPERATOR_PIN, startLab, YOGA } from './harness.js';
 
 /** Celular Android (Galaxy S24 no Chrome) em retrato e deitado. */
 const PORTRAIT = devices['Galaxy S24']!;
@@ -52,6 +52,7 @@ async function open(l: Lab, pin: string, device: object) {
   for (const d of pin) await page.getByRole('button', { name: d, exact: true }).click();
   await page.getByRole('button', { name: 'Entrar' }).click();
   await page.getByTestId('link').filter({ hasText: 'Conectado' }).waitFor();
+  if (pin === MUSICIAN_PIN) await enrollMusicianFixture(page);
   await page.evaluate(() => scrollTo(0, 0));
   expect(sent.length, 'o registro de frames precisa estar ativo').toBeGreaterThan(0); // list_names
   return { page, sent, errors };

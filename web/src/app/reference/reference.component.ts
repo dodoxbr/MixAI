@@ -6,7 +6,7 @@ import { ReferenceUiService, type Help } from './reference.service';
 @Component({ selector: 'mx-reference-workspace', imports: [FormsModule], changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`:host{display:block;min-width:0}.workspace{border:1px solid #52616b;border-radius:8px;padding:.6rem;margin:.4rem;max-height:42vh;overflow:auto}.columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem}input,select,textarea{max-width:100%;margin:.2rem;padding:.35rem}textarea{width:95%}table{border-collapse:collapse;width:100%;font-size:.85rem}th,td{padding:.3rem;text-align:left;border-bottom:1px solid #52616b}.relevant{background:#655123}.request{border:1px solid #52616b;border-radius:6px;padding:.5rem;margin:.4rem 0}.actions{display:flex;flex-wrap:wrap;gap:.3rem}.muted{font-size:.85rem;opacity:.85}@media(max-width:720px){.columns{grid-template-columns:1fr}.workspace{max-height:38vh}}`],
   template: `@if (eligible()) {
-    @if (!ui.open()) { <button type="button" class="btn btn-small" (click)="ui.open.set(true)" [attr.aria-expanded]="false" [attr.aria-label]="operator() ? 'Referência e pedidos' : 'Pedir ajuda ao mesário'">{{operator() ? 'Referência e pedidos' : 'Pedir ajuda ao mesário'}} ({{activeCount()}})</button> }
+    @if (!ui.open()) { <button type="button" class="btn btn-small" (click)="ui.open.set(true)" [attr.aria-expanded]="false" [attr.aria-label]="operator() ? 'Referência e pedidos' : 'Solicitar ao operador'">{{operator() ? 'Referência e pedidos' : 'Solicitar ao operador'}} ({{activeCount()}})</button> }
     @if (ui.open() && !ui.data()) { <section class="workspace"><p role="alert">{{ui.error() || 'Carregando referência e pedidos…'}}</p><button type="button" (click)="ui.refresh()">Atualizar bandeja</button><button type="button" (click)="ui.open.set(false)">Recolher painel</button></section> }
     @if (ui.data(); as data) {
     @if (ui.open()) {
@@ -33,9 +33,9 @@ import { ReferenceUiService, type Help } from './reference.service';
               }
             </section>
           } @else {
-            <section aria-label="Solicitar ajuda ao mesário">
-              <h3>Pedir ajuda ao mesário</h3><p class="muted">{{data.identity.verified ? data.identity.displayName : 'Sessão sem identidade vinculada — o canal informado é apenas relato, não permissão.'}}</p>
-              <select aria-label="Tipo do pedido" [(ngModel)]="type"><option value="meu_canal">Meu canal (vínculo a verificar)</option><option value="mix_geral">Mix geral</option><option value="diagnostico">Diagnóstico</option></select>
+            <section aria-label="Solicitação ao operador">
+              <h3>Solicitar ao operador</h3><p class="muted">{{data.identity.verified ? data.identity.displayName : 'Sessão sem identidade vinculada — o canal informado é apenas relato, não permissão.'}}</p>
+              <select aria-label="Tipo do pedido" [(ngModel)]="type"><option value="meu_canal">Meu canal (vínculo validado no servidor)</option><option value="mix_geral">Mix geral</option><option value="diagnostico">Pedir avaliação técnica ao operador</option></select>
               <select aria-label="Canal relatado" [(ngModel)]="channel"><option value="">Fonte a informar / mix geral</option>@for (c of data.channels; track c.number) { <option [value]="c.number">CH{{c.number}} — {{c.name}}</option> }</select>
               <select aria-label="Destino do pedido" [(ngModel)]="destination"><option value="PA">PA</option><option value="AUX1">FONES — AUX1 compartilhado</option></select>
               <textarea aria-label="Problema relatado" maxlength="500" [(ngModel)]="report" placeholder="Relate o problema; não informe PIN ou segredos"></textarea>
@@ -44,16 +44,22 @@ import { ReferenceUiService, type Help } from './reference.service';
           }
           <section aria-label="Bandeja de solicitações"><h3>{{operator() ? 'Bandeja do mesário' : 'Meus pedidos'}} ({{activeCount()}} ativos)</h3>
             <label><input type="checkbox" [(ngModel)]="showClosed">Mostrar encerrados</label>
-            @if (operator() && !data.integrations.recommendations) { <p class="muted">Diagnóstico #48 não conectado. Avalie manualmente; nenhuma recomendação executa ajuste.</p> }
+            @if (operator() && !data.integrations.recommendations) { <p class="muted">Consulta técnica indisponível. Avalie manualmente; nenhuma recomendação executa ajuste.</p> }
             @for (r of visibleRequests(); track r.id) {
               <article class="request"><strong>{{r.destination === 'AUX1' ? 'FONES: AUX1 compartilhado' : 'PA'}} · {{channelName(r.channel)}} · {{r.state}} · v{{r.version}}</strong>
                 <p>{{r.report}}</p><p class="muted">{{r.requestedBy.verified ? r.requestedBy.displayName : 'Sessão ' + r.requestedBy.sourceSessionId.slice(0,6) + ' — identidade não verificada'}} · prazo {{r.expiresAt}}</p>
+                @if (r.recommendation?.source === 'diagnosis') {
+                  <details><summary>Consulta técnica ao mesário IA — {{r.recommendation.status || 'somente leitura'}}</summary>
+                    <p style="white-space:pre-wrap">{{r.recommendation.text}}</p>
+                    @for (url of r.recommendation.references || []; track url) { <a [href]="url" target="_blank" rel="noopener noreferrer">Fonte técnica</a> }
+                  </details>
+                }
                 @if (r.response) { <p>Resposta: {{r.response}}</p> }
                 @if (!closed(r.state)) {
                   <textarea [attr.aria-label]="'Resposta ' + r.id" maxlength="500" [(ngModel)]="notes[r.id]" placeholder="Resposta / esclarecimento / orientação"></textarea>
                   <div class="actions">
                     @if (operator()) {
-                      <button type="button" [disabled]="ui.busy() || !data.integrations.recommendations" (click)="ui.assess(r)">Avaliar com diagnóstico</button>
+                      <button type="button" [disabled]="ui.busy() || !data.integrations.recommendations" (click)="ui.assess(r)">Consultar mesário IA (somente leitura)</button>
                       <button type="button" [disabled]="ui.busy() || !note(r)" (click)="ui.decide(r, 'needs_information', note(r))">Pedir informação</button>
                       <button type="button" [disabled]="ui.busy() || !note(r)" (click)="ui.decide(r, 'suggested', note(r))">Sugerir orientação</button>
                       <button type="button" [disabled]="ui.busy() || !note(r)" (click)="ui.decide(r, 'approved', note(r))">Aprovar orientação (não aplica)</button>

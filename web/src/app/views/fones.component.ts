@@ -19,8 +19,17 @@ import { AssistantUiService } from '../core/assistant.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ReferenceWorkspaceComponent, StatusBarComponent, FonesListComponent, ToastsComponent, AssistantInputComponent, AssistantPanelComponent],
   host: { class: 'mx-view mx-fones' },
+  styles: [`.musician-identity { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:6px 12px; } .musician-identity h1 { font-size:1.1rem; margin:0; flex:1; } .musician-identity p { margin:0; overflow-wrap:anywhere; } .musician-identity button { min-height:48px; }`],
   template: `
     <mx-status-bar />
+    <section class="musician-identity" aria-label="Identidade do músico">
+      <h1>Meus canais — {{ live.musicianBinding()?.name ?? 'aguardando vínculo' }}</h1>
+      @if (!live.musicianBinding()) {
+        <p role="status">Peça ao operador para vincular este aparelho. Código da sessão: {{ live.musicianSession() || 'conectando' }}. O PIN compartilhado não identifica o músico.</p>
+      }
+      <button class="btn" (click)="assistant.open.set(true)">Chat dos meus canais</button>
+    </section>
+    <p class="musician-identity">Chat: propostas para meus canais. Solicitação ao operador: relato na bandeja, sem ajuste automático. Consulta técnica ao mesário IA: avaliada pelo operador.</p>
     <mx-reference-workspace />
     @if (!live.writable()) {
       <div class="offline-banner" role="alert">

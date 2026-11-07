@@ -48,7 +48,7 @@ it('escapes reports and advice, keeps diagnosis unavailable and approval explici
   ui.data.set({ ...workspace, requests: [{ id: 'request-test', version: 1, type: 'mix_geral', report: '<script>bad()</script>', destination: 'AUX1', createdAt: '', expiresAt: '', state: 'received', response: 'Avaliar manualmente', requestedBy: { verified: false, sourceSessionId: 'session' }, historyCount: 1 }] } as any); f.detectChanges();
   expect(f.nativeElement.querySelector('script')).toBeNull(); expect(f.nativeElement.textContent).toContain('<script>bad()</script>');
   const buttons = Array.from(f.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>);
-  expect(buttons.find(b => b.textContent === 'Avaliar com diagnóstico')!.disabled).toBe(true);
+  expect(buttons.find(b => b.textContent === 'Consultar mesário IA (somente leitura)')!.disabled).toBe(true);
   expect(buttons.some(b => b.textContent!.includes('Aprovar orientação (não aplica)'))).toBe(true);
   expect(f.nativeElement.textContent).toContain('AUX1 compartilhado');
 });

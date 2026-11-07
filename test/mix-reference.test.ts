@@ -89,8 +89,9 @@ it('isolates multiple musician sessions, sanitizes, deduplicates and refuses sta
   expect((await s.t.http(`/api/mix-requests/${approval.json.id}/cancel`, { token: s.music, body: { ...s.base, expectedVersion: approval.json.version } })).json.state).toBe('cancelled');
 });
 it('persists across restart, does not infer identity from PIN and protects old unlinked session requests', async () => {
-  const s = await boot(); const ref = (await s.capture()).json; const own = (await s.create({ type: 'meu_canal' })).json;
-  expect(own.requestedBy.verified).toBe(false); expect(own.state).toBe('needs_information');
+  const s = await boot(); const ref = (await s.capture()).json; const own = (await s.create()).json;
+  expect(own.requestedBy.verified).toBe(false); expect(own.state).toBe('received');
+  expect((await s.create({ type: 'meu_canal', channel: 3 })).status).toBe(403);
   await s.t.server.close(); const again = await boot({ dir: s.t.dir });
   expect((await again.view()).references[0].id).toBe(ref.id);
   expect((await again.view()).requests[0].id).toBe(own.id);
@@ -116,7 +117,7 @@ it('fails closed on corrupted storage, preserves primary/backup and enforces CAS
   expect(readFileSync(file, 'utf8')).toBe('{corrupt'); expect(readFileSync(`${file}.bak`, 'utf8')).toBe(backup);
 });
 it('expires requests with persisted audit and keeps diagnosis optional, bounded to advice, never commands', async () => {
-  const s = await boot(); const request = (await s.create()).json;
+  const s = await boot({ referencePorts: { recommendations: undefined } }); const request = (await s.create()).json;
   expect((await s.t.http(`/api/mix-requests/${request.id}/assess`, { token: s.op, body: { ...s.base, expectedVersion: 1, expectedStateRevision: s.t.server.core.snapshotFor('operator').revision } })).status).toBe(503);
   s.t.clock.advance(600001); expect((await s.view()).requests[0].state).toBe('expired');
   const detail = await s.t.http(`/api/mix-requests/${request.id}`, { token: s.music }); expect(detail.json.history.at(-1).action).toBe('expired');
@@ -124,7 +125,7 @@ it('expires requests with persisted audit and keeps diagnosis optional, bounded 
 });
 it('integrates trusted identity/diagnosis ports without granting command permissions or accepting stale asynchronous advice', async () => {
   let done!: (value: any) => void; let ready!: () => void; const started = new Promise<void>(r => { ready = r; });
-  const ports: ReferencePorts = { identity: { resolve: () => ({ verified: true, musicianId: 'musician-test', displayName: 'Músico teste', channel: 1 }) }, recommendations: { recommend: async () => { ready(); return new Promise(r => { done = r; }); } } };
+  const ports: ReferencePorts = { identity: { resolve: () => ({ verified: true, musicianId: 'musician-test', displayName: 'Músico teste', channels: [1, 4] }) }, recommendations: { recommend: async () => { ready(); return new Promise(r => { done = r; }); } } };
   const s = await boot({ referencePorts: ports });
   expect((await s.create({ type: 'meu_canal', channel: 9 })).status).toBe(403);
   const request = (await s.create({ type: 'meu_canal', channel: 1 })).json; expect(request.requestedBy.verified).toBe(true);
@@ -151,4 +152,58 @@ it('discards diagnosis completing after operator session revocation without pers
   await started; await s.t.http('/api/logout', { token: s.op, body: {} });
   done({ source: 'diagnosis', text: 'Não aplicar nenhum ajuste.' }); expect((await pending).status).toBe(401);
   const replacement = await s.t.login(OPERATOR_PIN); expect((await s.view(replacement)).requests[0]).toMatchObject({ version: 1, state: 'received' });
+});
+it('integrates server bindings (Lucius 1+4, Fred 3), own writes, technical advice and reference with revocation/stale protection', async () => {
+  const s = await boot({ server: { musicianAccess: 'pa_without_master' } });
+  const fred = await s.t.login(MUSICIAN_PIN);
+  const bind = async (token: string, musicianId: string, channels: number[]) => {
+    const identity = (await s.t.command(token, { type: 'musician_identity' })).json.result.data;
+    expect((await s.t.command(s.op, { type: 'musician_bind', sessionId: identity.sessionId, musicianId, name: musicianId, channels, mute: true })).json.result.ok).toBe(true);
+    return identity.sessionId as string;
+  };
+  const luciusSession = await bind(s.music, 'lucius', [1, 4]); await bind(fred, 'fred', [3]);
+  expect((await s.view(s.music)).identity).toMatchObject({ verified: true, musicianId: 'lucius', boundChannels: [1, 4] });
+  for (const channel of [1, 4]) expect((await s.t.command(s.music, { type: 'set_level', channel, aux: 1, deltaDB: 1 })).json.result.ok).toBe(true);
+  expect((await s.t.command(s.music, { type: 'set_level', channel: 3, aux: 1, deltaDB: 1 })).json.result.code).toBe('FORBIDDEN');
+  expect((await s.t.command(fred, { type: 'set_level', channel: 3, aux: 1, deltaDB: 1 })).json.result.ok).toBe(true);
+  const reference = (await s.capture()).json; expect((await s.capture({ scope: 'AUX1' })).status).toBe(200);
+  const r = (await s.create({ type: 'meu_canal', channel: 1, report: 'O cavaco está estridente no retorno' })).json;
+  const genericNonce = randomUUID(); await s.create({ requestId: genericNonce });
+  expect(r.requestedBy).toMatchObject({ verified: true, musicianId: 'lucius', boundChannels: [1, 4] });
+  expect((await s.create({ type: 'meu_canal', channel: 4 })).status).toBe(200);
+  expect((await s.create({ type: 'meu_canal', channel: 3 })).status).toBe(403);
+  expect((await s.create({ type: 'meu_canal', channel: 3 }, fred)).status).toBe(200);
+  expect((await s.view(fred)).requests).toHaveLength(1);
+  const execute = vi.spyOn(s.t.server.core, 'execute'); const write = vi.spyOn(s.t.mixer, 'write');
+  const assess = (version: number) => s.t.http(`/api/mix-requests/${r.id}/assess`, { token: s.op, body: { ...s.base, expectedVersion: version, expectedStateRevision: s.t.server.core.snapshotFor('operator').revision } });
+  const advice = await assess(1); expect(advice.status).toBe(200);
+  expect(advice.json.recommendation).toMatchObject({ source: 'diagnosis', status: 'needs_context' });
+  expect(advice.json.recommendation.text).toContain('não confirmado pelo operador');
+  expect(advice.json.recommendation.text).toContain('somente leitura'); expect(advice.json.recommendation.references.length).toBeGreaterThan(0);
+  expect((await s.decide(advice.json, 'approved')).status).toBe(200);
+  expect(execute).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled();
+  const fresh = (await s.create({ type: 'meu_canal', channel: 4 })).json;
+  const suggested = (await s.decide(fresh)).json;
+  await external(s.t, 'ch.3.main.level', -12);
+  expect((await s.decide(suggested, 'approved')).status).toBe(409);
+  expect((await s.t.http(`/api/mix-references/${reference.id}/compare`, { token: s.op })).status).toBe(200);
+  await s.t.command(s.op, { type: 'musician_revoke', sessionId: luciusSession });
+  expect((await s.create({ type: 'meu_canal', channel: 1 })).status).toBe(403);
+  expect((await s.view(s.music)).requests).toHaveLength(0);
+  expect((await s.create({ requestId: genericNonce })).status).toBe(404);
+  expect((await s.t.http(`/api/mix-requests/${r.id}`, { token: s.music })).status).toBe(404);
+  expect((await s.decide(suggested, 'approved')).status).toBe(409);
+  expect((await s.t.http(`/api/mix-requests/${fresh.id}/assess`, { token: s.op, body: { ...s.base, expectedVersion: suggested.version, expectedStateRevision: s.t.server.core.snapshotFor('operator').revision } })).status).toBe(409);
+  expect((await s.t.command(s.music, { type: 'set_level', channel: 1, aux: 1, deltaDB: 1 })).json.result.code).toBe('FORBIDDEN');
+  await s.t.http('/api/logout', { token: s.music, body: {} }); expect((await s.t.http('/api/reference-workspace', { token: s.music })).status).toBe(401);
+});
+it('rechecks binding revision after an asynchronous diagnosis even when mixer state has not changed', async () => {
+  let done!: (value: any) => void; let ready!: () => void; const started = new Promise<void>(r => { ready = r; });
+  const s = await boot({ referencePorts: { recommendations: { recommend: async () => { ready(); return new Promise(r => { done = r; }); } } } });
+  const identity = (await s.t.command(s.music, { type: 'musician_identity' })).json.result.data;
+  await s.t.command(s.op, { type: 'musician_bind', sessionId: identity.sessionId, musicianId: 'lucius', name: 'Lucius', channels: [1, 4], mute: true });
+  const r = (await s.create({ type: 'meu_canal', channel: 4 })).json;
+  const pending = s.t.http(`/api/mix-requests/${r.id}/assess`, { token: s.op, body: { ...s.base, expectedVersion: 1, expectedStateRevision: s.t.server.core.snapshotFor('operator').revision } });
+  await started; await s.t.command(s.op, { type: 'musician_revoke', sessionId: identity.sessionId }); done({ source: 'diagnosis', text: 'Orientação sem execução.' });
+  expect((await pending).status).toBe(409); expect((await s.view()).requests[0].version).toBe(1);
 });

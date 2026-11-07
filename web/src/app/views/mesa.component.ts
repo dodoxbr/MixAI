@@ -1,4 +1,5 @@
 import { ReferenceWorkspaceComponent } from '../reference/reference.component';
+import { MusiciansComponent } from '../musicians/musicians.component';
 import { EqComponent } from '../eq/eq.component';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { ActionsService } from '../core/actions.service';
@@ -31,14 +32,18 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 @Component({
   selector: 'mx-mesa',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReferenceWorkspaceComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
+  imports: [ReferenceWorkspaceComponent, MusiciansComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
   host: { class: 'mx-view mx-mesa' },
   template: `
     <mx-status-bar>
       @if (live.hello()?.mode === 'lab' && live.hello()?.role === 'operator') {
+        <ng-container status-action>
         <button status-action type="button" class="btn" (click)="showEq.set(true)" [attr.aria-expanded]="showEq()">EQ LAB</button>
+        <button status-action type="button" class="btn" (click)="showMusicians.set(true)">Vincular músicos</button>
+        </ng-container>
       }
     </mx-status-bar>
+    @if (showMusicians()) { <mx-musicians (closed)="showMusicians.set(false)" /> }
     <div class="toolbar">
       <div class="segmented" role="tablist" aria-label="Mix">
         <button type="button" role="tab" [attr.aria-selected]="bus() === 'pa'" [class.on]="bus() === 'pa'" (click)="bus.set('pa')">PA</button>
@@ -154,6 +159,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
   `,
 })
 export class MesaComponent {
+  readonly showMusicians = signal(false);
   readonly live = inject(LiveService);
   readonly actions = inject(ActionsService);
   readonly assistant = inject(AssistantUiService);

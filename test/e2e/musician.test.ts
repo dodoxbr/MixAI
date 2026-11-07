@@ -86,7 +86,7 @@ describe('celular do músico', () => {
     await card.getByRole('button', { name: 'Aplicar' }).click();
     await phone.page.locator('.proposal-state').filter({ hasText: 'Aguardando aprovação' }).waitFor();
     expect(v(l, paramKey.level(9, MASTER))).toBe(-10);
-    const pending = yoga.page.locator('.card').filter({ hasText: 'músico · sessão' });
+    const pending = yoga.page.locator('.card').filter({ hasText: 'Músico de teste (fixture-musician) · sessão' });
     await pending.waitFor();
     await pending.getByRole('button', { name: 'Aprovar' }).click();
     await expect.poll(() => v(l, paramKey.level(9, MASTER))).toBe(-5);

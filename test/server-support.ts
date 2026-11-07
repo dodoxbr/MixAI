@@ -83,9 +83,17 @@ export async function startTestServer(opts: TestServerOptions = {}) {
     });
     return { status: res.status, json: (await res.json()) as Record<string, any> };
   };
-  const login = async (pin: string) => {
+  const login = async (pin: string, assignedChannels?: number[]) => {
     const r = await http('/api/login', { body: { pin } });
     if (r.status !== 200) throw new Error(`login falhou: ${JSON.stringify(r.json)}`);
+    if (assignedChannels) {
+      // Explicit operator enrollment for legacy permission scenarios; production login never binds.
+      const principal = server.core.auth.authenticate(r.json.token, '127.0.0.1')!;
+      server.core.musicians.observe(principal);
+      const op = await http('/api/login', { body: { pin: OPERATOR_PIN } });
+      const bind = await http('/api/command', { token: op.json.token, body: { requestId: 'fixture-bind-' + principal.id, command: { type: 'musician_bind', sessionId: principal.id, musicianId: 'fixture-musician', name: 'músico', channels: assignedChannels, mute: true } } });
+      if (!bind.json.result.ok) throw new Error('Operator fixture enrollment failed');
+    }
     return r.json.token as string;
   };
   let seq = 0;

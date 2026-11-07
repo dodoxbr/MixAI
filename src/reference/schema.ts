@@ -22,10 +22,10 @@ export const RequestState = z.enum(['received', 'needs_information', 'suggested'
 export const RequestSchema = z.object({
   id: Id, requestId: Id, fingerprint: z.string().length(64), version: z.number().int().positive(),
   type: z.enum(['meu_canal', 'mix_geral', 'diagnostico']), report: Text, channel: z.number().int().min(1).max(64).optional(), destination: Scope,
-  requestedBy: z.object({ sourceSessionId: z.string().max(64), verified: z.boolean(), musicianId: Text.optional(), displayName: Text.optional(), boundChannel: z.number().int().min(1).max(64).optional() }).strict(),
+  requestedBy: z.object({ sourceSessionId: z.string().max(64), verified: z.boolean(), musicianId: Text.optional(), displayName: Text.optional(), boundChannels: z.array(z.number().int().min(1).max(64)).max(64).optional(), bindingRevision: z.number().int().positive().optional(), boundChannel: z.number().int().min(1).max(64).optional() }).strict(),
   createdAt: z.iso.datetime(), expiresAt: z.iso.datetime(), state: RequestState,
   basis: z.object({ serverId: z.string().max(64), stateRevision: z.number().int().nonnegative() }).strict(),
-  response: Text.optional(), recommendation: z.object({ text: Text, source: z.enum(['operator', 'diagnosis']), references: z.array(z.string().url().max(500).refine(s => /^https?:\/\//i.test(s))).max(10).optional() }).strict().optional(),
+  response: Text.optional(), recommendation: z.object({ text: z.string().trim().min(1).max(24000).refine(s => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u202a-\u202e\u2066-\u2069]/.test(s)), status: z.enum(['needs_context', 'theoretical_guidance']).optional(), source: z.enum(['operator', 'diagnosis']), references: z.array(z.string().url().max(500).refine(s => /^https?:\/\//i.test(s))).max(10).optional() }).strict().optional(),
   history: z.array(History).min(1).max(50),
 }).strict();
 export const DocumentSchema = z.object({ schemaVersion: z.literal(1), revision: z.number().int().nonnegative(), references: z.array(ReferenceSchema).max(100), requests: z.array(RequestSchema).max(500) }).strict();

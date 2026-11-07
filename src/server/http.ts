@@ -167,7 +167,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
   app.get('/api/state', async (req, reply) => {
     const p = principalOf(core, req, reply);
     if (!p) return reply;
-    return { serverId: core.serverId, role: p.role, snapshot: core.snapshotFor(p.role) };
+    return { serverId: core.serverId, role: p.role, snapshot: core.snapshotFor(p) };
   });
 
   app.post('/api/command', async (req, reply) => {
@@ -270,7 +270,7 @@ function wsSession(core: ServerCore, socket: WebSocket, authenticate: (token: un
   const authTimer = setTimeout(() => close(WS_CLOSE.UNAUTHORIZED, 'Autenticação não recebida.', 'no_auth'), 5000);
   authTimer.unref?.();
 
-  const sendSnapshot = () => send({ type: 'snapshot', serverId: core.serverId, snapshot: core.snapshotFor(principal!.role) });
+  const sendSnapshot = () => send({ type: 'snapshot', serverId: core.serverId, snapshot: core.snapshotFor(principal!) });
 
   const start = (p: Principal) => {
     principal = p;
@@ -282,7 +282,7 @@ function wsSession(core: ServerCore, socket: WebSocket, authenticate: (token: un
     cleanups.push(() => clearInterval(watch));
     send({ type: 'hello', ...core.hello(), role: p.role });
     sendSnapshot();
-    cleanups.push(core.subscribeState((ev) => send({ type: 'event', serverId: core.serverId, event: core.eventFor(p.role, ev) })));
+    cleanups.push(core.subscribeState((ev) => send({ type: 'event', serverId: core.serverId, event: core.eventFor(p, ev) })));
     cleanups.push(
       core.onNotice((n, audience) => {
         if (audience.roles.includes(p.role) || audience.principalId === p.id) send({ ...n, serverId: core.serverId });

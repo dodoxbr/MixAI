@@ -247,8 +247,14 @@ it('keeps reference/request routes on central HTTPS auth, private sessions and r
   expect((await http('/api/mix-references', { token: musician, body: capture })).status).toBe(403);
   const ref = await http('/api/mix-references', { token: operator, body: capture }); expect(ref.status).toBe(200);
   expect((await http(`/api/mix-references/${ref.body.id}/compare`, { token: operator })).status).toBe(200);
-  const created = await http('/api/mix-requests', { token: musician, body: { ...base, requestId: 'tls-request-test', type: 'mix_geral', report: 'Retorno alto', destination: 'AUX1' } });
-  expect(created.status).toBe(200);
+  const identity = (await t!.command(musician, { type: 'musician_identity' })).json.result.data;
+  expect((await t!.command(operator, { type: 'musician_bind', sessionId: identity.sessionId, musicianId: 'lucius', name: 'Lucius', channels: [1, 4], mute: true })).json.result.ok).toBe(true);
+  const created = await http('/api/mix-requests', { token: musician, body: { ...base, requestId: 'tls-request-test', type: 'meu_canal', channel: 4, report: 'A voz está abafada', destination: 'AUX1' } });
+  expect(created.status).toBe(200); expect(created.body.requestedBy).toMatchObject({ verified: true, boundChannels: [1, 4] });
+  const advice = await http(`/api/mix-requests/${created.body.id}/assess`, { token: operator, body: { ...base, expectedVersion: 1, expectedStateRevision: t!.server.core.snapshotFor('operator').revision } });
+  expect(advice.status).toBe(200); expect(advice.body.recommendation.source).toBe('diagnosis');
+  await t!.command(operator, { type: 'musician_revoke', sessionId: identity.sessionId });
+  expect((await http(`/api/mix-requests/${created.body.id}/decide`, { token: operator, body: { ...base, expectedVersion: advice.body.version, expectedStateRevision: t!.server.core.snapshotFor('operator').revision, state: 'approved', response: 'Não executar ajustes.' } })).status).toBe(409);
   expect((await http(`/api/mix-requests/${created.body.id}`, { token: other })).status).toBe(404);
   expect((await http('/api/mix-requests', { token: musician, body: { ...base, requestId: 'tls-forged-origin', type: 'mix_geral', report: 'Retorno', destination: 'AUX1' }, headers: { origin: 'https://foreign.invalid' } })).status).toBe(403);
   expect(t!.server.core.snapshotFor('operator').revision).toBe(revision);

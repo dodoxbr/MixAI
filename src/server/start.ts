@@ -1,3 +1,4 @@
+import { MusicianAccess } from './musician-access.js';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +17,7 @@ import { httpsLabOptions } from './https-lab.js';
 import { PrivatePtt } from '../speech/private-ptt.js';
 import type { FileSpeechRecognizer } from '../speech/whisper-file.js';
 import { ReferenceStore } from '../reference/store.js';
+import { referencePortsOf } from '../reference/adapters.js';
 import { ReferenceService } from '../reference/service.js';
 import type { ReferencePorts } from '../reference/contracts.js';
 import { SimulatedMeters } from './meters.js';
@@ -77,6 +79,8 @@ export async function startServer(
       meters,
     });
 
+    core.musicians = new MusicianAccess(mode === 'lab' ? join(dataDir, 'musician-bindings.json') : undefined);
+
     // Assistente (E4): parser local sempre; Claude só com ai.enabled e chave (só no servidor).
     const ai = new ClaudeClient(
       config.ai,
@@ -113,7 +117,7 @@ export async function startServer(
       mode, serverId: core.serverId, snapshot: () => core.snapshotFor('operator'),
       channels: () => names.inputs.list(), device: deviceProfileOf(app.mixer.capabilities()), scenes: sceneStore,
       supports: key => app!.controller.registry.has(key as never), active: p => auth.isActive(p),
-    }, opts.referencePorts, opts.clock) : undefined;
+    }, { ...referencePortsOf(core), ...opts.referencePorts }, opts.clock) : undefined;
 
     let boundPort = port;
     for (const host of hosts) {

@@ -1,10 +1,10 @@
 import type { Instrument, InstrumentGuide, Reference } from './contracts.js';
 const references: readonly Reference[] = [
-  { source: 'shure-live', locator: 'pp. 20–21, regras gerais de captação e experimentação' },
+  { source: 'shure-live', locator: 'Microphone Placement, p.22: princípios gerais aplicados editorialmente' },
   { source: 'yamaha-eq', locator: 'Peak EQ; filtros; fundamentos de separação' },
 ];
 const guide = (instrument: Instrument, role: string, captureChecks: string[], conditionalAdvice: string[], avoid: string): InstrumentGuide => ({
-  instrument, role, captureChecks, conditionalAdvice, avoid, validation: 'not_validated_in_rehearsal', references,
+  instrument, role, captureChecks, conditionalAdvice, avoid, version: '2.0.0', validationStatus: 'theory', validation: 'not_validated_in_rehearsal', references,
 });
 /** Adaptações editoriais MixAI ao repertório; não são presets oficiais nem receitas validadas. */
 export const instruments: Readonly<Record<Instrument, InstrumentGuide>> = {

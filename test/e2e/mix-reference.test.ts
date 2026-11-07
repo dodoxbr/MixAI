@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import type { Browser } from 'playwright';
-import { launch, enter, startLab, OPERATOR_PIN, MUSICIAN_PIN, bandChannels, YOGA } from './harness.js';
+import { launch, enter, startLab, OPERATOR_PIN, MUSICIAN_PIN, bandChannels, physicalBandChannels, YOGA } from './harness.js';
 let browser: Browser;
 beforeAll(async () => { browser = await launch(); }); afterAll(async () => { await browser?.close(); });
 it('operator saves PA/AUX1 reference, observes external delta, handles private musician reports and persists versions on restart', async () => {
   const t = await startLab({ channels: bandChannels() }); let restarted: Awaited<ReturnType<typeof startLab>> | undefined;
   try {
-    const operator = await enter(browser, t.base, OPERATOR_PIN, YOGA); const musician = await enter(browser, t.base, MUSICIAN_PIN); const other = await enter(browser, t.base, MUSICIAN_PIN);
+    const operator = await enter(browser, t.base, OPERATOR_PIN, YOGA); const musician = await enter(browser, t.base, MUSICIAN_PIN, YOGA, undefined, false); const other = await enter(browser, t.base, MUSICIAN_PIN, YOGA, undefined, false);
     await operator.page.getByRole('button', { name: 'Referência e pedidos', exact: true }).click();
     await operator.page.getByLabel('Evento', { exact: true }).fill('Referência roda LAB'); await operator.page.getByLabel('Data do evento').fill('2026-11-07');
     await operator.page.getByRole('checkbox', { name: 'Aprovo salvar' }).check(); await operator.page.getByRole('button', { name: 'Salvar referência LAB' }).click();
@@ -19,7 +19,7 @@ it('operator saves PA/AUX1 reference, observes external delta, handles private m
     expect(await referenceRow.innerText()).toContain('externa observada');
     await operator.page.getByLabel('Escopo da referência').selectOption('AUX1'); await operator.page.getByRole('checkbox', { name: 'Aprovo salvar' }).check(); await operator.page.getByRole('button', { name: 'Salvar referência LAB' }).click();
     await vi.waitFor(async () => expect(await operator.page.getByLabel('Referência salva').locator('option').count()).toBe(3));
-    for (const person of [musician, other]) await person.page.getByRole('button', { name: 'Pedir ajuda ao mesário', exact: true }).click();
+    for (const person of [musician, other]) await person.page.getByRole('button', { name: 'Solicitar ao operador', exact: true }).click();
     const execute = vi.spyOn(t.server.core, 'execute'); const writes = vi.spyOn(t.mixer, 'write'); const snapshot = t.controller.state.snapshot();
     await musician.page.getByLabel('Problema relatado').fill('Minha voz está baixa — relato privado'); await musician.page.getByLabel('Canal relatado').selectOption('3'); await musician.page.getByRole('button', { name: 'Enviar solicitação' }).click();
     await operator.page.getByRole('button', { name: 'Atualizar bandeja' }).click();
@@ -38,4 +38,61 @@ it('operator saves PA/AUX1 reference, observes external delta, handles private m
     await again.page.getByRole('checkbox', { name: 'Mostrar encerrados' }).check(); await vi.waitFor(async () => expect(await again.page.locator('article.request').innerText()).toContain('cancelled'));
     expect(restarted.mixer.read('ch.3.main.level')).toMatchObject({ value: before - 4 }); await again.ctx.close();
   } finally { for (const ctx of browser.contexts()) await ctx.close(); await restarted?.server.close(); await t.server.close(); }
+}, 60000);
+it('integrates paired Lucius/Fred, own faders, technical consultation, operator tray, stale advice and revoked permissions', async () => {
+  const t = await startLab({ channels: physicalBandChannels(), server: { musicianAccess: 'pa_without_master' } });
+  try {
+    const { page: op } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
+    const { page: lucius } = await enter(browser, t.base, MUSICIAN_PIN, YOGA, undefined, false);
+    const { page: fred } = await enter(browser, t.base, MUSICIAN_PIN, YOGA, undefined, false);
+    await op.getByRole('button', { name: 'Vincular músicos', exact: true }).click();
+    const bind = async (page: typeof lucius, id: string, channels: number[]) => {
+      const session = await page.evaluate(async () => {
+        const r = await fetch('/api/command', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionStorage.getItem('mixai.token')}` }, body: JSON.stringify({ requestId: crypto.randomUUID(), command: { type: 'musician_identity' } }) });
+        return (await r.json()).result.data.sessionId as string;
+      });
+      await op.getByRole('button', { name: 'Atualizar sessões', exact: true }).click();
+      const row = op.locator('mx-musicians section').filter({ hasText: session });
+      await row.getByRole('combobox').selectOption(id); await row.getByRole('checkbox').check(); await row.getByRole('button', { name: 'Confirmar vínculo no LAB' }).click();
+      await expect.poll(() => page.locator('.fones-row').count(), { timeout: 7000 }).toBe(channels.length);
+      return row;
+    };
+    const luciusRow = await bind(lucius, 'lucius', [1, 4]); await bind(fred, 'fred', [3]);
+    await op.getByRole('button', { name: 'Fechar vínculos', exact: true }).click();
+    await lucius.locator('.fones-row .step-up').first().click();
+    await expect.poll(() => t.mixer.read('ch.1.aux.1.level')).toEqual({ known: true, value: -18 });
+    await fred.locator('.fones-row .step-up').first().click();
+    await expect.poll(() => t.mixer.read('ch.3.aux.1.level')).toEqual({ known: true, value: -18 });
+    for (const page of [lucius, fred]) await page.getByRole('button', { name: 'Solicitar ao operador', exact: true }).click();
+    expect(await lucius.getByRole('button', { name: 'Chat dos meus canais', exact: true }).count()).toBe(1);
+    await lucius.getByLabel('Tipo do pedido').selectOption('meu_canal'); await lucius.getByLabel('Canal relatado').selectOption('4');
+    await lucius.getByLabel('Problema relatado').fill('A voz está abafada no retorno — Lucius'); await lucius.getByRole('button', { name: 'Enviar solicitação' }).click();
+    await op.getByRole('button', { name: 'Referência e pedidos', exact: true }).click();
+    await op.getByRole('button', { name: 'Atualizar bandeja' }).click();
+    const card = op.locator('article.request').filter({ hasText: 'Lucius' }); await card.waitFor();
+    expect(await card.innerText()).toContain('CH4'); expect(await card.innerText()).not.toContain('identidade não verificada');
+    await fred.getByRole('button', { name: 'Atualizar bandeja' }).click(); expect(await fred.locator('article.request').count()).toBe(0);
+    await op.getByLabel('Evento', { exact: true }).fill('Passagem integrada'); await op.getByRole('checkbox', { name: 'Aprovo salvar' }).check(); await op.getByRole('button', { name: 'Salvar referência LAB' }).click();
+    await op.getByRole('table', { name: 'Comparação da referência' }).waitFor();
+    const execute = vi.spyOn(t.server.core, 'execute'); const write = vi.spyOn(t.mixer, 'write');
+    await card.getByRole('button', { name: 'Consultar mesário IA (somente leitura)', exact: true }).click();
+    await expect.poll(() => card.innerText()).toContain('suggested');
+    await card.locator('summary').click(); expect(await card.innerText()).toContain('não confirmado pelo operador'); expect(await card.getByRole('link', { name: 'Fonte técnica' }).count()).toBeGreaterThan(0);
+    await t.mixer.write('ch.4.aux.1.level', -19); (t.mixer as any).emitChange('ch.4.aux.1.level', -19, 'external');
+    write.mockClear();
+    await card.getByRole('button', { name: 'Aprovar orientação (não aplica)', exact: true }).click();
+    await expect.poll(() => op.getByRole('alert').allTextContents()).toContainEqual(expect.stringContaining('A mix mudou'));
+    await card.getByRole('button', { name: 'Consultar mesário IA (somente leitura)', exact: true }).click();
+    await expect.poll(() => card.innerText()).toContain('v3');
+    await card.getByRole('button', { name: 'Aprovar orientação (não aplica)', exact: true }).click(); await expect.poll(() => card.innerText()).toContain('approved');
+    expect(execute).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled();
+    await op.getByRole('button', { name: 'Vincular músicos', exact: true }).click();
+    await luciusRow.getByRole('button', { name: 'Revogar vínculo', exact: true }).click();
+    await op.getByRole('button', { name: 'Fechar vínculos', exact: true }).click();
+    await expect.poll(() => lucius.locator('.fones-row').count(), { timeout: 7000 }).toBe(0);
+    await lucius.getByLabel('Problema relatado').fill('Outro pedido após revogação'); await lucius.getByRole('button', { name: 'Enviar solicitação' }).click();
+    await expect.poll(() => lucius.getByRole('alert').allTextContents()).toContainEqual(expect.stringContaining('sem autorização'));
+    await card.getByRole('button', { name: 'Consultar mesário IA (somente leitura)', exact: true }).click();
+    await expect.poll(() => op.getByRole('alert').allTextContents()).toContainEqual(expect.stringContaining('A mix mudou'));
+  } finally { for (const ctx of browser.contexts()) await ctx.close(); await t.server.close(); }
 }, 60000);

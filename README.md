@@ -121,7 +121,8 @@ envia nenhum comando. O músico tem **MUTE / ABRIR** por canal nos FONES (e no P
 
 O painel na Mesa/Fones permite salvar referências aprovadas do estado observado, comparar
 versões sem restauração e acompanhar pedidos dos músicos. Aprovar uma orientação não executa
-ajustes. Identidade e diagnóstico usam contratos opcionais, sem duplicar autenticação.
+ajustes. Identidade usa o vínculo de sessão do servidor (incluindo múltiplos canais); a bandeja do
+operador consulta a base técnica offline sem criar propostas, duplicar autenticação ou executar ajustes.
 Veja [operação, persistência e dependências](docs/lab/MIX-REFERENCE-REQUESTS.md).
 
 ## Cenas do MixAI (E5)
@@ -163,6 +164,7 @@ Após a pergunta PA/FONES, basta responder **"PA"** ou **"Fones"**. O contexto �
 temporário, isolado por sessão e pode ser cancelado; não cria ajustes.
 Detalhes: [consulta técnica](docs/sound-engineer/CHAT-READONLY.md) e
 [conversa contextual](docs/sound-engineer/CONTEXT.md).
+A [base técnica v2](docs/sound-engineer/ISSUE-48-KNOWLEDGE.md) amplia sintomas, perfis de samba/pagode e contratos consultivos, com fontes e limites explícitos.
 
 ## Ligar no Claude Desktop
 
@@ -344,3 +346,7 @@ Bancada offline de STT E9C (whisper.cpp configurado manualmente, sem execução 
 
 Push-to-talk privado E9D (opt-in server-side, operador em HTTPS LAB, prévia sem comandos):
 [configuração e validação Yoga/Android](docs/lab/18-E9D-PRIVATE-PTT-LAB.md).
+
+No LAB, o operador pode vincular uma sessão de músico aos canais autorizados, sem mudar os
+dois PINs existentes. Veja [músicos e canais vinculados](docs/musicians/session-channel-access.md).
+AUX1 continua sendo o retorno compartilhado de todos no HA800.

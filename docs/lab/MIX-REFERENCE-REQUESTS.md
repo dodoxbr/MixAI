@@ -1,10 +1,10 @@
 # Referência e solicitações — Issue #49, LAB
 
-Na Mesa e nos Fones, abra **Referência e pedidos** / **Pedir ajuda ao mesário**.
+Na Mesa e nos Fones, abra **Referência e pedidos** / **Solicitar ao operador**.
 O painel fica na mesma tela dos controles existentes. Só existe em LAB, para sessões
 operador/músico já autenticadas; não cria outro login nem altera permissões de faders.
 A entrada HTTPS reutiliza a política central do proxy, inclusive a recusa do token MCP.
-Não há chamadas de comando, parser, restauração, recall ou escrita REAL neste recurso.
+Não há chamadas de comando, parser de comandos, restauração, recall ou escrita REAL neste recurso.
 
 ## Passagem de som e referência
 
@@ -37,17 +37,24 @@ Nada é restaurado: o ajuste pode ter sido intencional. Validação REAL não oc
 
 O músico informa tipo (`meu_canal`, `mix_geral`, `diagnostico`), fonte/canal quando conhecido,
 destino e relato. O servidor vincula a sessão, nunca aceita identidade ou privilégios do
-corpo HTTP. Sem o adaptador de identidade, PIN compartilhado não identifica uma pessoa;
-um pedido de “meu canal” começa pedindo informação, sem conceder controle desse canal.
-O operador vê todos os pedidos; o músico só vê os da própria sessão ou de sua identidade
-estável quando validada por adaptador confiável. Não informe PINs/segredos nos relatos.
+corpo HTTP. O adaptador integrado usa `core.musicianIdentity(p)`, com o conjunto de canais
+e revisão do vínculo ativo (#53): Lucius pode solicitar “meu canal” para CH1 e CH4, Fred
+para CH3. Sem vínculo ativo, ou com canal alheio, esse tipo é recusado com 403. Um relato
+`mix_geral`/`diagnostico` sem vínculo continua não verificado e não concede privilégios.
+O operador vê todos os pedidos; o músico só vê os da própria sessão ou de identidade
+estável validada pelo servidor. Não informe PINs/segredos nos relatos.
+
+**Chat dos meus canais** mantém o fluxo de propostas/autorização existente. **Solicitar ao
+operador** registra um relato na bandeja sem criar proposta. **Consultar mesário IA (somente
+leitura)**, na bandeja do operador, anexa orientação técnica offline para revisão; não
+confirma o relato do músico como evidência do operador e não cria nenhuma alteração.
 
 A bandeja mostra estado, versão, prazo, resposta e histórico. O operador pode pedir mais
 informação, sugerir, aprovar uma orientação, recusar ou registrar impedimento. O autor
 pode complementar/cancelar; depois de aprovado deve cancelar/criar outro pedido.
 `approved` **não aplica ajuste**. `applied` está reservado no esquema para futura integração
 com recibo confiável de execução: não pode ser escolhido por HTTP ou pela UI nesta entrega.
-Solicitações expiram após dez minutos, inclusive aprovadas ainda sem execução. Expiração
+Solicitações expiram após dez minutos fixos (TTL configurável fica como evolução após ensaio de operação), inclusive aprovadas ainda sem execução. Expiração
 é persistida na próxima leitura/mutação. Não há aplicação posterior automática.
 
 A aprovação manual direta é uma avaliação explícita do estado atual. Uma sugestão anterior
@@ -59,19 +66,33 @@ as proteções de operações críticas.
 
 ## Contratos de integração (#47 / #48)
 
-`src/reference/contracts.ts` fornece portas opcionais injetadas em `startServer.referencePorts`:
+`src/reference/contracts.ts` mantém portas desacopladas. `src/reference/adapters.ts`
+fornece os adaptadores padrão no startup LAB; `startServer.referencePorts` é uma injeção
+confiável para testes/integração, não uma configuração por HTTP.
 
-- `MusicianIdentityPort.resolve(principal)` recebe o principal autenticado existente e retorna
-  vínculo verificado, ID estável, nome e canal. O agente B fornece o adaptador; nenhum vínculo
-  é inferido de PIN, canal digitado ou relato. Sem ele, acesso fica restrito à sessão. Após
-  reinício uma nova sessão sem vínculo não recupera pedidos antigos; o operador os preserva.
+- `MusicianIdentityPort.resolve(principal)` retorna vínculo verificado, ID, nome,
+  `channels:number[]` e revisão. Usa somente `core.musicianIdentity(p)` e sessão ativa,
+  preservando as duas senhas e toda a autorização #53. PIN/nome/canal do relato não
+  identificam uma pessoa. Revogar ou alterar o vínculo impede novos pedidos `meu_canal`
+  indevidos, oculta pedidos verificados da sessão revogada e invalida avaliação/aprovação
+  de pedidos verificados antigos, mesmo sem
+  mudança nos faders. O operador ainda pode recusar/cancelar esses registros.
 - `ReferenceRecommendationPort.recommend(...)` recebe relato/canal/destino/revisão e retorna
-  apenas texto, origem `diagnosis` e referências HTTP(S). O agente C fornece a base/diagnóstico;
-  não há segundo motor. Sem adaptador, a UI informa indisponibilidade e o endpoint retorna 503.
-  Payloads com comandos são rejeitados. Após a espera são revalidados sessão, versão e estado.
+  texto, origem `diagnosis`, status `needs_context`/`theoretical_guidance` e fontes HTTP(S).
+  Usa `parseConsultation`/`consult` puros do #51, sem chamar `ask`, `apply`, parser de comandos,
+  Claude, controlador ou mixer. Evidências ficam vazias: relato de músico não é promovido
+  a relato confirmado do operador nem medição. Informação insuficiente é explícita.
+  A orientação completa e suas fontes são exibidas em seção própria na bandeja.
 
-Não há configuração por HTTP para substituir essas portas. Integração futura deve manter
-essas verificações e não transformar recomendações em comandos implícitos.
+Após aguardar uma recomendação, o serviço revalida sessão do operador, versão do pedido,
+estado da mix e vínculo original. Diagnóstico não executa nada; aprovação não aplica
+orientação. Payloads de recomendação com comandos são rejeitados. A falta de adaptador
+continua retornando 503; a execução normal já fornece os dois adaptadores.
+
+Esquema 1 preserva leitura dos registros anteriores: `boundChannel` legado é opcional;
+novos registros gravam `boundChannels` e `bindingRevision`. Um registro antigo verificado
+sem esse contexto não recebe aprovação nova sem reavaliação/novo pedido. Após reinício,
+vínculos persistidos não autenticam sessões; o operador preserva os pedidos históricos.
 
 ## Persistência e recuperação
 
@@ -92,7 +113,8 @@ aplicação; eventual limpeza deve ser manual pelo fluxo E5, nunca recall autom�
 
 ## Validação e limites
 
-Testes simulam CH1/CH3, coro CH4–7, PA/master e AUX1; cobrem concorrência, revisões antigas,
+Testes integrados vinculam Lucius CH1+CH4 e Fred CH3 pelo operador, validam ajustes próprios,
+consulta offline na bandeja, revogação e ausência de comandos ao aprovar. Testes simulam CH1/CH3, coro CH4–7, PA/master e AUX1; cobrem concorrência, revisões antigas,
 múltiplas sessões/pedidos, autorização/revogação, persistência/reinício, corrupção/backup,
 expiração e recomendações sem execução. E2E usa apenas LabMixer e comprova ausência de
 chamadas de comando/escritas decorrentes do painel. Regressões incluem núcleo, Angular,
@@ -107,3 +129,12 @@ Foram lidas as skills `mixai-referencia`, `mixai-reference` e `soundcraft-ui16-s
 `830410497c3ca179c54037cccad52f7e1b3c65b9`, antes da incorporação do PR #50.
 A consulta não copiou nem alterou o trabalho dos outros agentes. A base final já contém
 as mesmas skills incorporadas pelo responsável no PR #50.
+
+## Resolução de integração #51 / #53
+
+Base incorporada: `399eaf8` (#53), incluindo `0f74ccb` (#51). Houve conflito textual
+somente em `mesa.component.ts` (imports/componentes) e `fones.component.ts` (identidade
+versus painel). Ambos foram integrados preservando vinculador, Meus canais, PA/FONES,
+cenas/EQ e referência/pedidos. README, HTTP, startup e suporte de testes tiveram merge
+automático revisado. Autenticação, allowlists, senhas e diagnóstico não foram duplicados.
+O PR #52 continua exclusivo; nenhuma integração do PR na main foi executada pelo agente.

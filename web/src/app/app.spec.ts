@@ -192,3 +192,20 @@ describe('aplicação', () => {
     expect(el.querySelector('.login-notice')!.textContent).toContain('encerrada');
   });
 });
+
+
+it('shared musician login without operator binding shows no channel controls; revocation removes them', async () => {
+  const { live, fixture, el } = await boot('musician');
+  live.musicianBinding.set(null);
+  fixture.detectChanges();
+  expect(el.querySelectorAll('.fones-row')).toHaveLength(0);
+  expect(el.textContent).toContain('Peça ao operador');
+  live.musicianBinding.set({ schemaVersion: 1, sessionId: 'test-session', musicianId: 'fred', name: 'Fred', channels: [3], mute: false, revision: 1 });
+  fixture.detectChanges();
+  expect(el.querySelectorAll('.fones-row')).toHaveLength(1);
+  expect(el.textContent).toContain('Meus canais — Fred');
+  expect((el.querySelector('.mute-toggle') as HTMLButtonElement).disabled).toBe(true);
+  live.musicianBinding.set(null);
+  fixture.detectChanges();
+  expect(el.querySelectorAll('.step-up')).toHaveLength(0);
+});

@@ -26,7 +26,7 @@ const STEP_DB = 2;
       </div>
     } @else {
       <div class="shared-warning big" role="note">
-        <span class="dest dest-FONES">FONES</span> <strong>{{ auxName() }}</strong>: é um só retorno para todos. <strong>Isto muda o fone de TODOS.</strong>
+        <span class="dest dest-FONES">FONES</span> <strong>{{ auxName() }} (AUX {{ aux() }}{{ aux() === 1 ? ' — HA800' : '' }})</strong>: é um só retorno para todos. <strong>Isto muda o fone de TODOS.</strong>
         <span class="fones-note">MUTE aqui silencia o canal só nos fones; o som do público (PA) não muda.</span>
       </div>
     }
@@ -47,7 +47,7 @@ const STEP_DB = 2;
             [attr.aria-label]="(row.muted ? 'Abrir ' : 'Mutar ') + row.name + ' ' + where()"
             [attr.aria-pressed]="row.muted"
             [attr.data-testid]="'mute-' + target() + '-' + row.number"
-            [disabled]="!live.writable() || row.mute === null || actions.isBusy(key(row.number))"
+            [disabled]="!live.writable() || (live.hello()?.role === 'musician' && !live.musicianBinding()?.mute) || row.mute === null || actions.isBusy(key(row.number))"
             (click)="toggleMute(row.number, row.muted)"
           >
             <span class="mute-word">{{ actions.isBusy(key(row.number)) ? '…' : row.muted ? 'ABRIR' : 'MUTE' }}</span>
@@ -81,7 +81,7 @@ export class FonesListComponent {
   readonly live = inject(LiveService);
   readonly actions = inject(ActionsService);
   readonly target = input<'fones' | 'pa'>('fones');
-  readonly step = STEP_DB;
+  get step() { return Math.min(STEP_DB, this.live.hello()?.musicianPaStepDB ?? 3); }
 
   readonly aux = computed(() => this.live.hello()?.musicianAux ?? 1);
   readonly auxName = computed(() => this.live.auxes().find((a) => a.number === this.aux())?.name ?? `AUX ${this.aux()}`);
@@ -90,7 +90,7 @@ export class FonesListComponent {
   readonly rows = computed(() => {
     const params = this.live.state()?.params ?? {};
     const aux = this.target() === 'pa' ? undefined : this.aux();
-    return this.live.channels().map((ch) => {
+    return this.live.channels().filter(ch => this.live.hello()?.role !== 'musician' || this.live.musicianBinding()?.channels.includes(ch.number)).map((ch) => {
       const level = params[keys.level(ch.number, aux)]?.value;
       const muteV = params[keys.mute(ch.number, aux)]?.value;
       const db = level?.status === 'known' && typeof level.value === 'number' ? level.value : null;
@@ -105,6 +105,7 @@ export class FonesListComponent {
   }
 
   change(channel: number, delta: number): void {
+    if (!this.live.writable() || this.actions.isBusy(this.key(channel))) return;
     const aux = this.target() === 'pa' ? undefined : this.aux();
     void this.actions.run(this.key(channel), { type: 'set_level', channel, aux, deltaDB: delta });
   }

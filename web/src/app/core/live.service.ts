@@ -1,6 +1,8 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angular/core';
 import { SessionService } from './session.service';
 import { newId, StateSync, type Hello, type MeterFrame, type Named, type PendingCard, type PendingStatus, type Result, type Snapshot } from './protocol';
+
+export interface MusicianBinding { schemaVersion: 1; sessionId: string; musicianId: string; name: string; channels: number[]; mute: boolean; revision: number }
 
 export type Connection = 'idle' | 'connecting' | 'online' | 'offline';
 
@@ -45,6 +47,9 @@ const RESOLVED_TEXT: Record<PendingStatus, string> = {
 export class LiveService {
   private readonly session = inject(SessionService);
 
+  readonly musicianBinding = signal<MusicianBinding | null>(null);
+  readonly musicianSession = signal('');
+  private musicianTimer: ReturnType<typeof setInterval> | undefined;
   readonly connection = signal<Connection>('idle');
   readonly hello = signal<Hello | null>(null);
   readonly state = signal<Snapshot | null>(null);
@@ -70,6 +75,7 @@ export class LiveService {
   static socketFactory: (url: string) => WebSocket = (url) => new WebSocket(url);
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.close());
     // Liga quando há sessão; desliga quando a sessão termina.
     effect(() => {
       const token = this.session.token();
@@ -194,6 +200,10 @@ export class LiveService {
   }
 
   private reset() {
+    clearInterval(this.musicianTimer);
+    this.musicianTimer = undefined;
+    this.musicianBinding.set(null);
+    this.musicianSession.set('');
     this.state.set(null);
     this.hello.set(null);
     this.pending.set([]);
@@ -245,6 +255,8 @@ export class LiveService {
         this.sync.handle(m);
         if (h.role === 'operator' && h.meters.available) this.raw({ type: 'meters', on: true, hz: 12 });
         void this.loadNames();
+        clearInterval(this.musicianTimer);
+        if (h.role === 'musician') { void this.loadMusician(); this.musicianTimer = setInterval(() => void this.loadMusician(), 2000); }
         return;
       }
       case 'snapshot':
@@ -307,6 +319,20 @@ export class LiveService {
     }
   }
 
+  private async loadMusician() {
+    if (this.connection() !== 'online') { this.musicianBinding.set(null); return; }
+    const token = this.session.token();
+    const r = await this.command({ type: 'musician_identity' });
+    if (token !== this.session.token() || !r.ok || !r.data || this.hello()?.role !== 'musician') return;
+    const binding = r.data['binding'] as MusicianBinding | null;
+    this.musicianSession.set(String(r.data['sessionId'] ?? ''));
+    if (JSON.stringify(binding) !== JSON.stringify(this.musicianBinding())) {
+      this.musicianBinding.set(binding);
+      this.channels.set([]);
+      this.send({ type: 'resync' });
+      await this.loadNames();
+    }
+  }
   private async loadNames() {
     const r = await this.command({ type: 'list_names' });
     if (!r.ok || !r.data) return;
