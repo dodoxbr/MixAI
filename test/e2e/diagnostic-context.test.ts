@@ -37,7 +37,8 @@ describe('B3B conversa contextual na interface', () => {
     const pending = page.getByRole('status', { name: 'Diagnóstico pendente' });
     await pending.waitFor();
     expect(await pending.textContent()).toContain('Cavaco');
-    expect(await pending.textContent()).toContain('PA');
+    expect(await page.locator('.chat-question').textContent()).toContain('PA');
+    expect(await page.locator('.chat-question').count()).toBe(1);
     const box = await pending.boundingBox();
     expect(box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
     await say(page, 'PA.');

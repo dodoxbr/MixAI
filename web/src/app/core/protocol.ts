@@ -220,6 +220,10 @@ export interface DiagnosticContext {
 }
 
 export interface AssistantReply {
+  /** Additive presentation data; execution continues to use existing proposal paths only. */
+  diagnosis?: unknown;
+  clarification?: unknown;
+  conversation?: unknown;
   diagnosticContext?: DiagnosticContext | null;
   kind: 'proposals' | 'clarify' | 'answer' | 'error' | 'diagnosis';
   references?: Array<{ title: string; url: string; locator: string }>;
