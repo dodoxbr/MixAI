@@ -20,7 +20,7 @@ import { MUSICIAN_PIN, OPERATOR_PIN, startTestServer, wsClient } from './server-
  * E5 — Cenas do MixAI no LABORATÓRIO. Regra fundamental: NENHUMA cena altera a mesa sem
  * confirmação humana (comparar → pedir → pendência da E2 → aprovar → fila única).
  */
-const band = () => parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'config', 'channels.yaml'), 'utf8')));
+const band = () => parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'test', 'fixtures', 'legacy-channels.yaml'), 'utf8')));
 type T = Awaited<ReturnType<typeof startTestServer>>;
 const running: T[] = [];
 const clients: Array<{ close: () => void }> = [];
@@ -85,7 +85,7 @@ describe('cenas: criar, persistir, duplicar, renomear, excluir', () => {
     expect(json.params['master.level'].value).toBe(-6);
     expect(json.params['ch.1.eq.b1.gain']).toEqual({ value: 0, status: 'incompatible' }); // EQ: só laboratório
     // nomes da banda não mudaram
-    expect(readFileSync(join(PROJECT_ROOT, 'config', 'channels.yaml'), 'utf8')).toContain('Surdo');
+    expect(readFileSync(join(PROJECT_ROOT, 'test', 'fixtures', 'legacy-channels.yaml'), 'utf8')).toContain('Surdo');
   });
 
   it('2. persiste depois de reiniciar o servidor', async () => {
