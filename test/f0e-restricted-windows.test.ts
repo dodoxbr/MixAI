@@ -45,6 +45,7 @@ it.skipIf(process.platform !== 'win32')('Restricted bloqueia .ps1, mas permite a
   });
   try {
     const policy = run(['-Command', 'Get-ExecutionPolicy']);
+    expect(policy.error).toBeUndefined(); expect(policy.stderr).toBe('');
     expect(policy.status).toBe(0); expect(policy.stdout.trim()).toBe('Restricted');
     const script = join(dir, 'blocked.ps1'); writeFileSync(script, "Write-Output 'MUST_NOT_EXECUTE'");
     const blocked = run(['-File', script]);
