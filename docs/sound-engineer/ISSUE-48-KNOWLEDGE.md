@@ -75,6 +75,7 @@ aditivo v1). Tipos e schemas públicos exportados em `index.ts`:
   instrução, precondições, hipótese/evidência citada, resultado esperado, rollback e
   citações completas. Sem chave de parâmetro/valor para aplicar, Intent ou comando.
 - `diagnosticConsultationSchema`: `diagnostic`, `evidence`, `recommendations`, `references`,
+  `diagnostic.hypotheses` com fontes/IDs,
   `proposal:null`, `requiresApproval:true`, `authorizedActions:[]`, `rollback` manual e
   `confidence`. `nextQuestions` contém até três perguntas prioritárias; as demais
   permanecem disponíveis no diagnóstico legado.
@@ -86,7 +87,8 @@ continua baixa/insuficiente, nunca alta ou probabilidade calibrada. O endpoint r
 `sourceLabel` enviado pelo cliente: o nome usado para papel musical vem do cadastro do
 servidor, não de identidade fornecida no payload.
 
-`evidence` separa relatos de leituras declaradas de controles e de medidores simulados.
+`evidence.reports` conserva o tipo legado `operator_report`: relato retransmitido pelo
+operador, sem certificar a identidade de quem o originou. `evidence` separa relatos de leituras declaradas de controles e de medidores simulados.
 Esta consulta **não adquire estado atual do mixer**; mesmo uma leitura com revisão e
 momento recebidos continua `caller_declared_not_verified`. Não afirma que um fader antigo
 é estado atual, nem que um MUTE/fader demonstra nível de sinal. O contrato lista áudio,
@@ -94,7 +96,7 @@ RTA, SPL, VU real e redução de ganho como indisponíveis. Evidência `real_rta
 forjada é rejeitada; transcrição com números não vira medição.
 
 `requiresApproval` significa revisão humana de orientação, não aprovação já concedida.
-Nenhuma saída aqui é consumida pelo executor. Um integrador futuro precisará de contrato
+O schema verifica IDs únicos e vínculos entre relatos, hipóteses e recomendações; categorias de evidência são tipadas separadamente. Nenhuma saída aqui é consumida pelo executor. Um integrador futuro precisará de contrato
 separado para estado confiável/fresco, referência revisada, identidade, limites e
 aprovação, passando por todos os controles existentes. Não transformar texto em Intent,
 não disputar faders da UI oficial, não restaurar referência nem criar retry/replay.

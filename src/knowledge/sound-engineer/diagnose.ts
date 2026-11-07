@@ -52,11 +52,11 @@ export function diagnose(input: unknown): Diagnosis {
   const refs = citations([...procedure.references, ...moduleRefs, ...profiles.flatMap(p => p.references)]);
   const consultation = diagnosticConsultationSchema.parse({
     schemaVersion: 1, knowledgeVersion: KNOWLEDGE_VERSION,
-    diagnostic: { symptom: context.symptom, channel: context.channel ?? null, destination: context.destination ?? null,
+    diagnostic: { hypotheses: hypotheses.map(h => ({ ...h, references: citations(h.references) })), symptom: context.symptom, channel: context.channel ?? null, destination: context.destination ?? null,
       voiceRole: role, roleBasis: role === 'unknown' ? 'unconfirmed' : 'configuration_label_match',
       interactionIds: related.map(i => i.id), profileIds: profiles.map(p => p.id) },
     evidence: {
-      musicianReports: context.evidence.filter(e => e.kind === 'operator_report'),
+      reports: context.evidence.filter(e => e.kind === 'operator_report'),
       controlReadings: context.evidence.filter(e => e.kind === 'control_state').map(evidence => ({ evidence, verification: 'caller_declared_not_verified' })),
       simulated: context.evidence.filter(e => e.kind === 'simulated_meter'),
       unavailableMeasurements: ['audio', 'rta', 'spl', 'real_input_meter', 'gain_reduction'],

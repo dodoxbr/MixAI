@@ -96,7 +96,7 @@ it('estado declarado com revisão/momento continua separado de relato e espectro
   ] });
   expect(d.confidence.level).toBe('insufficient'); expect(d.recommendations).toEqual([]);
   expect(d.consultation.evidence.controlReadings[0]!.verification).toBe('caller_declared_not_verified');
-  expect(d.consultation.evidence.musicianReports).toEqual([]);
+  expect(d.consultation.evidence.reports).toEqual([]);
   expect(d.consultation.evidence.simulated).toHaveLength(1);
 });
 it('contratos recusam propostas executáveis, aprovações forjadas e medição inexistente', () => {
@@ -144,4 +144,16 @@ it('uma frequência escrita no relato não vira análise espectral nem certeza t
 it('adjetivo de nível em pedido direto não transforma comando existente em diagnóstico', () => {
   expect(parseConsultation('deixa o cavaco mais baixo no PA', names)).toBeUndefined();
   expect(parseConsultation('Fred está baixo no PA', names)?.symptom).toBe('desequilibrio');
+});
+
+it('contrato autossuficiente resolve hipóteses e recusa evidências em categorias erradas', () => {
+  const c = result('Fred está microfonando no PA').diagnosis!.consultation;
+  expect(c.diagnostic.hypotheses.length).toBeGreaterThan(1);
+  for (const r of c.recommendations) expect(r.hypothesisIds.every(id => c.diagnostic.hypotheses.some(h => h.id === id))).toBe(true);
+  const missing = structuredClone(c); missing.recommendations[0]!.hypothesisIds = ['not-present'];
+  expect(diagnosticConsultationSchema.safeParse(missing).success).toBe(false);
+  const wrong = structuredClone(c); wrong.recommendations[0]!.evidenceIds = ['not-present'];
+  expect(diagnosticConsultationSchema.safeParse(wrong).success).toBe(false);
+  const nonReport = { id: 'fake', kind: 'simulated_meter', valueDB: -3, detail: 'Simulação não é relato.' };
+  expect(diagnosticConsultationSchema.safeParse({ ...c, evidence: { ...c.evidence, reports: [nonReport] } }).success).toBe(false);
 });

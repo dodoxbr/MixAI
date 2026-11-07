@@ -132,7 +132,7 @@ export function consult(input: ConsultationInput, names: ChannelMap, fonesAux: n
   const refs: Reference[] = [];
   if (diagnosis) {
     const confidence = diagnosis.confidence.level === 'low' ? 'baixa' : 'insuficiente';
-    lines.push('Relato (não é medição):', ...diagnosis.consultation.evidence.musicianReports.map(e => `• ${e.detail}`));
+    lines.push('Relato (não é medição):', ...diagnosis.consultation.evidence.reports.map(e => `• ${e.detail}`));
     const readings = diagnosis.consultation.evidence.controlReadings;
     lines.push('Estado observado pelo próprio diagnóstico: indisponível; esta consulta não lê o mixer.');
     for (const { evidence } of readings) if (evidence.kind === 'control_state') lines.push(`Estado declarado, não verificado nesta consulta: ${evidence.parameter}=${evidence.value}; revisão ${evidence.revision}; momento ${evidence.observedAt ?? 'não informado'}.`);

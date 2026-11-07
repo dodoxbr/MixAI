@@ -112,16 +112,23 @@ export const diagnosticRecommendationSchema = z.strictObject({
   evidenceIds: z.array(z.string()), hypothesisIds: z.array(z.string()), references: z.array(sourceCitationSchema).min(1),
 });
 export type DiagnosticRecommendation = z.infer<typeof diagnosticRecommendationSchema>;
+export const diagnosticHypothesisSchema = z.strictObject({
+  id: z.string().min(1), explanation: z.string().min(1), supportingEvidenceIds: z.array(z.string()),
+  missingEvidence: z.array(z.string()),
+  confidence: z.strictObject({ level: z.enum(['insufficient', 'low']), basis: z.enum(['no_matching_report', 'operator_report_only']), rationale: z.string() }),
+  references: z.array(sourceCitationSchema).min(1),
+});
 export const diagnosticConsultationSchema = z.strictObject({
   schemaVersion: z.literal(1), knowledgeVersion: z.literal('2.0.0'),
   diagnostic: z.strictObject({ symptom: symptomSchema, channel: z.number().int().min(1).max(12).nullable(),
     destination: z.enum(['pa', 'fones']).nullable(), voiceRole: z.enum(['lead', 'backing', 'unknown']),
+    hypotheses: z.array(diagnosticHypothesisSchema),
     roleBasis: z.enum(['configuration_label_match', 'unconfirmed']), interactionIds: z.array(z.string()), profileIds: z.array(z.string()),
   }),
   evidence: z.strictObject({
-    musicianReports: z.array(evidenceSchema),
-    controlReadings: z.array(z.strictObject({ evidence: evidenceSchema, verification: z.literal('caller_declared_not_verified') })),
-    simulated: z.array(evidenceSchema),
+    reports: z.array(evidenceSchema.options[0]),
+    controlReadings: z.array(z.strictObject({ evidence: evidenceSchema.options[1], verification: z.literal('caller_declared_not_verified') })),
+    simulated: z.array(evidenceSchema.options[2]),
     unavailableMeasurements: z.array(z.enum(['audio', 'rta', 'spl', 'real_input_meter', 'gain_reduction'])).min(1),
   }),
   nextQuestions: z.array(z.string()).max(3),
@@ -129,5 +136,16 @@ export const diagnosticConsultationSchema = z.strictObject({
   proposal: z.null(), requiresApproval: z.literal(true), authorizedActions: z.tuple([]),
   rollback: z.strictObject({ automatic: z.literal(false), instruction: z.string().min(1) }),
   confidence: z.strictObject({ level: z.enum(['insufficient', 'low']), basis: z.enum(['no_matching_report', 'operator_report_only']), rationale: z.string() }),
+}).superRefine((value, ctx) => {
+  const evidenceIds = [...value.evidence.reports, ...value.evidence.controlReadings.map(r => r.evidence), ...value.evidence.simulated].map(e => e.id);
+  const hypotheses = value.diagnostic.hypotheses;
+  const hypothesisIds = new Set(hypotheses.map(h => h.id));
+  const reports = new Map(value.evidence.reports.map(e => [e.id, e.symptom]));
+  if (new Set(evidenceIds).size !== evidenceIds.length || hypothesisIds.size !== hypotheses.length ||
+    new Set(value.recommendations.map(r => r.id)).size !== value.recommendations.length ||
+    hypotheses.some(h => h.supportingEvidenceIds.some(id => reports.get(id) !== value.diagnostic.symptom)) ||
+    value.recommendations.some(r => r.hypothesisIds.some(id => !hypothesisIds.has(id)) || r.evidenceIds.some(id => reports.get(id) !== value.diagnostic.symptom))) {
+    ctx.addIssue({ code: 'custom', message: 'Rastreabilidade de evidências/hipóteses inconsistente.' });
+  }
 });
 export type DiagnosticConsultation = z.infer<typeof diagnosticConsultationSchema>;
