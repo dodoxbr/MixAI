@@ -54,7 +54,8 @@ it('mudança externa simulada e estado antigo nunca são restaurados ou disputad
     expect(reply.status).toBe(200);
     expect(reply.json.reply.diagnosis.consultation.evidence.controlReadings[0].verification).toBe('caller_declared_not_verified');
     expect(reply.json.reply.diagnosis.consultation.authorizedActions).toEqual([]);
-    expect(reply.json.reply.text).toContain('momento 2020-01-01');
+    expect(reply.json.reply.diagnosticSession.evidence.controlReadings[0].evidence.observedAt).toBe('2020-01-01T00:00:00Z');
+    expect(reply.json.reply.text).not.toContain('2020-01-01');
   }
   expect(await mixer.read(key)).toEqual({ known: true, value: -9 }); expect(mixer.writes).toEqual([]);
 });

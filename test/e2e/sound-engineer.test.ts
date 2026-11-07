@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 describe('Sound Engineer no chat — consulta offline', () => {
-  it('queixa → escolher PA → hipóteses, confiança e fontes; zero propostas e zero escritas', async () => {
+  it('queixa → escolher PA → uma pergunta progressiva e fontes; zero propostas e zero escritas', async () => {
     const lab = await startLab({ channels: bandChannels() }); labs.push(lab);
     const { ctx, page } = await enter(browser, lab.base, OPERATOR_PIN); contexts.push(ctx);
     const before = lab.controller.state.snapshot();
@@ -24,8 +24,9 @@ describe('Sound Engineer no chat — consulta offline', () => {
     await page.locator('.diagnostic-options').getByRole('button', { name: 'PA', exact: true }).click();
     const answer = page.locator('.technical-text').last();
     await expect.poll(() => answer.textContent()).toContain('Destino: PA');
-    expect(await answer.textContent()).toContain('Confiança baixa');
-    expect(await answer.textContent()).toContain('Hipóteses alternativas');
+    expect(await answer.textContent()).toContain('Acontece só no PA ou também nos fones?');
+    expect((await answer.textContent())!.split(/\s+/).length).toBeLessThanOrEqual(120);
+    expect(await answer.textContent()).not.toContain('Hipóteses alternativas');
     expect(await answer.textContent()).toContain('Não ouvi o som');
     expect(await page.locator('.technical-references a').count()).toBeGreaterThan(0);
     expect(await page.locator('.proposal').count()).toBe(0);

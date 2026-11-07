@@ -21,6 +21,12 @@ async function say(page: Page, text: string) {
   await page.getByRole('button', { name: 'Enviar', exact: true }).click();
 }
 
+async function finishChecks(page: Page) {
+  await page.locator('.diagnostic-options').last().getByRole('button', { name: 'Só no PA', exact: true }).click();
+  await page.locator('.diagnostic-options').last().getByRole('button', { name: 'Só com a banda', exact: true }).click();
+  await page.locator('.diagnostic-options').last().getByRole('button', { name: 'Melhorou', exact: true }).click();
+}
+
 describe('B3B conversa contextual na interface', () => {
   it.each([{ name: 'Yoga', device: YOGA }, { name: 'celular', device: PHONE }])('$name: queixa → PA, sem repetir relato nem alterar a mesa', async ({ device }) => {
     const { lab, page } = await start(device);
@@ -35,6 +41,7 @@ describe('B3B conversa contextual na interface', () => {
     const box = await pending.boundingBox();
     expect(box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
     await say(page, 'PA.');
+    await finishChecks(page);
     await pending.waitFor({ state: 'detached' });
     expect(await page.locator('.technical-text').last().textContent()).toContain('Cavaco (canal 1). Destino: PA');
     expect(await page.locator('.technical-references a').count()).toBeGreaterThan(0);
@@ -102,6 +109,7 @@ describe('B3B conversa contextual na interface', () => {
     expect(await page.locator('.diagnostic-context').textContent()).toContain('Surdo');
     expect(await page.locator('.proposal').count()).toBe(0);
     await say(page, 'PA');
+    await finishChecks(page);
     await page.locator('.diagnostic-context').waitFor({ state: 'detached' });
     expect(await page.locator('.technical-text').last().textContent()).toContain('Surdo (canal 9). Destino: PA');
     expect(lab.controller.state.snapshot().revision).toBe(0);

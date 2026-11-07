@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "00000000-0000-4000-8000-000000000055",
+  "revision": 1,
+  "expiresAt": "2026-11-07T12:05:00.000Z",
+  "status": "clarifying",
+  "knownContext": {
+    "symptom": "abafado",
+    "channel": null,
+    "sourceLabel": null,
+    "instrument": "vozes",
+    "relatedInstruments": [
+      "vozes"
+    ],
+    "destination": "fones",
+    "scope": null,
+    "isolation": null,
+    "capture": null,
+    "basis": "reported_or_configured_not_measured",
+    "results": []
+  },
+  "pendingQuestion": {
+    "id": "channel",
+    "field": "channel",
+    "prompt": "Qual vocalista está com o problema?"
+  },
+  "choices": [
+    {
+      "id": "channel:0",
+      "label": "Voz Fred",
+      "value": "3"
+    },
+    {
+      "id": "channel:1",
+      "label": "Voz Lucius",
+      "value": "4"
+    },
+    {
+      "id": "channel:2",
+      "label": "Voz Leandro",
+      "value": "5"
+    },
+    {
+      "id": "channel:3",
+      "label": "Voz Fernando",
+      "value": "6"
+    },
+    {
+      "id": "channel:4",
+      "label": "Voz Laviquinho",
+      "value": "7"
+    }
+  ],
+  "nextCheck": null,
+  "evidence": {
+    "reports": [
+      {
+        "id": "chat-abafado",
+        "detail": "Minha voz está abafada no retorno.",
+        "kind": "operator_report",
+        "symptom": "abafado"
+      }
+    ],
+    "controlReadings": [],
+    "simulated": [],
+    "unavailableMeasurements": [
+      "audio",
+      "rta",
+      "spl",
+      "real_input_meter",
+      "gain_reduction"
+    ]
+  },
+  "confidence": {
+    "level": "low",
+    "basis": "operator_report_only",
+    "rationale": "Relato humano compatível; causas alternativas ainda não verificadas. Não houve análise de áudio."
+  },
+  "safety": {
+    "measurements": "unavailable",
+    "observedState": "not_acquired",
+    "automaticActions": false,
+    "realWrites": false,
+    "identity": "not_inferred",
+    "warnings": []
+  },
+  "references": [
+    {
+      "source": "shure-live",
+      "title": "Shure — Microphone Techniques for Live Sound Reinforcement",
+      "url": "https://www.shure.com/publications/microphone_techniques_for_live_sound_reinforcement_english.pdf",
+      "version": "publicação educacional, 39 páginas / sem revisão identificada",
+      "section": "regras gerais de captação",
+      "consultedOn": "2026-11-07",
+      "accessStatus": "consulted"
+    },
+    {
+      "source": "yamaha-eq",
+      "title": "Yamaha — Equalization",
+      "url": "https://hub.yamaha.com/proaudio/livesound/eq/",
+      "version": "2018-04-26 / artigo sem revisão indicada",
+      "section": "Peak EQ",
+      "consultedOn": "2026-11-07",
+      "accessStatus": "consulted"
+    },
+    {
+      "source": "shure-placement",
+      "title": "Shure — Three Reasons Why Mic Placement Matters",
+      "url": "https://www.shure.com/en-EU/insights/three-reasons-why-mic-placement-matters",
+      "version": "2014-09-24 / artigo sem revisão indicada",
+      "section": "Signal to Noise Ratio; Gain Before Feedback; The Sweet Spot",
+      "consultedOn": "2026-11-07",
+      "accessStatus": "consulted"
+    },
+    {
+      "source": "yamaha-eq",
+      "title": "Yamaha — Equalization",
+      "url": "https://hub.yamaha.com/proaudio/livesound/eq/",
+      "version": "2018-04-26 / artigo sem revisão indicada",
+      "section": "Peak EQ: separation of competing sources",
+      "consultedOn": "2026-11-07",
+      "accessStatus": "consulted"
+    },
+    {
+      "source": "shure-live",
+      "title": "Shure — Microphone Techniques for Live Sound Reinforcement",
+      "url": "https://www.shure.com/publications/microphone_techniques_for_live_sound_reinforcement_english.pdf",
+      "version": "publicação educacional, 39 páginas / sem revisão identificada",
+      "section": "Microphone Placement, p.22",
+      "consultedOn": "2026-11-07",
+      "accessStatus": "consulted"
+    },
+    {
+      "source": "ui16-manual",
+      "title": "Soundcraft Ui12/Ui16 User Guide",
+      "url": "https://www.soundcraft.com/en/product_documents/ui_usermanual_v3-0-pdf-27c992b4-5132-4d2d-b8e2-79750de6ee29",
+      "version": "v3.0 (English)",
+      "section": "5.2 Parametric EQ / HPF / bypass",
+      "consultedOn": "2026-11-07",
+      "accessStatus": "consulted"
+    },
+    {
+      "source": "yamaha-eq",
+      "title": "Yamaha — Equalization",
+      "url": "https://hub.yamaha.com/proaudio/livesound/eq/",
+      "version": "2018-04-26 / artigo sem revisão indicada",
+      "section": "Advanced EQ",
+      "consultedOn": "2026-11-07",
+      "accessStatus": "consulted"
+    },
+    {
+      "source": "ui16-manual",
+      "title": "Soundcraft Ui12/Ui16 User Guide",
+      "url": "https://www.soundcraft.com/en/product_documents/ui_usermanual_v3-0-pdf-27c992b4-5132-4d2d-b8e2-79750de6ee29",
+      "version": "v3.0 (English)",
+      "section": "5.4 Dynamics",
+      "consultedOn": "2026-11-07",
+      "accessStatus": "consulted"
+    },
+    {
+      "source": "yamaha-dynamics",
+      "title": "Yamaha — How to Use a Compressor",
+      "url": "https://hub.yamaha.com/proaudio/livesound/tools-of-the-trade-how-to-use-a-compressor/",
+      "version": "2017-10-27 / artigo sem revisão indicada",
+      "section": "Compression Advice",
+      "consultedOn": "2026-11-07",
+      "accessStatus": "consulted"
+    }
+  ]
+}

@@ -35,7 +35,8 @@ it.each([
   expect(diagnosticConsultationSchema.safeParse(d.consultation).success).toBe(true);
   expect(d.consultation.proposal).toBeNull(); expect(d.consultation.authorizedActions).toEqual([]);
   expect(d.consultation.evidence.unavailableMeasurements).toContain('rta');
-  expect(reply.text).toContain('Ação autorizada: nenhuma');
+  expect(reply.text).toContain('Nenhum ajuste foi criado ou aplicado');
+  expect(reply.diagnosticSession.safety.automaticActions).toBe(false);
   expect(JSON.stringify(d.recommendations)).not.toMatch(/\d+(?:[.,]\d+)?\s*(?:k?hz|dB)\b/i);
 });
 it('Fred lead e coro dependem do canal e nome cadastrado; não criam offset', () => {
@@ -44,7 +45,7 @@ it('Fred lead e coro dependem do canal e nome cadastrado; não criam offset', ()
   expect(voiceRole(3, 'Voz Fernando')).toBe('unknown');
   expect(voiceRole(6, 'Voz Fred')).toBe('unknown');
   expect(voiceRole(3)).toBe('unknown');
-  expect(result('Fred está sumindo no PA').text).toContain('sem pedir esforço vocal');
+  expect(result('Fred está sumindo no PA').diagnosis!.bandGuidance.join(' ')).toContain('sem pedir esforço vocal');
   expect(result('Fred está sumindo no PA').diagnosis!.bandGuidance.join(' ')).toContain('CH4–7');
 });
 it.each([
@@ -59,8 +60,8 @@ it.each([
 it('distingue seis/sete cordas e não presume captação pela lista de aliases', () => {
   const reply = result('O violão está magro no PA');
   expect(reply.diagnosis!.consultation.diagnostic.profileIds).toEqual(['violao-six', 'violao-seven']);
-  expect(reply.text).toContain('Confirmar seis ou sete cordas');
-  expect(reply.text).toContain('DI');
+  expect(reply.diagnosis!.bandGuidance.join(' ')).toContain('Confirmar seis ou sete cordas');
+  expect(reply.diagnosis!.instrumentGuide!.captureChecks.join(' ')).toContain('DI');
   expect(instrumentProfiles.find(p => p.id === 'violao-seven')!.avoid).toContain('baixarias');
 });
 it.each([
@@ -84,7 +85,8 @@ it('microfonia tem prioridade sobre estridência; AUX1 é compartilhado e AFS2 s
   const reply = result('Fred está estridente e microfonando nos fones');
   expect(reply.diagnosis!.symptom).toBe('microfonia');
   expect(reply.text).toContain('compartilhado');
-  expect(reply.text).toContain('Fixed'); expect(reply.text).toContain('Live');
+  const afs = reply.technicalDetails.modules.find(m => m.id === 'afs2')!.guidance;
+  expect(afs).toContain('Fixed'); expect(afs).toContain('Live');
   expect(reply.text).toContain('ring-out com público');
   expect(reply.diagnosis!.consultation.rollback.automatic).toBe(false);
   expect(reply.diagnosis!.recommendations[0]!.instruction).toContain('interromper');

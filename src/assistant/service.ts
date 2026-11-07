@@ -16,6 +16,8 @@ import { fmtDb, ProposalBuilder, type Proposal, type ProposalCard } from './prop
 export interface AssistantReply {
   kind: 'proposals' | 'clarify' | 'answer' | 'error' | 'diagnosis';
   diagnosis?: ConsultationReply['diagnosis'];
+  diagnosticSession?: ConsultationReply['diagnosticSession'] | null;
+  technicalDetails?: ConsultationReply['technicalDetails'];
   diagnosticContext?: DiagnosticContextView | null;
   references?: ConsultationReply['references'];
   diagnosticOptions?: ConsultationReply['diagnosticOptions'];

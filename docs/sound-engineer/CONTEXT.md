@@ -1,5 +1,9 @@
 # B3B — Conversa contextual por sessão (Issue #26)
 
+Atualização: a [Issue #55](ISSUE-55-CONVERSATION.md) amplia a máquina abaixo para
+verificações progressivas e texto conciso. Não encerra mais ao preencher apenas
+fonte/destino; os limites de isolamento e segurança permanecem.
+
 O operador pode enviar **“Meu cavaco está estridente.”** e responder apenas **“PA.”**
 ao esclarecimento seguinte. A fonte, o sintoma e a evidência afirmativa original
 continuam no diagnóstico. Não há captura de áudio, propostas de alteração ou

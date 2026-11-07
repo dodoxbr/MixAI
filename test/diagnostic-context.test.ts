@@ -17,7 +17,7 @@ function setup(options: ConstructorParameters<typeof DiagnosticContexts>[2] = {}
 const diagnosis = (r: ContextualReply) => { expect(r.kind).toBe('diagnosis'); return r.kind === 'diagnosis' ? r.diagnosis! : undefined!; };
 
 describe('contexto determinístico efêmero', () => {
-  it('PA continua a queixa com o relato necessário e encerra o contexto', () => {
+  it('PA conserva relato e contexto até concluir as verificações progressivas', () => {
     const { ask, store } = setup();
     const pending = ask('Meu cavaco está estridente. O que podemos fazer? Minha senha está em outro lugar.');
     expect(pending.diagnosticContext?.field).toBe('destination');
@@ -25,7 +25,12 @@ describe('contexto determinístico efêmero', () => {
     expect(diagnosis(ready).evidence).toEqual(diagnosis(pending).evidence);
     expect(diagnosis(ready).evidence[0].detail).toBe('Meu cavaco está estridente.');
     expect(ready.text).toContain('Cavaco (canal 1). Destino: PA');
-    expect(ready.diagnosticContext).toBeNull();
+    expect(ready.diagnosticContext?.field).toBe('scope');
+    expect(store.size).toBe(1);
+    const scope = ask('Só no PA', stamp(ready));
+    const isolated = ask('Só com a banda', stamp(scope));
+    const done = ask('Melhorou', stamp(isolated));
+    expect(done.diagnosticContext).toBeNull();
     expect(store.size).toBe(0);
     expect(ask('Fones').code).toBe('DIAGNOSIS_CONTEXT_REQUIRED');
   });
