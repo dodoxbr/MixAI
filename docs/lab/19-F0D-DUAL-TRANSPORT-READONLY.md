@@ -28,6 +28,10 @@ A UI oficial e o roteamento real precisam ser conferidos pelo operador.
 
 ## Preflight Windows somente consulta
 
+Atualização [F0E — Issue #41](20-F0E-NATIVE-ROUTE-PREFLIGHT.md): o preflight agora é
+um comando Node com consultas nativas fixas; não executa arquivos `.ps1`. Não alterar
+a ExecutionPolicy para executar os exemplos antigos. Compilar antes com `npm run build`.
+
 PowerShell normal, sem administrador, na raiz do projeto. Substituir o exemplo de IP e
 **ifIndex** pelos observados localmente; não copiar a configuração como fato:
 
@@ -37,7 +41,7 @@ Get-NetAdapter | Select-Object ifIndex,Status,NdisPhysicalMedium,HardwareInterfa
 # Descobrir a rota em consulta local, sem probe/TCP/HTTP:
 Find-NetRoute -RemoteIPAddress '10.10.1.1'
 # Preflight sanitizado, exemplo Wi-Fi (o ifIndex 7 é só ilustrativo):
-.\scripts\ui16-route-preflight.ps1 -TargetIp '10.10.1.1' -Transport wifi -InterfaceIndex 7
+npm run preflight:f0 -- --ip 10.10.1.1 --transport wifi --interface-index 7
 ```
 
 `Find-NetRoute` pode mostrar endereços locais; é consulta **para inspeção local**, não
@@ -67,10 +71,15 @@ Para este primeiro F0, os caminhos novos exigem destino **on-link** (cabo direto
 da Ui16). Não habilitam roteamento arbitrário através de gateways. O adaptador continua
 independente do meio: outras topologias exigem planejamento/validação manual próprios.
 
-Se execução do script/cmdlets for bloqueada por política, registrar e parar. O CLI usa
-`powershell.exe -NoProfile -NonInteractive -File`, sem ExecutionPolicy Bypass/elevação.
+O Node usa `powershell.exe -NoLogo -NoProfile -NonInteractive -Command` com uma consulta
+local fixa e limitada a cmdlets nativos de leitura/projeção. IP chega por variável de
+ambiente do filho, nunca por concatenação de código. A decisão completa é feita em
+TypeScript; não há mais arquivo PowerShell de rota nem algoritmo duplicado. Restricted
+pode permitir essas consultas e recusar `.ps1`; se política/GPO/AppLocker também impedir
+cmdlets, registrar e parar. Sem bypass, elevação ou opção de ignorar o guard.
 Não afrouxar políticas, firewall, DNS, certificados, perfis ou métricas para contornar erro.
-O preflight genérico F0B é distinto e pode conter IPv4 privados; não anexá-lo sem revisão.
+O preflight genérico F0B é distinto, continua `.ps1` e pode conter IPv4 privados;
+não anexá-lo sem revisão e não alterar políticas para executá-lo.
 
 ## Caminho A: Ethernet (preferido para instalação fixa)
 
@@ -83,7 +92,7 @@ O preflight genérico F0B é distinto e pode conter IPv4 privados; não anexá-l
    executar o preflight correspondente, por exemplo:
 
 ```powershell
-.\scripts\ui16-route-preflight.ps1 -TargetIp '192.168.50.10' -Transport ethernet -InterfaceIndex 8
+npm run preflight:f0 -- --ip 192.168.50.10 --transport ethernet --interface-index 8
 npm run observe:f0 -- --physical-readonly --audio-disconnected --transport ethernet --ip 192.168.50.10 --confirm-ethernet-ip 192.168.50.10 --interface-index 8 --channels 1 --duration 60 --report work/f0d-ethernet-01
 ```
 
@@ -105,7 +114,7 @@ verificação de rota por conexão. O antigo não ganha prova automática de rot
 5. Escolher ifIndex Wi-Fi (não o do tether), conferir `passed:true` no preflight e executar:
 
 ```powershell
-.\scripts\ui16-route-preflight.ps1 -TargetIp '10.10.1.1' -Transport wifi -InterfaceIndex 7
+npm run preflight:f0 -- --ip 10.10.1.1 --transport wifi --interface-index 7
 npm run observe:f0 -- --physical-readonly --audio-disconnected --transport wifi --ip 10.10.1.1 --confirm-wifi-ip 10.10.1.1 --confirm-soundcraft-hotspot --interface-index 7 --channels 1 --duration 60 --report work/f0d-wifi-01
 ```
 
@@ -176,11 +185,10 @@ cruzada/ausente, gate de rota em todas as gerações, rota recusada sem criar so
 reconexão sem escrita, indisponibilidade de internet e sanitização/v1/v2. O lançador
 PowerShell é testado com processo falso, sem shell/bypass e sem ecoar dados de erro.
 
-Na CI Windows, `ui16-route-preflight.ps1 -SelfTest` usa **somente fixtures** (sem consulta
-real), incluindo interfaces Ethernet/Wi-Fi/tether, overlap, empate, índice incorreto,
-sub-rede errada, interface down e classificação de adaptador. Nenhum target físico é usado.
-O smoke/CI não chama o comando físico `observe:f0`. RealMixer, supervisor, parâmetros,
-assistente, EQ, voz e configurações Windows permanecem inalterados.
+Na CI Windows, o teste F0E restringe somente o ambiente de processos filhos, comprova
+que um `.ps1` fictício é bloqueado e executa a mesma consulta fixa com cmdlets falsos.
+Nenhum cmdlet desses testes acessa a rede; fixtures TypeScript cobrem os resultados
+históricos do F0D e os gates de falha/reconexão. Ver limites e resultados no roteiro F0E.
 
 Continuam manuais: Wi-Fi/RJ45 e tether do Yoga real, firmware, conectividade à unidade,
 queda/recuperação física, equivalência de faders/MUTE e qualidade/roteamento de áudio.

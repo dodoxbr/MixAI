@@ -32,6 +32,9 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix web
       - run: npm run typecheck
+      - name: F0E Restricted (fixtures, nenhum cmdlet de rede real)
+        if: runner.os == 'Windows'
+        run: npm exec vitest run test/f0e-restricted-windows.test.ts
       - run: npm test
       - run: npm run build
       # Interface (E3)
@@ -54,7 +57,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          ./scripts/ui16-route-preflight.ps1 -SelfTest
           ./scripts/yoga-preflight.ps1 -SelfTest
           ./scripts/yoga-preflight.ps1
 

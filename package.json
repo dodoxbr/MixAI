@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "console": "node dist/console.js",
     "console:f0": "node dist/console.js --real --readonly",
+    "preflight:f0": "node dist/f0-route-preflight-cli.js",
     "observe:f0": "node dist/f0-observer-cli.js",
     "console:mock": "node dist/console.js --mock",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.test.json",
