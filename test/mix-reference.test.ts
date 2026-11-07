@@ -220,7 +220,7 @@ it('triages affirmative musician voice/feedback reports as unverified inspection
     expect(advice.json.recommendation.text.includes('Inspeção:')).toBe(affirmative);
     expect(advice.json.recommendation.text).toContain('não confirmado pelo operador');
     expect(advice.json.recommendation.text).not.toContain('Ensaio teórico para revisão humana:');
-    if (affirmative) { expect(advice.json.recommendation.text).toContain('relato do músico não verificado'); expect(advice.json.recommendation.references.length).toBeGreaterThan(0); }
+    if (affirmative) { expect(advice.json.recommendation.text.toLowerCase()).toContain('relato do músico não verificado'); expect(advice.json.recommendation.references.length).toBeGreaterThan(0); }
   }
   expect(execute).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled();
   execute.mockRestore();

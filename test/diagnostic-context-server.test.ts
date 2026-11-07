@@ -47,7 +47,8 @@ describe('B3B HTTP/WS, autenticação e concorrência', () => {
     expect(done.json.reply.text).toContain('Cavaco (canal 1). Destino: PA');
     expect(done.json.reply.diagnosis.evidence).toEqual(first.json.reply.diagnosis.evidence);
     expect(JSON.stringify(done.json.reply)).not.toContain('Dado privado');
-    expect(done.json.reply.diagnosticContext).toBeNull();
+    expect(done.json.reply.diagnosticContext.field).toBe('scope');
+    expect(done.json.reply.diagnosticSession.knownContext.destination).toBe('pa');
     expect(done.json.reply.references.length).toBeGreaterThan(0);
     expect(done.json.reply.diagnosis.audioAnalysis).toBe('not_performed');
     expect(done.json.reply.proposals).toBeUndefined();
@@ -67,7 +68,8 @@ describe('B3B HTTP/WS, autenticação e concorrência', () => {
     const done = await next.ask('Fones', stamp(first), 'assistant_conversation');
     expect(done.text).toContain('AUX 1 compartilhado');
     expect(done.diagnosis.evidence[0].detail).toBe('Meu cavaco está estridente');
-    expect((await http(t, op, 'PA')).json.reply.code).toBe('DIAGNOSIS_CONTEXT_REQUIRED');
+    expect((await http(t, op, 'PA')).json.reply.code).toBe('DIAGNOSIS_CLARIFY');
+    expect(done.diagnosticContext.field).toBe('scope');
   });
 
   it('duas respostas concorrentes da mesma revisão: uma avança e a outra é recusada', async () => {

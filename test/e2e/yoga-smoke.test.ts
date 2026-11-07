@@ -108,7 +108,7 @@ it('Yoga LAB: HTTP/WS, PA/FONES, EQ, cenas, aprovação, consulta, fixture, logo
     const before = lab.controller.state.snapshot(); const writes = vi.spyOn(lab.mixer, 'write');
     await page.getByPlaceholder('O que você deseja ajustar?').fill('Meu cavaco está estridente no PA');
     await page.getByRole('button', { name: 'Enviar', exact: true }).click();
-    await expect.poll(() => page.locator('.technical-text').last().textContent()).toContain('Confiança baixa');
+    await expect.poll(() => page.locator('.technical-text').last().textContent()).toContain('Acontece só no PA ou também nos fones?');
     expect(await page.locator('.technical-references a').count()).toBeGreaterThan(0);
     expect(await page.locator('.proposal').count()).toBe(0);
     expect(lab.controller.state.snapshot()).toEqual(before); expect(writes).not.toHaveBeenCalled();

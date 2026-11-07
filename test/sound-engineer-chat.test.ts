@@ -47,8 +47,10 @@ describe('B3A: consulta autorizada, offline e sem escrita', () => {
     const r = await ask({ type: 'assistant', text: 'Meu cavaco está estridente no PA. O que podemos fazer?' });
     expect(r.kind).toBe('diagnosis');
     expect(r.diagnosis).toMatchObject({ audioAnalysis: 'not_performed', confidence: { level: 'low' } });
-    expect(r.text).toContain('Hipóteses alternativas');
-    expect(r.text).toContain('Por quê:');
+    expect(r.diagnosis.hypotheses.length).toBeGreaterThan(1);
+    expect(r.diagnosticSession.pendingQuestion.field).toBe('scope');
+    expect(r.technicalDetails.modules.length).toBeGreaterThan(0);
+    expect(r.text.split(/\s+/).length).toBeLessThanOrEqual(120);
     expect(r.text).toContain('Não ouvi o som');
     expect(r.references.some((ref: { url: string }) => ref.url.startsWith('https://www.soundcraft.com/'))).toBe(true);
     expect(r.proposals).toBeUndefined();
