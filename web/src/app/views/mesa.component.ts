@@ -1,3 +1,4 @@
+import { ReferenceWorkspaceComponent } from '../reference/reference.component';
 import { EqComponent } from '../eq/eq.component';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { ActionsService } from '../core/actions.service';
@@ -30,7 +31,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 @Component({
   selector: 'mx-mesa',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
+  imports: [ReferenceWorkspaceComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
   host: { class: 'mx-view mx-mesa' },
   template: `
     <mx-status-bar>
@@ -76,6 +77,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       <div class="offline-banner" role="alert">{{ offlineText() }}</div>
     }
 
+    <mx-reference-workspace />
     <div class="mesa-main">
       @if (bus() === 'fones' && narrow()) {
         <mx-fones-list />

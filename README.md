@@ -117,6 +117,13 @@ horizontal dos canais, MASTER separado à direita e a página rolando na vertica
 envia nenhum comando. O músico tem **MUTE / ABRIR** por canal nos FONES (e no PA, se
 `server.musicianAccess` permitir). Detalhes e capturas: `docs/lab/11-CELULAR-PAISAGEM-MUTE.md`.
 
+## Referência e solicitações (LAB)
+
+O painel na Mesa/Fones permite salvar referências aprovadas do estado observado, comparar
+versões sem restauração e acompanhar pedidos dos músicos. Aprovar uma orientação não executa
+ajustes. Identidade e diagnóstico usam contratos opcionais, sem duplicar autenticação.
+Veja [operação, persistência e dependências](docs/lab/MIX-REFERENCE-REQUESTS.md).
+
 ## Cenas do MixAI (E5)
 
 Na Mesa, o botão **Cenas** abre um painel para salvar o estado do LABORATÓRIO como cena (nome e

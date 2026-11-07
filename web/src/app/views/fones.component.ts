@@ -1,3 +1,4 @@
+import { ReferenceWorkspaceComponent } from '../reference/reference.component';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { LiveService } from '../core/live.service';
 import { StatusBarComponent } from '../ui/status-bar.component';
@@ -16,10 +17,11 @@ import { AssistantUiService } from '../core/assistant.service';
 @Component({
   selector: 'mx-fones',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [StatusBarComponent, FonesListComponent, ToastsComponent, AssistantInputComponent, AssistantPanelComponent],
+  imports: [ReferenceWorkspaceComponent, StatusBarComponent, FonesListComponent, ToastsComponent, AssistantInputComponent, AssistantPanelComponent],
   host: { class: 'mx-view mx-fones' },
   template: `
     <mx-status-bar />
+    <mx-reference-workspace />
     @if (!live.writable()) {
       <div class="offline-banner" role="alert">
         {{ live.connection() === 'online' ? 'A mesa não está pronta para comandos.' : 'Sem conexão com o servidor. Reconectando…' }}

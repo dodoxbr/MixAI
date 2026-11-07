@@ -1,0 +1,41 @@
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import type { Browser } from 'playwright';
+import { launch, enter, startLab, OPERATOR_PIN, MUSICIAN_PIN, bandChannels, YOGA } from './harness.js';
+let browser: Browser;
+beforeAll(async () => { browser = await launch(); }); afterAll(async () => { await browser?.close(); });
+it('operator saves PA/AUX1 reference, observes external delta, handles private musician reports and persists versions on restart', async () => {
+  const t = await startLab({ channels: bandChannels() }); let restarted: Awaited<ReturnType<typeof startLab>> | undefined;
+  try {
+    const operator = await enter(browser, t.base, OPERATOR_PIN, YOGA); const musician = await enter(browser, t.base, MUSICIAN_PIN); const other = await enter(browser, t.base, MUSICIAN_PIN);
+    await operator.page.getByRole('button', { name: 'Referência e pedidos', exact: true }).click();
+    await operator.page.getByLabel('Evento', { exact: true }).fill('Referência roda LAB'); await operator.page.getByLabel('Data do evento').fill('2026-11-07');
+    await operator.page.getByRole('checkbox', { name: 'Aprovo salvar' }).check(); await operator.page.getByRole('button', { name: 'Salvar referência LAB' }).click();
+    await operator.page.getByRole('table', { name: 'Comparação da referência' }).waitFor();
+    const referenceRow = operator.page.getByRole('row').filter({ hasText: 'CH3 — Voz Fred' }).first();
+    const before = Number((await referenceRow.locator('td').nth(1).innerText()).replace(' dB', ''));
+    await t.mixer.write('ch.3.main.level', before - 4);
+    (t.mixer as unknown as { emitChange(k: string, v: number, origin: string): void }).emitChange('ch.3.main.level', before - 4, 'external');
+    await vi.waitFor(async () => expect(await referenceRow.innerText()).toContain('-4.0 dB'));
+    expect(await referenceRow.innerText()).toContain('externa observada');
+    await operator.page.getByLabel('Escopo da referência').selectOption('AUX1'); await operator.page.getByRole('checkbox', { name: 'Aprovo salvar' }).check(); await operator.page.getByRole('button', { name: 'Salvar referência LAB' }).click();
+    await vi.waitFor(async () => expect(await operator.page.getByLabel('Referência salva').locator('option').count()).toBe(3));
+    for (const person of [musician, other]) await person.page.getByRole('button', { name: 'Pedir ajuda ao mesário', exact: true }).click();
+    const execute = vi.spyOn(t.server.core, 'execute'); const writes = vi.spyOn(t.mixer, 'write'); const snapshot = t.controller.state.snapshot();
+    await musician.page.getByLabel('Problema relatado').fill('Minha voz está baixa — relato privado'); await musician.page.getByLabel('Canal relatado').selectOption('3'); await musician.page.getByRole('button', { name: 'Enviar solicitação' }).click();
+    await operator.page.getByRole('button', { name: 'Atualizar bandeja' }).click();
+    const card = operator.page.locator('article.request').filter({ hasText: 'relato privado' }); await card.waitFor();
+    await other.page.getByRole('button', { name: 'Atualizar bandeja' }).click(); expect(await other.page.locator('article.request').count()).toBe(0);
+    await card.locator('textarea').fill('Revisar nível por ouvido; orientação sem execução.'); await card.getByRole('button', { name: 'Sugerir orientação' }).click();
+    await vi.waitFor(async () => expect(await card.innerText()).toContain('suggested'));
+    await card.getByRole('button', { name: 'Aprovar orientação (não aplica)' }).click(); await vi.waitFor(async () => expect(await card.innerText()).toContain('approved'));
+    expect(t.controller.state.snapshot()).toEqual(snapshot); expect(writes).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled();
+    await musician.page.getByRole('button', { name: 'Atualizar bandeja' }).click();
+    const own = musician.page.locator('article.request'); await vi.waitFor(async () => expect(await own.innerText()).toContain('approved')); await own.getByRole('button', { name: 'Cancelar pedido' }).click();
+    await operator.ctx.close(); await musician.ctx.close(); await other.ctx.close(); await t.server.close();
+    restarted = await startLab({ dir: t.dir, channels: bandChannels() }); const again = await enter(browser, restarted.base, OPERATOR_PIN, YOGA);
+    await again.page.getByRole('button', { name: 'Referência e pedidos', exact: true }).click();
+    await vi.waitFor(async () => expect(await again.page.getByLabel('Referência salva').locator('option').count()).toBe(3));
+    await again.page.getByRole('checkbox', { name: 'Mostrar encerrados' }).check(); await vi.waitFor(async () => expect(await again.page.locator('article.request').innerText()).toContain('cancelled'));
+    expect(restarted.mixer.read('ch.3.main.level')).toMatchObject({ value: before - 4 }); await again.ctx.close();
+  } finally { for (const ctx of browser.contexts()) await ctx.close(); await restarted?.server.close(); await t.server.close(); }
+}, 60000);

@@ -15,6 +15,9 @@ import { listenHosts } from './listen.js';
 import { httpsLabOptions } from './https-lab.js';
 import { PrivatePtt } from '../speech/private-ptt.js';
 import type { FileSpeechRecognizer } from '../speech/whisper-file.js';
+import { ReferenceStore } from '../reference/store.js';
+import { ReferenceService } from '../reference/service.js';
+import type { ReferencePorts } from '../reference/contracts.js';
 import { SimulatedMeters } from './meters.js';
 import { ClaudeClient } from '../ai/claude.js';
 import { UsageTracker } from '../ai/usage.js';
@@ -38,7 +41,7 @@ export interface RunningServer {
  */
 export async function startServer(
   loaded: LoadedConfig,
-  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer } = {},
+  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; referencePorts?: ReferencePorts } = {},
 ): Promise<RunningServer> {
   const { config } = loaded;
   const mode = config.mixer.mode;
@@ -83,9 +86,10 @@ export async function startServer(
       opts.clock,
     );
     // Cenas do MixAI (E5): data/scenes/ (fora do Git). Comparar/carregar só no LABORATÓRIO.
+    const sceneStore = new SceneStore(join(dataDir, 'scenes'), app.controller.registry, deviceProfileOf(app.mixer.capabilities()), opts.clock);
     core.scenes = new ScenesService(
       app.controller,
-      new SceneStore(join(dataDir, 'scenes'), app.controller.registry, deviceProfileOf(app.mixer.capabilities()), opts.clock),
+      sceneStore,
       app.log,
       { mode, policy: () => core.policy, clock: opts.clock },
     );
@@ -105,9 +109,15 @@ export async function startServer(
       opts.log?.(`sem conexão com a mesa por enquanto: ${(err as Error).message}`);
     }
 
+    const references = mode === 'lab' && app.mixer.mode === 'lab' ? new ReferenceService(new ReferenceStore(join(dataDir, 'mix-reference-requests.json')), {
+      mode, serverId: core.serverId, snapshot: () => core.snapshotFor('operator'),
+      channels: () => names.inputs.list(), device: deviceProfileOf(app.mixer.capabilities()), scenes: sceneStore,
+      supports: key => app!.controller.registry.has(key as never), active: p => auth.isActive(p),
+    }, opts.referencePorts, opts.clock) : undefined;
+
     let boundPort = port;
     for (const host of hosts) {
-      const http = await buildHttp(core, { webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const http = await buildHttp(core, { references, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(http);
       await http.listen({ host, port: boundPort });
       const addr = http.server.address();
@@ -115,7 +125,7 @@ export async function startServer(
     }
     if (proxy) {
       if (proxy.port === boundPort) throw new Error('HTTPS LAB: porta do proxy deve diferir da porta HTTP local.');
-      const ingress = await buildHttp(core, { labProxyOrigin: proxy.origin, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const ingress = await buildHttp(core, { labProxyOrigin: proxy.origin, references, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(ingress);
       await ingress.listen({ host: '127.0.0.1', port: proxy.port });
       opts.log?.(`HTTPS LAB: entrada do proxy em 127.0.0.1:${proxy.port}; origem HTTPS privada esperada: ${proxy.origin}`);
