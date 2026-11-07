@@ -65,3 +65,13 @@ export function safeReference(url: string): string | null {
   try { const parsed = new URL(url); return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null; } catch { return null; }
 }
 export const excerpt = (value: string, length = 220) => value.length > length ? `${value.slice(0, length).trimEnd()}…` : value;
+
+/** Additive C choices can use the existing readonly transport, never an arbitrary action. */
+export function presentationChoices(value: unknown): Array<{ label: string; input: Record<string, unknown> }> {
+  const conversation = record(value);
+  if (conversation['schemaVersion'] !== 1 || typeof conversation['sessionId'] !== 'string' || !Array.isArray(conversation['choices'])) return [];
+  return conversation['choices'].flatMap(candidate => {
+    const choice = record(candidate), label = text(choice['label']), input = choice['input'];
+    return label && input && typeof input === 'object' && !Array.isArray(input) ? [{ label, input: input as Record<string, unknown> }] : [];
+  });
+}

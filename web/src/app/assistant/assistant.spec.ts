@@ -363,3 +363,16 @@ it('server unavailability is explained and cannot enqueue a chat request', async
  expect(el.querySelector('[data-testid="assist-hint"]')?.textContent).toContain('indisponível');
  expect(ws.last('assistant')).toBeUndefined();
 });
+
+
+it('compatible C choices use only the existing readonly consultation transport', async () => {
+ const {ws,el,say,settle}=await boot();
+ const req=await say('Consulta técnica');
+ ws.receive({type:'assistant_reply',requestId:req['requestId'],reply:{kind:'diagnosis',source:'local',text:'Payload integral',conversation:{schemaVersion:1,sessionId:'diagnostic-session',pendingQuestion:'Qual canal?',choices:[{label:'Voz Fred',input:{channel:3,symptom:'abafado',evidence:[]}}],proposal:{type:'set_master'}}}});
+ await settle();
+ expect(el.querySelector('.chat-question')?.textContent).toBe('Qual canal?');
+ (el.querySelector('.diagnostic-options button') as HTMLButtonElement).click();await settle();
+ expect(ws.last('assistant_diagnose')).toMatchObject({input:{channel:3,symptom:'abafado',evidence:[]}});
+ expect(ws.last('proposal_apply')).toBeUndefined();
+ expect(ws.sent.some(m=>(m['command'] as any)?.type==='set_master')).toBe(false);
+});
