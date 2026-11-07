@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "validation": "theory_not_tested_in_rehearsal",
+  "measurement": "unavailable",
+  "execution": "not_executable",
+  "cases": [
+    {
+      "id": "voz_abafada",
+      "title": "Voz abafada no retorno",
+      "investigation": [
+        "Confirmar canal/voz",
+        "Confirmar AUX1 compartilhado e se o problema ocorre também no PA",
+        "Comparar voz isolada e mix, microfone no eixo",
+        "Inspecionar EQ/HPF/dinâmica pelo operador"
+      ],
+      "hypotheses": [
+        "Posicionamento, proximidade, mascaramento, excesso de médios-graves ou cortes de presença"
+      ],
+      "safety": "Não recomendar aumento fixo de frequência; nenhum ajuste aplicado.",
+      "sources": [
+        "shure-live",
+        "yamaha-eq",
+        "soundcraft-ui16"
+      ]
+    },
+    {
+      "id": "voz_nasal",
+      "title": "Voz nasal",
+      "investigation": [
+        "Comparar timbre acústico e microfonado",
+        "Verificar distância/eixo, efeitos e EQ"
+      ],
+      "hypotheses": [
+        "Ressonâncias de médios ou técnica de captação"
+      ],
+      "safety": "Regiões numéricas são apenas referências teóricas.",
+      "sources": [
+        "shure-live",
+        "yamaha-eq",
+        "soundcraft-ui16"
+      ]
+    },
+    {
+      "id": "falta_clareza",
+      "title": "Falta de clareza vocal",
+      "investigation": [
+        "Verificar dicção, distância, vazamento e mascaramento",
+        "Comparar no mesmo trecho e volume confortável"
+      ],
+      "hypotheses": [
+        "Falta de ataque, EQ ou competição com instrumentos"
+      ],
+      "safety": "Não compensar tudo com boost.",
+      "sources": [
+        "shure-live",
+        "yamaha-eq",
+        "soundcraft-ui16"
+      ]
+    },
+    {
+      "id": "microfonia",
+      "title": "Microfonia",
+      "investigation": [
+        "Se ocorrer apito, reduzir nível com operador e interromper teste",
+        "Identificar PA ou AUX, microfone/caixa, geometria e monitores",
+        "Avaliar AFS2 na interface oficial apenas com operador"
+      ],
+      "hypotheses": [
+        "Realimentação acústica, posicionamento ou ganho"
+      ],
+      "safety": "NUNCA buscar frequência automaticamente nem fazer ring-out durante evento sem supervisão.",
+      "sources": [
+        "shure-live",
+        "yamaha-eq",
+        "soundcraft-ui16"
+      ]
+    },
+    {
+      "id": "grave_embolado",
+      "title": "Graves embolados",
+      "investigation": [
+        "Isolar surdo/tantã/violão e depois comparar juntos",
+        "Conferir ressonância/HPF e limites do PA"
+      ],
+      "hypotheses": [
+        "Mascaramento, ressonância, arranjo ou excesso de energia grave"
+      ],
+      "safety": "Preservar fundamental do surdo e baixarias do 7 cordas.",
+      "sources": [
+        "shure-live",
+        "yamaha-eq",
+        "soundcraft-ui16"
+      ]
+    },
+    {
+      "id": "som_estridente",
+      "title": "Som estridente",
+      "investigation": [
+        "Identificar fonte e destino",
+        "Conferir posição/captação antes de EQ",
+        "Comparar no mesmo trecho"
+      ],
+      "hypotheses": [
+        "Platinelas do pandeiro, ataque de cavaco ou médios-agudos excessivos"
+      ],
+      "safety": "Evitar cortes indiscriminados.",
+      "sources": [
+        "shure-live",
+        "yamaha-eq",
+        "soundcraft-ui16"
+      ]
+    }
+  ]
+}

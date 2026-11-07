@@ -225,6 +225,8 @@ export interface AssistantReply {
   clarification?: unknown;
   conversation?: unknown;
   diagnosticContext?: DiagnosticContext | null;
+  /** Fontes da base local (somente apresentação; validado por knowledgeView). */
+  knowledge?: unknown;
   kind: 'proposals' | 'clarify' | 'answer' | 'error' | 'diagnosis';
   references?: Array<{ title: string; url: string; locator: string }>;
   diagnosticOptions?: Array<{ label: string; input: Record<string, unknown> }>;

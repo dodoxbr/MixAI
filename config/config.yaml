@@ -103,6 +103,30 @@ safety:
   # Canal totalmente abaixado (-inf) é tratado como este valor em ajustes relativos
   relativeFloorDB: -60
 
+knowledge:
+  # Base de conhecimento técnica local (RAG): manuais, fichas de microfone, casos de diagnóstico.
+  # DESLIGADA por padrão. Para ligar nesta máquina, ponha "knowledge: {enabled: true}" no
+  # config/config.local.yaml (veja docs/lab/21-LOCAL-KNOWLEDGE-INFRASTRUCTURE.md).
+  # Só LEITURA de documentos: não acessa a mesa e não gera comandos. Serviços só em loopback.
+  enabled: false
+  # file = JSON em data/knowledge (sem Docker). postgres = PostgreSQL + pgvector (docker compose).
+  store: file
+  postgres:
+    host: 127.0.0.1
+    port: 5433
+    database: mixai
+    user: mixai          # a senha vai em MIXAI_PG_PASSWORD ou secrets.yaml (postgresPassword)
+  ollama:
+    url: http://127.0.0.1:11434
+    embedModel: nomic-embed-text
+    chatModel: llama3.2:3b
+    embedDimensions: 768
+    narrative: false     # true = redigir texto de apoio com o modelo local (nunca vira comando)
+    timeoutMs: 8000
+  inboxDir: knowledge/inbox   # relativa a data/
+  maxDocumentMB: 30
+  maxPassages: 4
+
 logs:
   # Pasta do log de ações (um arquivo .jsonl por dia). Relativa à pasta do projeto.
   dir: logs

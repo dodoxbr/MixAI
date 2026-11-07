@@ -29,7 +29,8 @@
     "test:https-lab": "vitest run --config vitest.proxy.config.ts",
     "speech:file": "node dist/speech-cli.js",
     "test:speech": "vitest run test/speech-command.test.ts test/speech-harness.test.ts",
-    "speech:demo": "tsx test/support/speech-demo.ts"
+    "speech:demo": "tsx test/support/speech-demo.ts",
+    "knowledge": "node dist/knowledge-cli.js"
   },
   "author": "",
   "license": "MIT",
@@ -38,13 +39,17 @@
     "@fastify/websocket": "^11.3.7",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "fastify": "^5.12.8",
+    "fflate": "0.8.3",
+    "pg": "8.23.1",
     "rxjs": "^7.8.2",
     "soundcraft-ui-connection": "7.1.0",
+    "unpdf": "2.1.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "@types/pg": "8.23.1",
     "@types/ws": "^8.18.2",
     "playwright": "^1.63.0",
     "tsx": "^4.23.15",

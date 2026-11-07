@@ -1631,3 +1631,114 @@ mx-root {
 }
 /* Keep the established command/proposal card dimensions and approval column usable. */
 .mx-assistant-panel .assist-item:not(.is-diagnostic) { padding:0; background:transparent; }
+
+/* ---------- base de conhecimento local (administração do operador) ---------- */
+.knowledge-admin {
+  margin: 12px 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.knowledge-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.knowledge-head h2,
+.knowledge-admin h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.knowledge-admin h3 {
+  margin-top: 14px;
+}
+.knowledge-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+.chip-state {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.chip-state.ok {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.chip-state.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.knowledge-note {
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.knowledge-warning {
+  margin: 6px 0;
+  color: var(--warn);
+}
+.knowledge-ok {
+  margin: 6px 0;
+  color: var(--ok);
+}
+.knowledge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.knowledge-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+.knowledge-table th,
+.knowledge-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.knowledge-table select,
+.knowledge-search input {
+  min-height: var(--tap);
+  padding: 0 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+.knowledge-search {
+  display: flex;
+  gap: 8px;
+}
+.knowledge-search input {
+  flex: 1;
+  min-width: 0;
+}
+.knowledge-passages,
+.knowledge-sources {
+  margin: 6px 0;
+  padding-left: 18px;
+  font-size: 0.92rem;
+}
+.knowledge-doc {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: 0.9rem;
+}
+.knowledge-block {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}

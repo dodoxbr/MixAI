@@ -7,6 +7,7 @@ import type { ActionLog } from '../core/log.js';
 import { paramKey } from '../core/revisions.js';
 import { auxBus, MASTER } from '../mixer/types.js';
 import type { Principal } from '../server/auth.js';
+import type { KnowledgeContext, LocalKnowledge } from '../knowledge/local/index.js';
 import { musicianHasPA } from '../server/policy.js';
 import type { ServerCore } from '../server/core.js';
 import type { ClarifyOption, ParseOutcome } from './intent.js';
@@ -19,6 +20,8 @@ export interface AssistantReply {
   diagnosticSession?: ConsultationReply['diagnosticSession'] | null;
   technicalDetails?: ConsultationReply['technicalDetails'];
   diagnosticContext?: DiagnosticContextView | null;
+  /** Referências, ficha do microfone e texto de apoio da base local. Só acrescenta; nunca é comando. */
+  knowledge?: KnowledgeContext;
   references?: ConsultationReply['references'];
   diagnosticOptions?: ConsultationReply['diagnosticOptions'];
   source: 'local' | 'ai' | 'feedback';
@@ -66,6 +69,7 @@ export class AssistantService {
       ttlMs: number;
       channels: NamedEntry[];
       ai?: ClaudeClient;
+      knowledge?: LocalKnowledge;
       log: ActionLog;
       clock?: () => number;
     },
@@ -102,7 +106,7 @@ export class AssistantService {
       const parsedStamp = contextStampSchema.optional().safeParse(stamp);
       if (!parsedStamp.success) return error('INVALID', 'Referência de esclarecimento inválida.');
       const technical = this.diagnosticContexts.handle(p.id, text, parsedStamp.data);
-      if (technical) return technical;
+      if (technical) return this.withKnowledge(p, technical, text);
     } else if (consultation || stamp !== undefined) {
       return error('FORBIDDEN', 'A consulta técnica é exclusiva do operador autenticado.');
     }
@@ -154,6 +158,21 @@ export class AssistantService {
     if (isExplicitMixRequest(parsed.data.text)) return error('INVALID', 'Este endpoint aceita somente consulta; envie comandos diretos pelo chat de comandos.');
     return this.diagnosticContexts.handle(p.id, parsed.data.text, parsed.data.context)
       ?? error('INVALID', 'Descreva uma queixa técnica ou responda a um esclarecimento pendente.');
+  }
+
+  /**
+   * Acrescenta o contexto da base local a uma resposta de diagnóstico do operador. Falha da base
+   * (ou ausência dela) devolve a resposta original: o motor determinístico continua sendo a resposta.
+   */
+  async withKnowledge(p: Principal, reply: AssistantReply, text: string): Promise<AssistantReply> {
+    const k = this.opts.knowledge;
+    if (!k || p.role !== 'operator' || reply.kind !== 'diagnosis' || !this.core.auth.isActive(p)) return reply;
+    const known = reply.diagnosticSession?.knownContext;
+    const knowledge = await k.enrich({
+      text, symptom: known?.symptom ?? undefined, instrument: known?.instrument ?? undefined,
+      channel: known?.channel ?? undefined, destination: known?.destination ?? undefined,
+    });
+    return this.core.auth.isActive(p) ? { ...reply, knowledge } : reply;
   }
 
   sweep(): void {
