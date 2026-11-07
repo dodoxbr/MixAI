@@ -6,8 +6,8 @@ import { parseRequest } from '../src/assistant/nl-parser.js';
 import { ChannelMap } from '../src/core/channels.js';
 import { parseChannels, PROJECT_ROOT } from '../src/core/config.js';
 
-// Nomes REAIS da banda (config/channels.yaml), como no dia a dia.
-const names = new ChannelMap(parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'config', 'channels.yaml'), 'utf8'))), { inputs: 12, aux: 6 }, { allowUnmapped: false });
+// Layout historico isolado para testes do parser; mapa REAL e testado em config.test.ts.
+const names = new ChannelMap(parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'test', 'fixtures', 'legacy-channels.yaml'), 'utf8'))), { inputs: 12, aux: 6 }, { allowUnmapped: false });
 const steps = { smallStepDB: 2, mediumStepDB: 3, largeStepDB: 5 };
 const op = (t: string) => parseRequest(t, { names, role: 'operator', steps });
 const mus = (t: string) => parseRequest(t, { names, role: 'musician', steps });
