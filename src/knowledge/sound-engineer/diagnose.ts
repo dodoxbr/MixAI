@@ -1,6 +1,8 @@
-import { diagnosticInputSchema, type Confidence, type Diagnosis } from './contracts.js';
+import { diagnosticConsultationSchema, diagnosticInputSchema, type Confidence, type Diagnosis } from './contracts.js';
 import { instruments } from './instruments.js';
 import { procedures } from './procedures.js';
+import { instrumentProfiles, interactions, voiceRole } from './band-context.js';
+import { citations, KNOWLEDGE_VERSION, modulesFor, technicalModules } from './technical-modules.js';
 
 /** Consulta pura, determinística e sem acesso a adaptador, rede, arquivos, áudio ou relógio. */
 export function diagnose(input: unknown): Diagnosis {
@@ -40,8 +42,40 @@ export function diagnose(input: unknown): Diagnosis {
       execution: 'not_executable' as const, requiresHumanReview: true as const, references: procedure.references,
     }] : []),
   ] : [];
-  return {
-    schemaVersion: 1, knowledgeVersion: '1.0.0', status: ready ? 'theoretical_guidance' : 'needs_context',
+  const role = context.instrument === 'vozes' ? voiceRole(context.channel, context.sourceLabel) : 'unknown';
+  const profiles = instrumentProfiles.filter(p => p.instrument === context.instrument &&
+    (context.instrument !== 'vozes' || role === 'unknown' || p.id === `voice-${role}`));
+  const involved = new Set([context.instrument, ...(context.relatedInstruments ?? [])]);
+  const related = interactions.filter(item => item.instruments.every(instrument => involved.has(instrument)));
+  const moduleIds = modulesFor(context.symptom);
+  const moduleRefs = moduleIds.flatMap(id => technicalModules[id].references);
+  const refs = citations([...procedure.references, ...moduleRefs, ...profiles.flatMap(p => p.references)]);
+  const consultation = diagnosticConsultationSchema.parse({
+    schemaVersion: 1, knowledgeVersion: KNOWLEDGE_VERSION,
+    diagnostic: { symptom: context.symptom, channel: context.channel ?? null, destination: context.destination ?? null,
+      voiceRole: role, roleBasis: role === 'unknown' ? 'unconfirmed' : 'configuration_label_match',
+      interactionIds: related.map(i => i.id), profileIds: profiles.map(p => p.id) },
+    evidence: {
+      musicianReports: context.evidence.filter(e => e.kind === 'operator_report'),
+      controlReadings: context.evidence.filter(e => e.kind === 'control_state').map(evidence => ({ evidence, verification: 'caller_declared_not_verified' })),
+      simulated: context.evidence.filter(e => e.kind === 'simulated_meter'),
+      unavailableMeasurements: ['audio', 'rta', 'spl', 'real_input_meter', 'gain_reduction'],
+    },
+    nextQuestions: questions.slice(0, 3),
+    recommendations: recommendations.map(r => ({ id: r.id, kind: r.kind, instruction: r.instruction,
+      moduleIds, knowledgeVersion: KNOWLEDGE_VERSION, validationStatus: 'theory', requiresApproval: true, execution: 'not_executable',
+      preconditions: r.preconditions, expectedObservation: r.expectedObservation, rollback: r.stopOrRevert,
+      evidenceIds: reports.map(e => e.id), hypothesisIds: r.hypothesisIds, references: citations([...r.references, ...moduleRefs]) })),
+    references: refs, proposal: null, requiresApproval: true, authorizedActions: [],
+    rollback: { automatic: false, instruction: context.symptom === 'microfonia'
+      ? 'Se apitar, interromper e chamar operador. Não restaurar automaticamente nem voltar a um estado inseguro.'
+      : 'Registrar antes/depois. Reversão somente manual pelo operador na UI oficial, se o estado anterior for seguro.' },
+    confidence,
+  });
+  return structuredClone({
+    consultation,
+    bandGuidance: [...profiles.map(p => `${p.role} Conferir: ${p.verify} Cuidado: ${p.avoid}`), ...related.map(i => i.guidance)],
+    schemaVersion: 1, knowledgeVersion: KNOWLEDGE_VERSION, status: ready ? 'theoretical_guidance' : 'needs_context',
     symptom: context.symptom, evidence: structuredClone(context.evidence), confidence, hypotheses, recommendations, questions,
     ...(context.instrument ? { instrumentGuide: instruments[context.instrument] } : {}),
     audioAnalysis: 'not_performed',
@@ -52,5 +86,5 @@ export function diagnose(input: unknown): Diagnosis {
       'Nenhuma recomendação é comando ou autorização; não há ajuste automático nem alteração de processamento.',
       'Guias de samba/pagode não foram validados em ensaio; firmware e resposta física da Ui16 da banda desconhecidos.',
     ],
-  };
+  });
 }
