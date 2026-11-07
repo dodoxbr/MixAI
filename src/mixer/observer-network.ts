@@ -21,13 +21,23 @@ $ErrorActionPreference = 'Stop'
 } | ConvertTo-Json -Depth 4 -Compress
 `.trim();
 
+/** Windows PowerShell 5.1 deve resolver seus próprios módulos nativos, não os módulos
+ * incompatíveis herdados de um terminal PowerShell 7. Só o ambiente do filho muda;
+ * ExecutionPolicy/GPO e todas as demais variáveis são preservadas.
+ */
+export function windowsRouteEnvironment(ip: string): NodeJS.ProcessEnv {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+    !['psmodulepath', 'mixai_f0_route_target'].includes(key.toLowerCase())));
+  return { ...env, MIXAI_F0_ROUTE_TARGET: ip };
+}
+
 /** Consulta local Windows, antes de CADA socket. Não executa conexão/probe ou arquivo. */
 export function queryWindowsObserverRoute(ip: string, transport: ObserverTransport, index: number): RouteDecision {
   if (process.platform !== 'win32' || !isObserverPrivateIP(ip) || !['wifi', 'ethernet'].includes(transport) || !Number.isSafeInteger(index) || index < 1 || index > 0xffffffff) throw new Error('F0D_WINDOWS_ROUTE_CHECK_REQUIRED');
   try {
     const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', WINDOWS_ROUTE_QUERY],
       { encoding: 'utf8', timeout: 15_000, maxBuffer: 262_144, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, MIXAI_F0_ROUTE_TARGET: ip } });
+        env: windowsRouteEnvironment(ip) });
     if (result.error || result.status !== 0 || result.signal || result.stderr.trim()) throw new Error();
     return evaluateObserverRoute(JSON.parse(result.stdout.replace(/^\uFEFF/, '')), ip, transport, index);
   } catch { throw new Error('F0D_ROUTE_PREFLIGHT_FAILED'); } // nunca ecoa stderr, endereços ou caminhos

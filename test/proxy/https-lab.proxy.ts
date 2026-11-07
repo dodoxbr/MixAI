@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 import WebSocket from 'ws';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { diagnosticsContainSecret } from '../support/log-secrets.js';
 import { silentWav } from '../support/speech-fixtures.js';
 import { MUSICIAN_PIN, OPERATOR_PIN, startTestServer, wsClient } from '../server-support.js';
 
@@ -126,7 +127,7 @@ it('keeps PIN, bearer, role policy and logout intact through HTTPS/WSS', async (
   await http('/api/logout', { token, body: {} });
   expect(await client.closed).toBe(4401);
   expect((await http('/api/state', { token })).status).toBe(401);
-  for (const secret of [MUSICIAN_PIN, token]) expect(diagnostics).not.toContain(secret);
+  expect(diagnosticsContainSecret(diagnostics, [MUSICIAN_PIN, token])).toBe(false);
 });
 
 it('refuses MCP token on the proxy ingress even with forged loopback headers', async () => {
@@ -135,7 +136,7 @@ it('refuses MCP token on the proxy ingress even with forged loopback headers', a
   expect((await http('/api/state', { token, headers: { 'x-forwarded-for': '127.0.0.1' } })).status).toBe(401);
   const client = await socket(token);
   expect(await client.closed).toBe(4401);
-  expect(diagnostics).not.toContain(token);
+  expect(diagnosticsContainSecret(diagnostics, [token])).toBe(false);
 });
 
 it('rejects foreign/null origins and unauthenticated WSS sessions', async () => {
@@ -227,5 +228,5 @@ it('transports bounded PCM through verified TLS only for the LAB operator, witho
   expect(result.headers['cache-control']).toBe('no-store');
   expect((await http('/api/speech/transcribe', { token, body: silentWav(), headers: { origin, 'x-ptt-ticket': ticket } })).status).toBe(409);
   expect(t!.controller.state.snapshot()).toEqual(before);
-  expect(diagnostics).not.toContain('Prévia simulada'); expect(diagnostics).not.toContain(ticket);
+  expect(diagnosticsContainSecret(diagnostics, ['Prévia simulada', ticket])).toBe(false);
 });

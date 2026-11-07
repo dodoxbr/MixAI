@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { WINDOWS_ROUTE_QUERY } from '../src/mixer/observer-network.js';
+import { WINDOWS_ROUTE_QUERY, windowsRouteEnvironment } from '../src/mixer/observer-network.js';
 import { evaluateObserverRoute, WindowsRouteSnapshotSchema } from '../src/mixer/observer-route.js';
 
 // Somente nesta fixture: shadow dos cinco cmdlets. Não consulta a rede do runner.
@@ -39,7 +39,7 @@ function Find-NetRoute { param($RemoteIPAddress)
 it.skipIf(process.platform !== 'win32')('Restricted bloqueia .ps1, mas permite a consulta fixa com fixtures sem mudar política da máquina', () => {
   const dir = mkdtempSync(join(tmpdir(), 'mixai-f0e-policy-'));
   // Restrição apenas no ambiente dos filhos de teste. Nunca Set-ExecutionPolicy/registro/GPO.
-  const env = { ...process.env, PSExecutionPolicyPreference: 'Restricted' };
+  const env = { ...windowsRouteEnvironment('10.10.1.1'), PSExecutionPolicyPreference: 'Restricted' };
   const run = (args: string[], extra: Record<string, string> = {}) => spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', ...args], {
     encoding: 'utf8', timeout: 15000, maxBuffer: 262144, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...env, ...extra },
   });

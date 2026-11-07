@@ -13,6 +13,8 @@ function output(value: unknown, status = 0, stderr = '') {
 }
 it('consulta fixa isolada: não executa arquivo, código de entrada, shell ou alteração de política', () => inWindows(() => {
   vi.stubEnv('PSExecutionPolicyPreference', 'Restricted');
+  vi.stubEnv('PSModulePath', 'C:\\fixture\\PowerShell7\\Modules');
+  vi.stubEnv('psmodulepath', 'C:\\fixture\\other');
   output(routeFixture());
   expect(confirmWindowsObserverRoute('/fixture', '10.10.1.1', 'wifi', 8)).toBe(true);
   const [command, args, opts] = vi.mocked(spawnSync).mock.calls[0]!;
@@ -21,6 +23,7 @@ it('consulta fixa isolada: não executa arquivo, código de entrada, shell ou al
   expect(args!.join(' ')).not.toMatch(/ExecutionPolicy|Bypass|Unblock-File|EncodedCommand|Invoke-Expression|\.ps1|10\.10\.1\.1|Set-|New-|Remove-/i);
   expect(opts).toMatchObject({ timeout: 15000, maxBuffer: 262144, stdio: ['ignore', 'pipe', 'pipe'], env: { MIXAI_F0_ROUTE_TARGET: '10.10.1.1', PSExecutionPolicyPreference: 'Restricted' } });
   expect(opts).not.toHaveProperty('shell');
+  expect(Object.keys(opts!.env!).some(k => k.toLowerCase() === 'psmodulepath')).toBe(false);
   expect(process.env.PSExecutionPolicyPreference).toBe('Restricted');
   const other = routeFixture(); other.selected = [{ InterfaceIndex: 9 }]; output(other);
   expect(confirmWindowsObserverRoute('/other', '192.168.50.10', 'ethernet', 9)).toBe(true);

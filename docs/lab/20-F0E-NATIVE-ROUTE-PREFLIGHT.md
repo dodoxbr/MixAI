@@ -33,6 +33,12 @@ consulta: **nesse caso recusar e parar**, sem tentar outro mecanismo, interface 
 Não usar bypass, EncodedCommand, Set-ExecutionPolicy, Unblock-File, registro, elevação,
 ponte/ICS, mudanças de firewall/DNS/certificados ou opção de ignorar a verificação.
 
+O filho Windows PowerShell recompõe seu `PSModulePath` padrão em vez de herdar módulos
+incompatíveis de um terminal PowerShell 7. A CI expôs falha de carregamento do módulo
+Security com TypeData duplicado. Isso afeta somente descoberta de módulos no filho;
+ExecutionPolicy, GPO e o ambiente do terminal permanecem intactos. Não muda de engine,
+não importa módulos à força em produção e não tenta um fallback permissivo.
+
 ## Verificações preservadas
 
 - IP privado/link-local IPv4 explícito; índice positivo; transporte Ethernet ou Wi-Fi.
@@ -113,3 +119,19 @@ Se ele for bloqueado, registrar a limitação e não alterar a política para ex
 do adaptador/driver real, Wi-Fi/Ethernet/tether, firmware, equivalência de faders/MUTE e
 recuperação física. Fixtures e CI não comprovam funcionamento da Ui16. Nenhuma conexão,
 comando REAL ou alteração de rede foi executada para produzir esta entrega.
+
+## Ajustes solicitados na revisão do PR #42
+
+A comprovação de Restricted continua obrigatória: política efetiva, bloqueio real do
+arquivo fictício e sucesso do coletor fixo com fixtures. Não foi ignorada ou relaxada.
+O teste usa o mesmo ambiente isolado de módulos que o lançador de produção.
+
+O teste HTTPS/Caddy tinha um falso positivo: procurava o PIN fictício como substring
+até em timestamps numéricos. O verificador de testes agora analisa JSONL recursivamente:
+examina strings e chaves, detecta PIN numérico exato e trata apenas `ts` numérico na raiz
+como timestamp. Outros números não são comparados por substring; métricas não são
+segredos textuais. Texto livre ou JSON inválido conserva a busca bruta. Testes positivos
+cobrem PIN em body/string/número/URL, bearer em headers, texto malformado e strings JSON
+escapadas. O teste de proxy continua exigindo ausência de PIN/token/transcrição; retorna
+booleano para não despejar os próprios diagnósticos num eventual erro. Nenhuma mudança
+no Caddy, TLS, autenticação ou código de produção do servidor foi necessária.
