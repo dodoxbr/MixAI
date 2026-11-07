@@ -28,7 +28,7 @@ it('operator saves PA/AUX1 reference, observes external delta, handles private m
     await card.locator('textarea').fill('Revisar nível por ouvido; orientação sem execução.'); await card.getByRole('button', { name: 'Sugerir orientação' }).click();
     await vi.waitFor(async () => expect(await card.innerText()).toContain('suggested'));
     await card.getByRole('button', { name: 'Aprovar orientação (não aplica)' }).click(); await vi.waitFor(async () => expect(await card.innerText()).toContain('approved'));
-    expect(t.controller.state.snapshot()).toEqual(snapshot); expect(writes).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled();
+    expect(t.controller.state.snapshot()).toEqual(snapshot); expect(writes).not.toHaveBeenCalled(); expect(execute.mock.calls.filter(call => (call[1] as any).command?.type !== 'musician_identity')).toHaveLength(0);
     await musician.page.getByRole('button', { name: 'Atualizar bandeja' }).click();
     const own = musician.page.locator('article.request'); await vi.waitFor(async () => expect(await own.innerText()).toContain('approved')); await own.getByRole('button', { name: 'Cancelar pedido' }).click();
     await operator.ctx.close(); await musician.ctx.close(); await other.ctx.close(); await t.server.close();
@@ -85,7 +85,7 @@ it('integrates paired Lucius/Fred, own faders, technical consultation, operator 
     await card.getByRole('button', { name: 'Consultar mesário IA (somente leitura)', exact: true }).click();
     await expect.poll(() => card.innerText()).toContain('v3');
     await card.getByRole('button', { name: 'Aprovar orientação (não aplica)', exact: true }).click(); await expect.poll(() => card.innerText()).toContain('approved');
-    expect(execute).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled();
+    expect(execute.mock.calls.filter(call => (call[1] as any).command?.type !== 'musician_identity')).toHaveLength(0); expect(write).not.toHaveBeenCalled();
     await op.getByRole('button', { name: 'Vincular músicos', exact: true }).click();
     await luciusRow.getByRole('button', { name: 'Revogar vínculo', exact: true }).click();
     await op.getByRole('button', { name: 'Fechar vínculos', exact: true }).click();

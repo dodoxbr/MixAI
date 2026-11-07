@@ -125,7 +125,7 @@ export function consult(input: ConsultationInput, names: ChannelMap, fonesAux: n
   }) : undefined;
   const lines = [
     'Consulta técnica — somente leitura, offline.',
-    'Não ouvi o som. Esta orientação usa conhecimento técnico e relatos do operador; não é medição real.',
+    'Não ouvi o som. Esta orientação usa conhecimento técnico e relatos humanos com origem indicada; não é medição real.',
     `Fonte: ${context.channel ? `${names.inputs.nameOf(context.channel)} (canal ${context.channel})` : 'a confirmar'}. Destino: ${context.destination === 'pa' ? 'PA' : context.destination === 'fones' ? 'FONES — AUX 1 compartilhado: todos ouvem a mesma mix' : 'a confirmar'}.`,
     ...missing,
   ];
@@ -139,7 +139,7 @@ export function consult(input: ConsultationInput, names: ChannelMap, fonesAux: n
     lines.push('Medição indisponível: áudio, RTA/espectro, SPL, VU real e redução de ganho. Medidor LAB é simulado.');
     lines.push(`Confiança ${confidence}: ${diagnosis.confidence.rationale}`, 'Hipóteses alternativas (não confirmadas):');
     for (const h of diagnosis.hypotheses) {
-      lines.push(`• ${h.explanation} Base: ${h.supportingEvidenceIds.length ? 'relato do operador' : 'sem relato compatível'}.`);
+      lines.push(`• ${h.explanation} Base: ${h.supportingEvidenceIds.length ? diagnosis.confidence.basis === 'musician_report_only' ? 'relato do músico não verificado' : 'relato do operador' : 'sem relato compatível'}.`);
       refs.push(...h.references);
     }
     lines.push('Perguntas para investigar:', ...diagnosis.consultation.nextQuestions.map(q => `• ${q}`));
