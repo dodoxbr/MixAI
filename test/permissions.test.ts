@@ -14,7 +14,7 @@ import { MUSICIAN_PIN, OPERATOR_PIN, startTestServer, wsClient } from './server-
  *   mute de um canal por vez; nunca master, cenas, aprovações, desfazer ou arraste no PA.
  * Tudo conferido no SERVIDOR, inclusive contra mensagens WebSocket forjadas.
  */
-const band = () => parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'config', 'channels.yaml'), 'utf8')));
+const band = () => parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'test', 'fixtures', 'legacy-channels.yaml'), 'utf8')));
 type T = Awaited<ReturnType<typeof startTestServer>>;
 const running: T[] = [];
 const clients: Array<{ close: () => void }> = [];

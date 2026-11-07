@@ -12,8 +12,11 @@ export const YOGA = { viewport: { width: 1536, height: 960 }, hasTouch: true, de
 /** Celular típico em retrato. */
 export const PHONE = devices['Pixel 7'];
 
-/** Nomes reais da banda (config/channels.yaml), para as capturas de tela. */
-export const bandChannels = () => parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'config', 'channels.yaml'), 'utf8')));
+/** Layout fixo de referência para testes e screenshots históricos, NÃO mapa físico atual. */
+export const bandChannels = () => parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'test', 'fixtures', 'legacy-channels.yaml'), 'utf8')));
+
+/** Cadastro físico da Ui16 do operador (assertado por test/config.test.ts). */
+export const physicalBandChannels = () => parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'config', 'channels.yaml'), 'utf8')));
 
 export async function launch(): Promise<Browser> {
   return chromium.launch();

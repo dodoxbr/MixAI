@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const t of servers.splice(0)) await t.server.close();
 });
 async function start(opts: Parameters<typeof startTestServer>[0] = {}) {
-  const t = await startTestServer({ mode: 'mock', channels: parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'config/channels.yaml'), 'utf8'))), ...opts });
+  const t = await startTestServer({ mode: 'mock', channels: parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'test/fixtures/legacy-channels.yaml'), 'utf8'))), ...opts });
   servers.push(t); return t;
 }
 const endpoint = '/api/assistant/conversation';

@@ -1,0 +1,57 @@
+# Legacy layout fixture, NOT the current physical Soundcraft Ui16 mapping.
+# Keep these numbers stable for historical parser/permissions/scenes/race
+# regression tests. New physical mapping is asserted separately in config.test.ts.
+# Never use as live configuration, never deploy.
+
+# Nomes da banda para os canais e retornos.
+# Edite à vontade: depois de salvar, reinicie o Claude Desktop para o MixAI ler de novo.
+# Acentos, maiúsculas e espaços são ignorados ("Violão" = "violao" = "VIOLAO").
+#
+# Ligação proposta na Ui16 (12 entradas):
+#   - Cavaco e violão nas entradas combo (aceitam P10). Se o captador for passivo,
+#     use as entradas marcadas como Hi-Z no painel e troque os números aqui.
+#   - Vozes e percussão em microfone (XLR).
+#   - Canal 10 do Laviquinho (quando ele aparece); 11 reserva para convidado; 12 livre.
+
+channels:
+  - number: 1
+    name: Cavaco
+    aliases: [cavaco, cavaquinho, cava]
+  - number: 2
+    name: Violão
+    aliases: [violão, violao, viola, 7 cordas]
+  - number: 3
+    name: Voz Fred
+    aliases: [fred, voz do fred, voz fred]
+  - number: 4
+    name: Voz Lucius
+    aliases: [lucius, voz do lucius, voz lucius]
+  - number: 5
+    name: Voz Leandro
+    aliases: [leandro, voz do leandro, voz leandro]
+  - number: 6
+    name: Voz Fernando
+    aliases: [fernando, voz do fernando, voz fernando]
+  - number: 7
+    name: Pandeiro
+    aliases: [pandeiro, pandeirista]
+  - number: 8
+    name: Tantã
+    aliases: [tantã, tanta, tantan, tan tan]
+  - number: 9
+    name: Surdo
+    aliases: [surdo, surdão, surdao]
+  - number: 10
+    name: Laviquinho
+    aliases: [laviquinho, lavi, voz do laviquinho, mic do laviquinho]
+  - number: 11
+    name: Reserva
+    aliases: [reserva, convidado]
+
+# Retornos. Formato roda de samba: todo mundo no fone, pelo amplificador de fones (HA800),
+# que recebe uma mix só. Ligue a saída AUX 1 da Ui16 na entrada do amplificador.
+# Quando tiverem mais amplificadores de fone, acrescente o AUX 2, 3 e 4 aqui.
+aux:
+  - number: 1
+    name: Fones
+    aliases: [fone, fones, retorno, retorno da roda, monitor, headphone, ponto]
