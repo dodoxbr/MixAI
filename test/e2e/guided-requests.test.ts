@@ -1,0 +1,48 @@
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import type { Browser } from 'playwright';
+import { launch, enter, startLab, OPERATOR_PIN, MUSICIAN_PIN, physicalBandChannels, YOGA } from './harness.js';
+let browser: Browser;
+beforeAll(async()=>{browser=await launch();}); afterAll(async()=>{await browser.close();});
+it('Fernando reviews a CH6 AUX1 diagnosis, explicitly sends, receives clarification and operator closure without mixer writes',async()=>{
+ const t=await startLab({channels:physicalBandChannels()});
+ try {
+  const {page:op}=await enter(browser,t.base,OPERATOR_PIN,YOGA);
+  const {page:mus}=await enter(browser,t.base,MUSICIAN_PIN,YOGA,undefined,false);
+  const opToken=(await op.evaluate(()=>sessionStorage.getItem('mixai.token')))!;
+  const token=(await mus.evaluate(()=>sessionStorage.getItem('mixai.token')))!;
+  const identity=(await t.command(token,{type:'musician_identity'})).json.result.data;
+  await t.command(opToken,{type:'musician_bind',sessionId:identity.sessionId,musicianId:'fernando',name:'Fernando',channels:[6],mute:true});
+  const writes=vi.spyOn(t.mixer,'write');
+  await mus.getByRole('button',{name:'Solicitar ao operador',exact:true}).click();
+  await mus.getByText('Atendimento guiado — revisar antes de enviar',{exact:true}).click();
+  await mus.getByLabel('Relato para atendimento',{exact:true}).fill('Minha voz está abafada no retorno');
+  await mus.getByLabel('Sintoma informado',{exact:true}).fill('Voz abafada');
+  await mus.getByLabel('Fonte confirmada',{exact:true}).selectOption('6');
+  await mus.getByLabel('Destino confirmado',{exact:true}).selectOption('AUX1');
+  await mus.getByLabel('Verificações relatadas',{exact:true}).fill('Conferi o encaixe do fone');
+  await mus.getByRole('checkbox',{name:'Confirmo fonte e destino'}).check();
+  await mus.getByRole('button',{name:'Consultar antes de enviar',exact:true}).click();
+  await mus.getByText(/Relato revisado:/).waitFor();
+  expect(await mus.locator('mx-guided-request').innerText()).toContain('não confirmado pelo operador');
+  expect(await mus.getByRole('button',{name:'Enviar pedido ao mesário',exact:true}).isDisabled()).toBe(true);
+  await mus.getByRole('checkbox',{name:'Revisei a orientação'}).check();
+  await mus.getByRole('button',{name:'Enviar pedido ao mesário',exact:true}).click();
+  await op.getByRole('button',{name:'Referência e pedidos',exact:true}).click();
+  await op.getByRole('button',{name:'Atualizar bandeja',exact:true}).click();
+  const card=op.locator('article.request').filter({hasText:'Minha voz está abafada'}); await card.waitFor();
+  await card.getByText('Contexto do atendimento — Voz abafada',{exact:true}).click();
+  expect(await card.innerText()).toContain('Conferi o encaixe do fone'); expect(await card.innerText()).toContain('CH6');
+  expect(await card.getByRole('button',{name:'Comparar atendimento (somente leitura)',exact:true}).isDisabled()).toBe(true);
+  await card.locator('textarea').fill('O encaixe foi conferido nos dois lados?');
+  await card.getByRole('button',{name:'Pedir informação',exact:true}).click();
+  await mus.getByRole('button',{name:'Atualizar bandeja',exact:true}).click();
+  const own=mus.locator('article.request'); await expect.poll(()=>own.innerText()).toContain('needs_information');
+  await own.locator('textarea').fill('Sim, conferido nos dois lados'); await own.getByRole('button',{name:'Complementar relato',exact:true}).click();
+  await op.getByRole('button',{name:'Atualizar bandeja',exact:true}).click();
+  await expect.poll(()=>card.innerText()).toContain('received');
+  await card.locator('textarea').fill('Atendimento encerrado com orientação, sem aplicar ajustes.');
+  await card.getByRole('button',{name:'Encerrar atendimento (não aplica)',exact:true}).click();
+  await mus.getByRole('checkbox',{name:'Mostrar encerrados'}).check(); await mus.getByRole('button',{name:'Atualizar bandeja',exact:true}).click();
+  await expect.poll(()=>own.innerText()).toContain('closed'); expect(writes).not.toHaveBeenCalled();
+ } finally {for(const ctx of browser.contexts())await ctx.close(); await t.server.close();}
+},60000);

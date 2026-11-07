@@ -5,6 +5,6 @@ export interface MusicianIdentityPort {
 }
 /** #48 supplies advice only. This contract has no command, controller, queue or apply capability. */
 export interface ReferenceRecommendationPort {
-  recommend(input: { report: string; channel?: number; destination: 'PA' | 'AUX1'; stateRevision: number }): Promise<{ text: string; source: 'diagnosis'; references?: string[]; status?: 'needs_context' | 'theoretical_guidance' }>;
+  recommend(input: { report: string; channel?: number; destination: 'PA' | 'AUX1'; stateRevision: number; guidanceContext?: { sessionId: string; symptom: string; checksPerformed: string[]; evidenceLevel: 'human_report_unverified' } }): Promise<{ text: string; source: 'diagnosis'; references?: string[]; status?: 'needs_context' | 'theoretical_guidance' }>;
 }
 export interface ReferencePorts { identity?: MusicianIdentityPort; recommendations?: ReferenceRecommendationPort }

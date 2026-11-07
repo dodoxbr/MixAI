@@ -4,7 +4,8 @@ import { SessionService } from '../core/session.service';
 import { newId } from '../core/protocol';
 export interface History { version: number; at: string; action: string; role: string; note?: string }
 export interface Reference { id: string; eventId: string; eventName: string; eventDate: string; version: number; scope: 'PA' | 'AUX1'; operatorApprovedAt: string; validationStatus: string }
-export interface Help { id: string; version: number; type: string; report: string; channel?: number; destination: string; createdAt: string; expiresAt: string; state: string; response?: string; recommendation?: { source: string; text: string; references?: string[]; status?: string }; requestedBy: { sourceSessionId: string; verified: boolean; displayName?: string }; historyCount: number }
+export interface GuidedPreview { id: string; report: string; context: { sourceChannel: number; destination: string; symptom: string; checksPerformed: string[]; evidenceLevel: string; diagnosis: { text: string; status?: string }; observed: { available: boolean; stateRevision: number }; referenceId?: string } }
+export interface Help { guidedContext?: GuidedPreview['context']; id: string; version: number; type: string; report: string; channel?: number; destination: string; createdAt: string; expiresAt: string; state: string; response?: string; recommendation?: { source: string; text: string; references?: string[]; status?: string }; requestedBy: { sourceSessionId: string; verified: boolean; displayName?: string }; historyCount: number }
 export interface Workspace { revision: number; serverId: string; references: Reference[]; requests: Help[]; channels: { number: number; name: string }[]; integrations: { identity: boolean; recommendations: boolean }; identity: { verified: boolean; displayName?: string } }
 export interface Compare { referenceId: string; reference: { channels: { number: number; name: string }[]; history: History[] }; rows: { key: string; reference: { status: string; value?: number | boolean | '-inf' } }[] }
 function validWorkspace(data: any): data is Workspace {
@@ -18,6 +19,7 @@ const errors: Record<string, string> = { INVALID: 'Dados inválidos. Confira cam
 @Injectable({ providedIn: 'root' })
 export class ReferenceUiService {
   private live = inject(LiveService); private session = inject(SessionService);
+  readonly preview = signal<GuidedPreview | null>(null);
   readonly open = signal(false); readonly data = signal<Workspace | null>(null); readonly compared = signal<Compare | null>(null);
   readonly error = signal(''); readonly busy = signal(false); readonly history = signal<Record<string, History[]>>({});
   readonly selected = signal('');
@@ -26,7 +28,7 @@ export class ReferenceUiService {
     effect(onCleanup => {
       const key = this.session.token(); const hello = this.live.hello(); const connection = this.live.connection();
       this.generation++; this.pending.forEach(p => p.abort()); this.pending.clear(); this.loading = false;
-      this.data.set(null); this.compared.set(null); this.history.set({}); this.selected.set(''); this.error.set(''); this.busy.set(false);
+      this.preview.set(null); this.data.set(null); this.compared.set(null); this.history.set({}); this.selected.set(''); this.error.set(''); this.busy.set(false);
       if (!key || hello?.mode !== 'lab' || !['operator', 'musician'].includes(hello?.role ?? '') || connection !== 'online') return;
       void this.refresh(); const timer = setInterval(() => { if (!this.busy()) void this.refresh(); }, 3000);
       onCleanup(() => { clearInterval(timer); this.pending.forEach(p => p.abort()); });
@@ -66,6 +68,16 @@ export class ReferenceUiService {
     const result = await this.mutation('/api/mix-references', { ...input, expectedStateRevision: this.live.state()?.revision });
     if (result) await this.compare(result.id);
     return result;
+  }
+  async prepareGuided(input: { report: string; sourceChannel: number; destination: string; symptom: string; checksPerformed: string[]; targetConfirmed: boolean }) {
+    this.preview.set(null); const result = await this.mutation('/api/mix-requests/preview', input);
+    if (result?.id && result?.context?.diagnosis && result?.context?.observed) this.preview.set(result);
+  }
+  async sendGuided() {
+    const preview = this.preview(); if (!preview) return;
+    const result = await this.mutation('/api/mix-requests', { guidedId: preview.id, reviewed: true, requestId: preview.id, type: 'diagnostico',
+      channel: preview.context.sourceChannel, destination: preview.context.destination, report: preview.report });
+    if (result) this.preview.set(null); return result;
   }
   async send(input: { type: string; report: string; channel?: number; destination: string }) {
     return this.mutation('/api/mix-requests', { ...input, requestId: newId('pedido') });

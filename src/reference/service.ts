@@ -1,3 +1,4 @@
+import { GuidedInput, type GuidedPreview } from './guided.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { SceneStore } from '../core/scene-store.js';
 import type { DeviceProfile } from '../core/scene.js';
@@ -8,8 +9,37 @@ import type { Principal } from '../server/auth.js';
 import type { ReferencePorts } from './contracts.js';
 import { ReferenceStore } from './store.js';
 import { CaptureInput, DecisionInput, RequestInput, RevisionInput, ReplyInput, RequestSchema, ReferenceError, type Document, type HelpRequest, type Reference } from './schema.js';
-const terminal = new Set(['rejected', 'failed', 'cancelled', 'expired', 'applied']);
+const terminal = new Set(['rejected', 'failed', 'cancelled', 'expired', 'applied', 'closed']);
 export class ReferenceService {
+  private previews = new Map<string, { preview: GuidedPreview; owner: Principal; binding: ReturnType<ReferenceService['identity']> }>();
+  async preview(p: Principal, raw: unknown): Promise<GuidedPreview> {
+    this.guard(p); const input = this.parse(GuidedInput, raw); const identity = this.identity(p);
+    if (!this.read.channels().some(c => c.number === input.sourceChannel)) throw new ReferenceError('INVALID');
+    if (p.role === 'musician' && identity.verified && !identity.boundChannels?.includes(input.sourceChannel)) throw new ReferenceError('FORBIDDEN');
+    if (!this.ports.recommendations) throw new ReferenceError('DEPENDENCY_UNAVAILABLE');
+    for (const [id, entry] of this.previews) if (Date.parse(entry.preview.expiresAt) <= this.clock() || !this.read.active(entry.owner)) this.previews.delete(id);
+    if (this.previews.size >= 100) throw new ReferenceError('CAPACITY');
+    const document = this.document();
+    if (input.referenceId && !document.references.some(r => r.id === input.referenceId && r.scope === input.destination && r.channels.some(c => c.number === input.sourceChannel))) throw new ReferenceError('INVALID');
+    const snapshot = this.snapshot();
+    const result = await this.ports.recommendations.recommend({ report: input.report, channel: input.sourceChannel, destination: input.destination, stateRevision: snapshot.revision, guidanceContext: { sessionId: p.id, symptom: input.symptom, checksPerformed: input.checksPerformed, evidenceLevel: 'human_report_unverified' } });
+    const advice = RequestSchema.shape.recommendation.unwrap().safeParse(result);
+    if (!advice.success || advice.data.source !== 'diagnosis') throw new ReferenceError('INVALID');
+    this.guard(p);
+    if (JSON.stringify(identity) !== JSON.stringify(this.identity(p))) throw new ReferenceError('STALE_STATE');
+    const keys = input.destination === 'PA' ? [`ch.${input.sourceChannel}.main.level`, `ch.${input.sourceChannel}.main.mute`] : [`ch.${input.sourceChannel}.aux.1.level`, `ch.${input.sourceChannel}.aux.1.mute`];
+    const values: Reference['observations'] = {};
+    for (const key of keys) { const entry = snapshot.params[key]; values[key] = { ...(!snapshot.available ? { status: 'unavailable' as const } : !this.read.supports(key) ? { status: 'unsupported' as const } : entry?.value ?? { status: 'unknown' }), revision: entry?.revision ?? 0 }; }
+    const preview: GuidedPreview = { id: randomUUID(), report: input.report, expiresAt: new Date(this.clock() + 600000).toISOString(), context: {
+      schemaVersion: 1, sessionId: p.id, sourceChannel: input.sourceChannel, destination: input.destination, symptom: input.symptom,
+      checksPerformed: input.checksPerformed, evidenceLevel: 'human_report_unverified', diagnosis: { text: advice.data.text, status: advice.data.status, references: advice.data.references },
+      observed: { serverId: this.read.serverId, stateRevision: snapshot.revision, available: snapshot.available, values },
+      ...(input.referenceId ? { referenceId: input.referenceId } : {}), rollback: 'informative_only_no_automatic_restore',
+    } };
+    if (this.previews.size >= 100) throw new ReferenceError('CAPACITY');
+    this.previews.set(preview.id, { preview, owner: p, binding: identity }); return preview;
+  }
+
   constructor(private store: ReferenceStore, private read: {
     mode: string; serverId: string; snapshot(): WireSnapshot; channels(): { number: number; name: string }[];
     device: DeviceProfile; scenes: SceneStore; supports(key: string): boolean; active(p: Principal): boolean;
@@ -61,6 +91,7 @@ export class ReferenceService {
   private owns(p: Principal, request: HelpRequest): boolean {
     if (p.role === 'operator') return true;
     const linked = this.identity(p);
+    if (request.guidedContext && request.requestedBy.sourceSessionId !== p.id) return false;
     return request.requestedBy.verified
       ? !!(linked.verified && linked.musicianId === request.requestedBy.musicianId)
       : request.requestedBy.sourceSessionId === p.id;
@@ -75,7 +106,7 @@ export class ReferenceService {
   view(p: Principal) {
     this.guard(p); const document = this.document();
     const requests = document.requests.filter(r => this.owns(p, r)).map(({ fingerprint: _, requestId: __, history, ...r }) => ({ ...r, historyCount: history.length }));
-    return { serverId: this.read.serverId, revision: document.revision,
+    return { requestCapabilities: { guidedPreviewVersion: 1, closure: true }, serverId: this.read.serverId, revision: document.revision,
       references: p.role === 'operator' ? document.references.map(({ scene, observations, history, ...r }) => ({ ...r, sceneId: scene.id, observedCount: Object.keys(observations).length, historyCount: history.length })) : [],
       requests, channels: this.read.channels(), integrations: { identity: !!this.ports.identity, recommendations: !!this.ports.recommendations }, identity: this.identity(p), sharedAux: 1 };
   }
@@ -134,11 +165,22 @@ export class ReferenceService {
     const fingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     const duplicate = document.requests.find(r => r.requestedBy.sourceSessionId === p.id && r.requestId === input.requestId);
     if (duplicate) { if (!this.owns(p, duplicate)) throw new ReferenceError('NOT_FOUND'); if (duplicate.fingerprint !== fingerprint) throw new ReferenceError('CONFLICT'); return duplicate; }
+    let guidedContext: GuidedPreview['context'] | undefined;
+    if (input.guidedId) {
+      if (document.requests.some(r => r.guidedId === input.guidedId)) throw new ReferenceError('CONFLICT');
+      const entry = this.previews.get(input.guidedId);
+      if (!entry || entry.owner.id !== p.id || Date.parse(entry.preview.expiresAt) <= this.clock()) throw new ReferenceError('NOT_FOUND');
+      const preview = entry.preview;
+      if (!input.reviewed || input.channel !== preview.context.sourceChannel || input.destination !== preview.context.destination || input.report !== preview.report || input.type !== 'diagnostico') throw new ReferenceError('INVALID');
+      if (JSON.stringify(identity) !== JSON.stringify(entry.binding)) throw new ReferenceError('STALE_STATE');
+      if (preview.context.observed.stateRevision !== this.snapshot().revision) throw new ReferenceError('STALE_STATE');
+      guidedContext = preview.context;
+    } else if (input.reviewed) throw new ReferenceError('INVALID');
     if (document.requests.length >= 500) throw new ReferenceError('CAPACITY');
     const needs = input.type === 'meu_canal' && (!identity.verified || !identity.boundChannels?.length || input.channel === undefined);
-    const state = needs ? 'needs_information' : 'received'; const now = this.now();
+    const state = needs || (guidedContext && !identity.verified && p.role === 'musician') ? 'needs_information' : 'received'; const now = this.now();
     const request: HelpRequest = { id: randomUUID(), requestId: input.requestId, fingerprint, type: input.type, report: input.report, channel: input.channel, destination: input.destination, requestedBy: identity,
-      createdAt: now, expiresAt: new Date(this.clock() + 600000).toISOString(), version: 1, state, basis: { serverId: this.read.serverId, stateRevision: this.snapshot().revision },
+      ...(guidedContext ? { guidedContext, guidedId: input.guidedId } : {}), createdAt: now, expiresAt: new Date(this.clock() + 600000).toISOString(), version: 1, state, basis: { serverId: this.read.serverId, stateRevision: this.snapshot().revision },
       ...(needs ? { response: 'Identidade e canal não verificados; informe a fonte. Relato não concede permissão de ajuste.' } : {}),
       history: [{ version: 1, action: state, at: now, role: p.role === 'operator' ? 'operator' : 'musician', sourceSessionId: p.id }],
     };
@@ -146,7 +188,7 @@ export class ReferenceService {
   }
   decide(p: Principal, id: string, raw: unknown) {
     this.guard(p, true); const input = this.parse(DecisionInput, raw); const document = this.document(); const request = this.request(document, p, id, input.expectedVersion);
-    const transitions: Record<string, string[]> = { received: ['needs_information', 'suggested', 'approved', 'rejected', 'failed'], needs_information: ['received', 'suggested', 'approved', 'rejected', 'failed'], suggested: ['suggested', 'needs_information', 'approved', 'rejected', 'failed'], approved: ['needs_information', 'rejected', 'failed'] };
+    const transitions: Record<string, string[]> = { received: ['needs_information', 'suggested', 'approved', 'rejected', 'failed', 'closed'], needs_information: ['received', 'suggested', 'approved', 'rejected', 'failed', 'closed'], suggested: ['suggested', 'needs_information', 'approved', 'rejected', 'failed', 'closed'], approved: ['needs_information', 'rejected', 'failed', 'closed'] };
     if (!transitions[request.state]?.includes(input.state)) throw new ReferenceError('CONFLICT');
     if (request.state === input.state && input.state !== 'suggested') throw new ReferenceError('CONFLICT');
     if (input.state === 'suggested' || input.state === 'approved') {

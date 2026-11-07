@@ -1,13 +1,8 @@
 import { z } from 'zod';
 import { SceneSchema, DeviceProfileSchema } from '../core/scene.js';
-export const Text = z.string().trim().min(1).max(500).refine(s => !/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/.test(s));
-export const Id = z.string().regex(/^[A-Za-z0-9_-]{6,64}$/);
-export const Scope = z.enum(['PA', 'AUX1']);
-export const Observation = z.object({
-  status: z.enum(['known', 'unknown', 'unavailable', 'unsupported']),
-  value: z.union([z.number().finite(), z.boolean(), z.literal('-inf')]).optional(),
-  revision: z.number().int().nonnegative(), actor: z.string().max(30).optional(),
-}).strict().refine(v => (v.status === 'known') === (v.value !== undefined));
+import { Envelope, Id, Observation, Scope, Text } from './values.js';
+export { Id, Observation, Scope, Text } from './values.js';
+import { GuidedContext } from './guided.js';
 export const History = z.object({ version: z.number().int().positive(), at: z.iso.datetime(), action: z.string().max(40), role: z.enum(['operator', 'musician', 'system']), sourceSessionId: z.string().max(64).optional(), note: Text.optional() }).strict();
 export const ReferenceSchema = z.object({
   id: Id, eventId: Id, eventName: Text, eventDate: z.iso.date(), version: z.number().int().positive(), scope: Scope,
@@ -18,13 +13,14 @@ export const ReferenceSchema = z.object({
   scene: SceneSchema, observations: z.record(z.string().regex(/^(?:master\.level|ch\.\d+\.(?:main|aux\.1)\.(?:level|mute))$/), Observation),
   history: z.array(History).min(1).max(50),
 }).strict();
-export const RequestState = z.enum(['received', 'needs_information', 'suggested', 'approved', 'rejected', 'applied', 'failed', 'cancelled', 'expired']);
+export const RequestState = z.enum(['received', 'needs_information', 'suggested', 'approved', 'rejected', 'applied', 'failed', 'cancelled', 'expired', 'closed']);
 export const RequestSchema = z.object({
   id: Id, requestId: Id, fingerprint: z.string().length(64), version: z.number().int().positive(),
   type: z.enum(['meu_canal', 'mix_geral', 'diagnostico']), report: Text, channel: z.number().int().min(1).max(64).optional(), destination: Scope,
   requestedBy: z.object({ sourceSessionId: z.string().max(64), verified: z.boolean(), musicianId: Text.optional(), displayName: Text.optional(), boundChannels: z.array(z.number().int().min(1).max(64)).max(64).optional(), bindingRevision: z.number().int().positive().optional(), boundChannel: z.number().int().min(1).max(64).optional() }).strict(),
   createdAt: z.iso.datetime(), expiresAt: z.iso.datetime(), state: RequestState,
   basis: z.object({ serverId: z.string().max(64), stateRevision: z.number().int().nonnegative() }).strict(),
+  guidedId: Id.optional(), guidedContext: GuidedContext.optional(),
   response: Text.optional(), recommendation: z.object({ text: z.string().trim().min(1).max(24000).refine(s => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u202a-\u202e\u2066-\u2069]/.test(s)), status: z.enum(['needs_context', 'theoretical_guidance']).optional(), source: z.enum(['operator', 'diagnosis']), references: z.array(z.string().url().max(500).refine(s => /^https?:\/\//i.test(s))).max(10).optional() }).strict().optional(),
   history: z.array(History).min(1).max(50),
 }).strict();
@@ -32,10 +28,10 @@ export const DocumentSchema = z.object({ schemaVersion: z.literal(1), revision: 
 export type Reference = z.infer<typeof ReferenceSchema>;
 export type HelpRequest = z.infer<typeof RequestSchema>;
 export type Document = z.infer<typeof DocumentSchema>;
-export const Envelope = z.object({ serverId: z.string().min(1).max(64) });
+export { Envelope } from './values.js';
 export const CaptureInput = Envelope.extend({ eventId: Id, eventName: Text, eventDate: z.iso.date(), scope: Scope, expectedVersion: z.number().int().nonnegative(), expectedStateRevision: z.number().int().nonnegative(), operatorApproved: z.literal(true) }).strict();
-export const RequestInput = Envelope.extend({ requestId: Id, type: z.enum(['meu_canal', 'mix_geral', 'diagnostico']), report: Text, channel: z.number().int().min(1).max(64).optional(), destination: Scope }).strict();
-export const DecisionInput = Envelope.extend({ expectedVersion: z.number().int().positive(), expectedStateRevision: z.number().int().nonnegative(), state: z.enum(['received', 'needs_information', 'suggested', 'approved', 'rejected', 'failed']), response: Text }).strict();
+export const RequestInput = Envelope.extend({ guidedId: Id.optional(), reviewed: z.literal(true).optional(), requestId: Id, type: z.enum(['meu_canal', 'mix_geral', 'diagnostico']), report: Text, channel: z.number().int().min(1).max(64).optional(), destination: Scope }).strict();
+export const DecisionInput = Envelope.extend({ expectedVersion: z.number().int().positive(), expectedStateRevision: z.number().int().nonnegative(), state: z.enum(['received', 'needs_information', 'suggested', 'approved', 'rejected', 'failed', 'closed']), response: Text }).strict();
 export const RevisionInput = Envelope.extend({ expectedVersion: z.number().int().positive() }).strict();
 export const ReplyInput = RevisionInput.extend({ text: Text }).strict();
 export class ReferenceError extends Error {
