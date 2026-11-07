@@ -1684,6 +1684,10 @@ mx-root {
   margin: 6px 0;
   color: var(--warn);
 }
+.knowledge-warning-inline {
+  color: var(--warn);
+  font-style: normal;
+}
 .knowledge-ok {
   margin: 6px 0;
   color: var(--ok);

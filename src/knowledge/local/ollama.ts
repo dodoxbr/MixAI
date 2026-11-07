@@ -1,7 +1,11 @@
-export interface OllamaOptions { url: string; embedModel: string; chatModel: string; embedDimensions: number; timeoutMs: number }
+export interface OllamaOptions { url: string; embedModel: string; chatModel: string; embedDimensions: number; timeoutMs: number; /** Geração é bem mais lenta que embedding em CPU: tempo próprio. */ generateTimeoutMs?: number; /** Prefixos que alguns modelos exigem (ex.: nomic: "search_query: " / "search_document: "). */ queryPrefix?: string; documentPrefix?: string }
+export type GenerateFailure = 'unavailable' | 'timeout' | 'error' | 'empty';
+export interface GenerateResult { text?: string; failure?: GenerateFailure }
 export interface OllamaHealth { reachable: boolean; embedModel: boolean; chatModel: boolean; detail: string }
 
 const MAX_BODY = 4 * 1024 * 1024;
+/** Lote de documento (16 trechos, em CPU) leva bem mais que uma pergunta: não herda o limite curto da consulta. */
+const DOCUMENT_EMBED_TIMEOUT_MS = 60_000;
 
 /**
  * Cliente mínimo do Ollama local. Falha SEMPRE de forma contida (retorna indisponível): o chamador
@@ -11,12 +15,12 @@ export class OllamaClient {
   private cache?: { at: number; value: OllamaHealth };
   constructor(private readonly o: OllamaOptions, private readonly fetchFn: typeof fetch = fetch, private readonly clock: () => number = Date.now) {}
 
-  private async call(path: string, body?: unknown): Promise<unknown> {
+  private async call(path: string, body?: unknown, timeoutMs: number = this.o.timeoutMs): Promise<unknown> {
     const res = await this.fetchFn(new URL(path, this.o.url), {
       method: body === undefined ? 'GET' : 'POST',
       headers: body === undefined ? undefined : { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(this.o.timeoutMs),
+      signal: AbortSignal.timeout(timeoutMs),
       redirect: 'error',
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -43,12 +47,13 @@ export class OllamaClient {
   }
 
   /** Vetores (um por texto) ou undefined se o modelo/serviço não estiver disponível. */
-  async embed(texts: string[]): Promise<number[][] | undefined> {
+  async embed(texts: string[], kind: 'query' | 'document' = 'document'): Promise<number[][] | undefined> {
     if (!texts.length) return [];
+    const prefix = (kind === 'query' ? this.o.queryPrefix : this.o.documentPrefix) ?? '';
     const h = await this.health();
     if (!h.reachable || !h.embedModel) return undefined;
     try {
-      const data = (await this.call('/api/embed', { model: this.o.embedModel, input: texts })) as { embeddings?: unknown };
+      const data = (await this.call('/api/embed', { model: this.o.embedModel, input: prefix ? texts.map((t) => prefix + t) : texts }, kind === 'document' ? Math.max(this.o.timeoutMs, DOCUMENT_EMBED_TIMEOUT_MS) : undefined)) as { embeddings?: unknown };
       const e = data.embeddings;
       if (!Array.isArray(e) || e.length !== texts.length) return undefined;
       const ok = e.every((v) => Array.isArray(v) && v.length === this.o.embedDimensions && v.every((x) => typeof x === 'number' && Number.isFinite(x)));
@@ -61,19 +66,24 @@ export class OllamaClient {
 
   /** Texto do modelo, ou undefined. A saída é DADO a exibir: nunca é interpretada como comando. */
   async generate(system: string, user: string): Promise<string | undefined> {
+    return (await this.generateDetailed(system, user)).text;
+  }
+
+  /** Como `generate`, mas informa o MOTIVO da falha (sem conteúdo do modelo nem do servidor). */
+  async generateDetailed(system: string, user: string): Promise<GenerateResult> {
     const h = await this.health();
-    if (!h.reachable || !h.chatModel) return undefined;
+    if (!h.reachable || !h.chatModel) return { failure: 'unavailable' };
     try {
       const data = (await this.call('/api/chat', {
         model: this.o.chatModel, stream: false,
-        options: { temperature: 0.2, num_predict: 320 },
+        options: { temperature: 0.2, num_predict: 260 },
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      })) as { message?: { content?: unknown } };
+      }, this.o.generateTimeoutMs ?? this.o.timeoutMs)) as { message?: { content?: unknown } };
       const out = data.message?.content;
-      return typeof out === 'string' ? out : undefined;
-    } catch {
+      return typeof out === 'string' && out.trim() ? { text: out } : { failure: 'empty' };
+    } catch (err) {
       this.cache = undefined;
-      return undefined;
+      return { failure: err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError') ? 'timeout' : 'error' };
     }
   }
 }

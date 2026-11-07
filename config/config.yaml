@@ -122,7 +122,10 @@ knowledge:
     chatModel: llama3.2:3b
     embedDimensions: 768
     narrative: false     # true = redigir texto de apoio com o modelo local (nunca vira comando)
-    timeoutMs: 8000
+    timeoutMs: 8000      # embeddings e verificação de saúde
+    narrativeTimeoutMs: 30000   # resumo do modelo (CPU gera devagar)
+    minScore: 0.3        # similaridade mínima; depende do modelo de embedding (ver docs/lab/22)
+  search: auto           # auto = vetor, depois palavras; hybrid = fusão dos dois
   inboxDir: knowledge/inbox   # relativa a data/
   maxDocumentMB: 30
   maxPassages: 4

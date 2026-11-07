@@ -77,11 +77,12 @@ const STATE_TEXT: Record<CardState, string> = {
                   <p><strong>Base local</strong> · {{ modeLabel(kn.mode) }}@if (kn.reason) { — {{ kn.reason }} }</p>
                   @if (kn.microphone; as mic) { <p class="assist-text">{{ mic.channel }} {{ mic.musician }}: {{ mic.note }}</p> }
                   @if (kn.caseTitle) { <p class="assist-text">Roteiro teórico relacionado: {{ kn.caseTitle }} (sem execução).</p> }
-                  @if (kn.narrative) { <p class="assist-text"><strong>Resumo do modelo local · não verificado, teoria a conferir:</strong> {{ kn.narrative }}</p> }
+                  @if (kn.narrative) { <p class="assist-text"><strong>Resumo do modelo local · não verificado, teoria a conferir:</strong> {{ kn.narrative }}</p> } @else if (kn.narrativeNote) { <p class="assist-text knowledge-note">{{ kn.narrativeNote }}</p> }
+                  @if (kn.modelNote) { <p class="assist-text knowledge-note">{{ kn.modelNote }}</p> }
                   @if (kn.passages.length) {
                     <ul class="technical-references" aria-label="Trechos da base">
                       @for (p of kn.passages; track p.locator + p.title + p.excerpt) {
-                        <li>@if (reference(p.url); as href) { <a [href]="href" target="_blank" rel="noopener noreferrer">{{ p.title }}</a> } @else { <strong>{{ p.title }}</strong> } · {{ p.locator }} — {{ p.excerpt }}</li>
+                        <li>@if (reference(p.url); as href) { <a [href]="href" target="_blank" rel="noopener noreferrer">{{ p.title }}</a> } @else { <strong>{{ p.title }}</strong> } · {{ p.locator }} — {{ p.excerpt }}@if (p.caution) { <em class="knowledge-warning-inline"> ⚠ {{ p.caution }}</em> }</li>
                       }
                     </ul>
                   }

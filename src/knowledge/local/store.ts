@@ -2,13 +2,18 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import type { Assignment, CasesPack, CatalogEntry, MicModel, MicPack } from './pack.js';
-import { cosine, excerpt, tokens } from './text.js';
+import { mentionedModels } from './models.js';
+import { cosine, excerpt, fuse, tokens } from './text.js';
 
 export interface ChunkIn { ordinal: number; text: string; locator: string; embedding?: number[] }
 export interface DocumentIn { sourceId: string; fileName: string; sha256: string; bytes: number; chunks: ChunkIn[] }
 export interface DocumentRow { id: string; sourceId: string; fileName: string; sha256: string; bytes: number; chunks: number; embedded: number; ingestedAt: string }
 export interface SourceRow extends CatalogEntry { documents: number; local: boolean }
-export interface Passage { sourceId: string; documentId: string; locator: string; excerpt: string; score: number; method: 'vector' | 'keyword' }
+export interface Passage { sourceId: string; documentId: string; locator: string; excerpt: string; score: number; method: 'vector' | 'keyword' | 'hybrid'; /** Modelos de microfone citados no trecho inteiro (ex.: P3, P5). */ models?: string[]; caution?: string }
+/** auto = vetor e, se nada passar do limiar, palavras (padrão antigo); hybrid = fusão dos dois (RRF). */
+export type SearchMode = 'auto' | 'hybrid';
+export interface SearchOptions { mode?: SearchMode; minScore?: number }
+export const DEFAULT_MIN_SCORE = 0.3;
 export interface MicrophoneState {
   verifiedModel: string | null;
   bandMicModel: string;
@@ -33,7 +38,7 @@ export interface KnowledgeStore {
   findDocument(sourceId: string, fileName: string): Promise<DocumentRow | undefined>;
   replaceDocument(doc: DocumentIn): Promise<DocumentRow>;
   deleteDocument(id: string): Promise<boolean>;
-  search(query: string, embedding: number[] | undefined, limit: number): Promise<Passage[]>;
+  search(query: string, embedding: number[] | undefined, limit: number, opts?: SearchOptions): Promise<Passage[]>;
   close(): Promise<void>;
 }
 
@@ -129,16 +134,15 @@ export class FileKnowledgeStore implements KnowledgeStore {
     if (this.state.documents.length !== before) this.save();
     return this.state.documents.length !== before;
   }
-  async search(query: string, embedding: number[] | undefined, limit: number): Promise<Passage[]> {
+  private vector(embedding: number[], limit: number, minScore: number): Passage[] {
     const rows = this.state.documents.flatMap((d) => d.chunks.map((c) => ({ d, c })));
-    if (embedding) {
-      const scored = rows.filter(({ c }) => c.embedding?.length === embedding.length)
-        .map(({ d, c }) => ({ d, c, score: cosine(embedding, c.embedding!) })).filter((x) => x.score > 0.3);
-      if (scored.length) {
-        return scored.sort((a, b) => b.score - a.score).slice(0, limit)
-          .map(({ d, c, score }) => ({ sourceId: d.sourceId, documentId: d.id, locator: c.locator, excerpt: excerpt(c.text), score: Number(score.toFixed(4)), method: 'vector' as const }));
-      }
-    }
+    return rows.filter(({ c }) => c.embedding?.length === embedding.length)
+      .map(({ d, c }) => ({ d, c, score: cosine(embedding, c.embedding!) })).filter((x) => x.score > minScore)
+      .sort((x, y) => y.score - x.score).slice(0, limit)
+      .map(({ d, c, score }) => ({ sourceId: d.sourceId, documentId: d.id, locator: c.locator, excerpt: excerpt(c.text), models: [...mentionedModels(c.text)].sort(), score: Number(score.toFixed(4)), method: 'vector' as const }));
+  }
+  private keyword(query: string, limit: number): Passage[] {
+    const rows = this.state.documents.flatMap((d) => d.chunks.map((c) => ({ d, c })));
     const q = [...new Set(tokens(query))];
     if (!q.length) return [];
     const df = new Map<string, number>();
@@ -157,8 +161,20 @@ export class FileKnowledgeStore implements KnowledgeStore {
         if (f) score += (f / len) * Math.log(1 + n / (df.get(t) ?? 1)) * 10;
       }
       return { d, c, score };
-    }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit)
-      .map(({ d, c, score }) => ({ sourceId: d.sourceId, documentId: d.id, locator: c.locator, excerpt: excerpt(c.text), score: Number(score.toFixed(4)), method: 'keyword' as const }));
+    }).filter((x) => x.score > 0).sort((x, y) => y.score - x.score).slice(0, limit)
+      .map(({ d, c, score }) => ({ sourceId: d.sourceId, documentId: d.id, locator: c.locator, excerpt: excerpt(c.text), models: [...mentionedModels(c.text)].sort(), score: Number(score.toFixed(4)), method: 'keyword' as const }));
+  }
+  async search(query: string, embedding: number[] | undefined, limit: number, opts: SearchOptions = {}): Promise<Passage[]> {
+    const min = opts.minScore ?? DEFAULT_MIN_SCORE;
+    if (opts.mode === 'hybrid') {
+      const wide = Math.max(limit * 3, 12);
+      return fuse(embedding ? this.vector(embedding, wide, min) : [], this.keyword(query, wide), limit);
+    }
+    if (embedding) {
+      const found = this.vector(embedding, limit, min);
+      if (found.length) return found;
+    }
+    return this.keyword(query, limit);
   }
   async close(): Promise<void> { /* nada aberto */ }
 }

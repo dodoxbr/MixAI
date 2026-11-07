@@ -26,16 +26,18 @@ export async function openLocalKnowledge(loaded: LoadedConfig, deps: OpenDeps = 
   if (!k.enabled) return undefined;
   const dataDir = loaded.dataDir ?? join(PROJECT_ROOT, 'data');
   const clock = deps.clock ?? Date.now;
-  const ollama = new OllamaClient({ url: k.ollama.url, embedModel: k.ollama.embedModel, chatModel: k.ollama.chatModel, embedDimensions: k.ollama.embedDimensions, timeoutMs: k.ollama.timeoutMs }, deps.fetch ?? fetch, clock);
+  const ollama = new OllamaClient({ url: k.ollama.url, embedModel: k.ollama.embedModel, chatModel: k.ollama.chatModel, embedDimensions: k.ollama.embedDimensions, timeoutMs: k.ollama.timeoutMs, generateTimeoutMs: k.ollama.narrativeTimeoutMs, queryPrefix: k.ollama.queryPrefix, documentPrefix: k.ollama.documentPrefix }, deps.fetch ?? fetch, clock);
 
   let store: KnowledgeStore | undefined;
   let fallbackFrom: string | undefined;
+  const collection = k.collection;
+  const schema = collection === 'default' ? 'public' : `kb_${collection}`;
   if (k.store === 'postgres') {
     const password = loaded.secrets?.postgresPassword;
     try {
       if (!password && !deps.pgClient) throw new Error('senha ausente (MIXAI_PG_PASSWORD ou postgresPassword em secrets.yaml)');
-      const client = deps.pgClient ?? createPgClient({ host: k.postgres.host, port: k.postgres.port, database: k.postgres.database, user: k.postgres.user, password: password! });
-      const pg = new PgKnowledgeStore(client, k.ollama.embedDimensions, clock);
+      const client = deps.pgClient ?? createPgClient({ host: k.postgres.host, port: k.postgres.port, database: k.postgres.database, user: k.postgres.user, password: password!, schema });
+      const pg = new PgKnowledgeStore(client, k.ollama.embedDimensions, clock, schema);
       await pg.init();
       store = pg;
     } catch (err) {
@@ -45,7 +47,7 @@ export async function openLocalKnowledge(loaded: LoadedConfig, deps: OpenDeps = 
     }
   }
   if (!store) {
-    const file = new FileKnowledgeStore(join(dataDir, 'knowledge', 'knowledge.json'), clock);
+    const file = new FileKnowledgeStore(join(dataDir, 'knowledge', collection === 'default' ? 'knowledge.json' : `knowledge-${collection}.json`), clock);
     await file.init();
     store = file;
   }
@@ -56,6 +58,10 @@ export async function openLocalKnowledge(loaded: LoadedConfig, deps: OpenDeps = 
     maxDocumentBytes: k.maxDocumentMB * 1024 * 1024,
     maxPassages: k.maxPassages,
     narrative: k.ollama.narrative,
+    search: k.search,
+    minScore: k.ollama.minScore,
+    narrativeTimeoutMs: k.ollama.narrativeTimeoutMs,
+    log: deps.log,
     storeFallbackFrom: fallbackFrom,
   });
 }

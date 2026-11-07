@@ -32,6 +32,8 @@ const EVIDENCE: Record<string, string> = {
             <p class="knowledge-note">{{ s.note }}</p>
             @if (s.store.fallbackFrom) { <p class="knowledge-warning" role="alert">PostgreSQL indisponível: usando arquivo local ({{ s.store.fallbackFrom }}).</p> }
             <p class="knowledge-note">{{ s.sources }} fonte(s) · {{ s.documents }} documento(s) · {{ s.chunks }} trecho(s) · {{ s.embeddedChunks }} com embedding</p>
+            <p class="knowledge-note">{{ s.store.detail }}</p>
+            @if (s.ollama.narrative && narrativeSummary(); as summary) { <p class="knowledge-note">{{ summary }}</p> }
           }
           @if (k.error()) { <p class="knowledge-warning" role="alert">{{ k.error() }}</p> }
           @if (k.notice()) { <p class="knowledge-ok" role="status">{{ k.notice() }}</p> }
@@ -80,7 +82,7 @@ const EVIDENCE: Record<string, string> = {
               @for (p of r.passages; track p.locator + p.title + p.excerpt) {
                 <li>
                   @if (link(p.url); as href) { <a [href]="href" target="_blank" rel="noopener noreferrer">{{ p.title }}</a> } @else { <strong>{{ p.title }}</strong> }
-                  · {{ p.locator }} — {{ p.excerpt }}
+                  · {{ p.locator }} — {{ p.excerpt }}@if (p.caution) { <em class="knowledge-warning-inline"> ⚠ {{ p.caution }}</em> }
                 </li>
               } @empty { <li>Nenhum trecho encontrado.</li> }
             </ul>
@@ -115,6 +117,13 @@ export class KnowledgeAdminComponent {
     Object.entries(this.k.mics()?.assignments ?? {})
       .map(([channel, a]) => ({ channel, number: Number(channel.slice(2)), musician: a.musician, modelId: a.modelId, evidence: a.evidence }))
       .sort((a, b) => a.number - b.number));
+  readonly narrativeSummary = computed(() => {
+    const st = this.k.status()?.narrativeStats;
+    if (!st) return '';
+    const dropped = Object.entries(st.dropped ?? {}).filter(([, n]) => Number.isFinite(n) && n > 0);
+    const total = dropped.reduce((n, [, c]) => n + c, 0);
+    return `Resumo do modelo local: ${st.used ?? 0} exibido(s), ${total} descartado(s)${dropped.length ? ` (${dropped.map(([why, n]) => `${why.replace(/[^a-z_:]/g, '').slice(0, 40)} × ${n}`).join(', ')})` : ''} desde que o servidor iniciou.`;
+  });
   evidence(e: string): string { return EVIDENCE[e] ?? e; }
   modeLabel(mode: string): string { return mode === 'vector' ? 'semântica' : mode === 'keyword' ? 'por palavras' : 'motor determinístico'; }
   pick(channel: number, value: string): void { void this.k.setMicrophone(channel, value || null); }

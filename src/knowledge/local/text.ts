@@ -17,29 +17,67 @@ export function cleanText(text: string): string {
 
 export interface RawChunk { text: string; locator: string }
 
-/** Divide por parágrafos em trechos de ~`target` caracteres, com sobreposição curta. */
-export function chunkText(text: string, locator: string, target = 900, overlap = 120): RawChunk[] {
-  const paragraphs = cleanText(text).split(/\n\s*\n|\r\n\s*\r\n/).map((p) => p.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  const out: RawChunk[] = [];
-  let buf = '';
-  const flush = () => {
-    if (buf.trim().length >= 20) out.push({ text: buf.trim(), locator });
-    buf = buf.length > overlap ? buf.slice(-overlap) : '';
-  };
-  for (const p of paragraphs) {
-    if (p.length > target * 2) {
-      // Parágrafo gigante (PDF sem quebras): corta em janelas.
-      for (let i = 0; i < p.length; i += target - overlap) {
-        buf = p.slice(i, i + target);
-        flush();
-      }
-      buf = '';
-      continue;
-    }
-    if (buf.length + p.length + 1 > target) flush();
-    buf += (buf ? ' ' : '') + p;
+/**
+ * Reconstrói parágrafos de texto extraído de PDF: o extrator entrega uma quebra de linha por linha
+ * visual. Junta linhas, une palavras hifenizadas no fim da linha e descarta linhas que são só número
+ * de página ou pontilhado de sumário. Dois tipos de quebra: linha em branco = parágrafo.
+ */
+export function reflow(block: string): string {
+  const lines = block.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter((l) => l && !/^\d{1,4}$/.test(l) && !/\.{6,}/.test(l));
+  let out = '';
+  for (const line of lines) {
+    if (!out) out = line;
+    else if (/[A-Za-zÀ-ÿ]-$/.test(out) && /^[a-zà-ÿ]/.test(line)) out = out.slice(0, -1) + line;
+    else out += ' ' + line;
   }
-  if (buf.trim().length >= 20 && !out.some((c) => c.text.endsWith(buf.trim()))) out.push({ text: buf.trim(), locator });
+  return out;
+}
+
+/** Quebra um texto em frases (ou em janelas de palavras se uma frase passar do limite). */
+function pieces(paragraph: string, max: number): string[] {
+  const sentences = paragraph.split(/(?<=[.!?;:])\s+(?=[A-ZÀ-Ý0-9•])/);
+  const out: string[] = [];
+  for (const sentence of sentences) {
+    if (sentence.length <= max) { out.push(sentence); continue; }
+    const words = sentence.split(' ');
+    let cur = '';
+    for (const w of words) {
+      if (cur && cur.length + w.length + 1 > max) { out.push(cur); cur = w; } else cur += (cur ? ' ' : '') + w;
+    }
+    if (cur) out.push(cur);
+  }
+  return out;
+}
+
+/**
+ * Divide em trechos de ~`target` caracteres cortando só em fim de frase (nunca no meio de uma
+ * palavra) e repetindo a última frase como sobreposição (`overlap` = tamanho máximo dela).
+ * Pontos de partida: linhas em branco; sem elas (PDF), as linhas são reunidas em parágrafos.
+ */
+export function chunkText(text: string, locator: string, target = 900, overlap = 160): RawChunk[] {
+  const paragraphs = cleanText(text).split(/\n\s*\n/).map(reflow).filter(Boolean);
+  const out: RawChunk[] = [];
+  let buf: string[] = [];
+  let size = 0;
+  let fresh = false; // buf só tem a sobreposição: não vale um trecho próprio
+  const flush = () => {
+    const joined = buf.join(' ').trim();
+    if (fresh || joined.length < 20) return;
+    out.push({ text: joined, locator });
+    const last = buf[buf.length - 1] ?? '';
+    buf = last.length > 0 && last.length <= overlap ? [last] : [];
+    size = buf.join(' ').length;
+    fresh = buf.length > 0;
+  };
+  for (const paragraph of paragraphs) {
+    for (const piece of pieces(paragraph, target)) {
+      if (size + piece.length + 1 > target && buf.length) flush();
+      buf.push(piece);
+      size += piece.length + 1;
+      fresh = false;
+    }
+  }
+  flush();
   return out;
 }
 
@@ -52,6 +90,21 @@ export function cosine(a: readonly number[], b: readonly number[]): number {
     nb += b[i]! * b[i]!;
   }
   return na && nb ? dot / Math.sqrt(na * nb) : 0;
+}
+
+/** Reciprocal Rank Fusion de duas listas (vetor e palavras). Mesmo trecho nas duas sobe no ranking. */
+export function fuse<T extends { documentId: string; locator: string; excerpt: string; score: number; method: string }>(vector: T[], keyword: T[], limit: number, k = 60): Array<Omit<T, 'method'> & { method: 'hybrid' }> {
+  const key = (p: T) => `${p.documentId}\u0000${p.locator}\u0000${p.excerpt}`;
+  const merged = new Map<string, { item: T; score: number }>();
+  for (const list of [vector, keyword]) {
+    list.forEach((p, i) => {
+      const prev = merged.get(key(p));
+      const add = 1 / (k + i + 1);
+      if (prev) prev.score += add; else merged.set(key(p), { item: p, score: add });
+    });
+  }
+  return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, limit)
+    .map(({ item, score }) => ({ ...item, score: Number((score * (k + 1)).toFixed(4)), method: 'hybrid' as const }));
 }
 
 export function excerpt(text: string, max = 420): string {

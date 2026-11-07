@@ -30,7 +30,9 @@
     "speech:file": "node dist/speech-cli.js",
     "test:speech": "vitest run test/speech-command.test.ts test/speech-harness.test.ts",
     "speech:demo": "tsx test/support/speech-demo.ts",
-    "knowledge": "node dist/knowledge-cli.js"
+    "knowledge": "node dist/knowledge-cli.js",
+    "lab:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-mixai-lab.ps1",
+    "lab:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-mixai-lab.ps1 -CheckOnly"
   },
   "author": "",
   "license": "MIT",

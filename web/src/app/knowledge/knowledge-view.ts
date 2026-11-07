@@ -3,7 +3,7 @@
  * Tudo aqui é texto de apoio: nunca ação, medição ou aprovação. A forma é validada (o servidor
  * pode ser de outra versão) e os tamanhos são limitados antes de chegar ao template.
  */
-export interface KnowledgePassageView { title: string; url: string; locator: string; excerpt: string }
+export interface KnowledgePassageView { title: string; url: string; locator: string; excerpt: string; caution?: string }
 export interface KnowledgeView {
   mode: 'vector' | 'keyword' | 'deterministic';
   degraded: boolean;
@@ -12,7 +12,20 @@ export interface KnowledgeView {
   microphone?: { channel: string; musician: string; model: string | null; evidence: string; note: string };
   caseTitle?: string;
   narrative?: string;
+  /** Por que não há resumo do modelo (só quando o servidor tentou e descartou). */
+  narrativeNote?: string;
+  /** Trechos de outros modelos de microfone deixados de fora. */
+  modelNote?: string;
 }
+
+const NARRATIVE_NOTES: Record<string, string> = {
+  timeout: 'Resumo do modelo local indisponível: demorou demais.',
+  unavailable: 'Resumo do modelo local indisponível: o modelo de conversa não está pronto.',
+  error: 'Resumo do modelo local indisponível: erro no serviço local.',
+  empty: 'Resumo do modelo local: sem base suficiente nos trechos.',
+  echo: 'Resumo do modelo local descartado: apenas repetia os trechos.',
+  blocked: 'Resumo do modelo local descartado por segurança (continha valores, comandos ou afirmação sobre o áudio).',
+};
 const str = (v: unknown, max: number): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
@@ -23,11 +36,16 @@ export function knowledgeView(raw: unknown): KnowledgeView | undefined {
   const passages = (Array.isArray(k['passages']) ? k['passages'] : []).slice(0, 30).flatMap((p) => {
     const r = rec(p);
     const title = str(r['title'], 120), excerpt = str(r['excerpt'], 500);
-    return title && excerpt ? [{ title, url: str(r['url'], 300) ?? '', locator: str(r['locator'], 60) ?? '', excerpt }] : [];
+    const caution = str(r['caution'], 200);
+    return title && excerpt ? [{ title, url: str(r['url'], 300) ?? '', locator: str(r['locator'], 60) ?? '', excerpt, ...(caution ? { caution } : {}) }] : [];
   }).slice(0, 6);
   const m = rec(k['microphone']);
   const note = str(m['note'], 400), channel = str(m['channel'], 8);
   const narrative = rec(k['narrative']);
+  const status = str(rec(k['narrativeStatus'])['status'], 20);
+  const filter = rec(k['modelFilter']);
+  const excluded = typeof filter['excluded'] === 'number' && filter['excluded'] > 0 ? Math.min(99, Math.floor(filter['excluded'])) : 0;
+  const filterModel = str(filter['model'], 6);
   return {
     mode, degraded: k['degraded'] === true,
     reason: str(k['reason'], 160), passages,
@@ -35,6 +53,8 @@ export function knowledgeView(raw: unknown): KnowledgeView | undefined {
     caseTitle: str(rec(k['caseRef'])['title'], 120),
     // Texto do modelo local só aparece se o servidor o marcou como não verificado.
     narrative: narrative['verified'] === false ? str(narrative['text'], 700) : undefined,
+    narrativeNote: narrative['verified'] === false || !status ? undefined : NARRATIVE_NOTES[status],
+    modelNote: excluded && filterModel ? `${excluded} trecho(s) que só descrevem outros modelos de microfone foram ocultados (este canal usa o ${filterModel}).` : undefined,
   };
 }
 

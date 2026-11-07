@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "description": "Perguntas reais de operador em português e o que um trecho precisa conter para ser considerado relevante. Critério por conteúdo (trechos de texto, sem acento e em minúsculas), não por página: continua válido se o divisor de trechos mudar. Corpus de referência: Soundcraft Ui12/16 (PT), Shure Microphone Techniques (EN) e folhetos AKG (EN).",
+  "cases": [
+    { "id": "voz-abafada-1", "topic": "voz abafada", "query": "Minha voz está abafada no retorno.", "anyOf": ["proximity effect", "muddy", "boomy", "presence peak", "intelligibility", "passa-alto", "high pass"] },
+    { "id": "voz-abafada-2", "topic": "voz abafada", "query": "O vocal está sem brilho e embolado no monitor", "anyOf": ["muddy", "boomy", "presence", "intelligibility", "brightness", "passa-alto", "high pass"] },
+    { "id": "voz-abafada-3", "topic": "voz abafada", "query": "Quando chego perto do microfone a voz fica grave demais", "anyOf": ["proximity effect", "bass response increases", "boomy", "boominess"] },
+    { "id": "voz-abafada-4", "topic": "voz abafada", "query": "A voz não corta a mix e perde inteligibilidade", "anyOf": ["intelligibility", "presence", "cut through", "kHz range"] },
+
+    { "id": "microfonia-1", "topic": "microfonia", "query": "Está microfonando no PA", "anyOf": ["feedback", "realimenta", "gain-before-feedback", "microfonia", "afs"] },
+    { "id": "microfonia-2", "topic": "microfonia", "query": "Apita quando aumento o retorno do vocal", "anyOf": ["feedback", "realimenta", "gain-before-feedback", "microfonia", "afs"] },
+    { "id": "microfonia-3", "topic": "microfonia", "query": "Como evitar feedback com monitor de palco", "anyOf": ["floor monitor", "monitor", "wedge", "gain-before-feedback", "feedback"] },
+    { "id": "microfonia-4", "topic": "microfonia", "query": "Qual padrão polar do microfone ajuda contra microfonia", "anyOf": ["supercardioid", "cardioid", "unidirectional", "polar pattern", "padrao polar"] },
+
+    { "id": "cavaco-1", "topic": "cavaco estridente", "query": "O cavaco está estridente e agressivo", "anyOf": ["harsh", "bright", "shrill", "tinny", "edgy", "mandolin", "banjo", "string instruments"] },
+    { "id": "cavaco-2", "topic": "cavaco estridente", "query": "Cavaco com som metálico e fino", "anyOf": ["tinny", "thin", "bright", "harsh", "mandolin", "banjo", "string instruments"] },
+    { "id": "cavaco-3", "topic": "cavaco estridente", "query": "Como microfonar cavaco ou violão sem ficar estridente", "anyOf": ["acoustic guitar", "mandolin", "banjo", "string instruments", "sound hole", "violao"] },
+    { "id": "cavaco-4", "topic": "cavaco estridente", "query": "Agudos demais no cavaco no retorno", "anyOf": ["bright", "harsh", "treble", "mandolin", "banjo", "string instruments", "acoustic guitar"] },
+
+    { "id": "surdo-1", "topic": "surdo embolado", "query": "O surdo está embolado e sem definição", "anyOf": ["bass drum", "kick drum", "boomy", "boominess", "muddy", "floor tom", "dull, lacks attack"] },
+    { "id": "surdo-2", "topic": "surdo embolado", "query": "O grave do surdo fica embolando no palco", "anyOf": ["bass drum", "kick drum", "boomy", "boominess", "rumble", "low frequency", "floor tom"] },
+    { "id": "surdo-3", "topic": "surdo embolado", "query": "Como microfonar bumbo ou surdo", "anyOf": ["bass drum", "kick drum", "floor tom", "timbales, congas"] },
+    { "id": "surdo-4", "topic": "surdo embolado", "query": "Surdo com muito grave e sem ataque", "anyOf": ["lacks attack", "strong attack", "boomy", "boominess", "beater", "bass drum"] },
+
+    { "id": "aux1-1", "topic": "retorno AUX1", "query": "Como enviar o vocal para o retorno AUX 1", "anyOf": ["aux 1", "aux sends", "aux masters", "envios aux", "aux/fx"] },
+    { "id": "aux1-2", "topic": "retorno AUX1", "query": "Configurar o mix de retorno do palco no Ui16", "anyOf": ["aux 1", "aux sends", "aux masters", "aux out", "aux/fx"] },
+    { "id": "aux1-3", "topic": "retorno AUX1", "query": "Pré-fader ou pós-fader no envio do AUX", "anyOf": ["pre fader", "pre-fader", "pos fader", "post fader", "post-fader", "antes do fader", "depois do fader"] },
+    { "id": "aux1-4", "topic": "retorno AUX1", "query": "Ajustar o nível de envio de um canal para o AUX", "anyOf": ["nivel de envio", "niveis de envio", "aux sends", "aux master", "aux 1"] },
+
+    { "id": "eqcomp-1", "topic": "equalização e compressão", "query": "Como usar o equalizador paramétrico do canal", "anyOf": ["equalizador parametrico", "parametrico", "parametric", "banda"] },
+    { "id": "eqcomp-2", "topic": "equalização e compressão", "query": "Para que serve o filtro passa-alto no canal", "anyOf": ["passa-alto", "passo-alto", "hpf", "high pass", "low cut", "roll-off"] },
+    { "id": "eqcomp-3", "topic": "equalização e compressão", "query": "Como funciona o compressor de dinâmica", "anyOf": ["compressor", "threshold", "limiar", "relacao", "ratio", "makeup"] },
+    { "id": "eqcomp-4", "topic": "equalização e compressão", "query": "Como ajustar o De-Esser para reduzir sibilância", "anyOf": ["de-esser", "sibil"] }
+  ]
+}
