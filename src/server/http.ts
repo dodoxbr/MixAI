@@ -14,6 +14,7 @@ import { fail, type CommandResponse, type ServerCore } from './core.js';
 import type { AssistantReply } from '../assistant/service.js';
 import type { LocalKnowledge } from '../knowledge/local/index.js';
 import { knowledgeRoutes } from './knowledge-routes.js';
+import { instructorRoutes } from './instructor-routes.js';
 
 /** Texto do corpo de uma conversa (só para consultar a base); qualquer outra forma vira vazio. */
 const textOf = (body: unknown): string => (body && typeof body === 'object' && typeof (body as { text?: unknown }).text === 'string' ? (body as { text: string }).text.slice(0, 500) : '');
@@ -143,6 +144,14 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
 
   if (opts.references && core.mode === 'lab' && core.mixer.mode === 'lab') {
     await app.register(referenceRoutes, { service: opts.references, origin: opts.labProxyOrigin,
+      principal: (req: FastifyRequest, reply: FastifyReply) => principalOf(core, req, reply),
+      active: (p: Principal) => core.auth.isActive(p),
+    });
+  }
+
+  // Instrutor Ui16 (leitura): só LAB, operador e músico; independe da base de conhecimento.
+  if (core.mode === 'lab' && core.mixer.mode === 'lab') {
+    await app.register(instructorRoutes, {
       principal: (req: FastifyRequest, reply: FastifyReply) => principalOf(core, req, reply),
       active: (p: Principal) => core.auth.isActive(p),
     });
