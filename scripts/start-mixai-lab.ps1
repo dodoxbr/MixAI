@@ -54,17 +54,20 @@ function Wait-Until([scriptblock]$Test, [int]$Seconds) {
   return $false
 }
 
-# Processos de segundo plano (servidor e Ollama) nascem pelo WMI (Win32_Process.Create): assim NAO herdam os
-# handles do chamador, e um pipeline como "script | Select-String" termina quando o script termina. A saida
-# deles vai para arquivos em logs/ (sem senhas: o servidor nao imprime segredos).
+# Processos de segundo plano (servidor e Ollama): Start-Process oculto, com a saida em arquivos de log em logs/
+# (sem senhas: o servidor nao imprime segredos). Este e o metodo que SOBREVIVE ao fechamento do terminal; o
+# lancamento via WMI foi testado e morria junto com a sessao. Limitacao conhecida do PowerShell 5.1: se o
+# script for usado dentro de um pipeline ("script | Select-String"), o pipeline so fecha quando os servicos
+# encerram. Rode o script direto (npm run lab:start), sem pipe.
 New-Item -ItemType Directory -Force -Path (Join-Path $Root 'logs') | Out-Null
 function Start-Detached([string]$File, [string[]]$Arguments, [string]$LogName) {
-  $quoted = @($Arguments | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
-  $out = Join-Path $Root "logs\$LogName.out.log"
-  $err = Join-Path $Root "logs\$LogName.err.log"
-  $line = 'cmd.exe /d /c ""{0}" {1} >>"{2}" 2>>"{3}""' -f $File, $quoted, $out, $err
-  $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $line; CurrentDirectory = $Root }
-  if ($result.ReturnValue -ne 0) { throw ("Nao foi possivel iniciar {0} (codigo {1})." -f $LogName, $result.ReturnValue) }
+  $splat = @{
+    FilePath = $File; WindowStyle = 'Hidden'; WorkingDirectory = $Root
+    RedirectStandardOutput = (Join-Path $Root "logs\$LogName.out.log")
+    RedirectStandardError = (Join-Path $Root "logs\$LogName.err.log")
+  }
+  if ($Arguments -and $Arguments.Count) { $splat.ArgumentList = $Arguments }
+  Start-Process @splat | Out-Null
 }
 
 function Get-Json([string]$Url, [int]$TimeoutSec = 5) {
