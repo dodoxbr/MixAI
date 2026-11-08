@@ -16,7 +16,7 @@ import { PROJECT_ROOT } from './core/config.js';
 
 export const KNOWLEDGE_HELP = `MixAI — base de conhecimento local (somente leitura de documentos; não toca na mesa).
   npm run knowledge -- doctor                 verifica Docker, PostgreSQL, Ollama e a base
-  npm run knowledge -- import-technical       indexa sínteses técnicas versionadas (sem IA/rede)
+  npm run knowledge -- import-technical       indexa sínteses técnicas versionadas e gera embeddings com o provedor da coleção (idempotente; repete para completar pendentes)
   npm run knowledge -- remove-technical       remove só essas sínteses, preservando manuais
   npm run knowledge -- import-seed            importa o pacote base versionado (knowledge/seed)
   npm run knowledge -- import-zip ARQUIVO.zip importa um pacote .zip (catalog, microfones, casos)

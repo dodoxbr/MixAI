@@ -192,7 +192,7 @@ export class LocalKnowledge {
   }
   technicalProcedures() { return structuredClone(instructorProcedures); }
   technicalGuidance(raw: unknown) { return queryInstructorGuidance(raw); }
-  importTechnical() { return importTechnicalCorpus(this.o.store); }
+  importTechnical() { return importTechnicalCorpus(this.o.store, this.o.ollama); }
   removeTechnical() { return removeTechnicalCorpus(this.o.store); }
   importSeed() { return this.importPack(readPackFromDir(this.o.seedDir)); }
   importZip(bytes: Uint8Array) { return this.importPack(readPackFromZip(bytes)); }
