@@ -23,7 +23,10 @@ class HttpFailure extends Error {
   constructor(readonly status: number) { super(`HTTP ${status}`); }
 }
 
-const failureFor = (status: number): GenerateFailure =>
+/** finishReason que representam bloqueio de segurança/política do provedor. */
+const SAFETY_FINISH: ReadonlySet<string> = new Set(['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'IMAGE_SAFETY']);
+
+const failureFor =(status: number): GenerateFailure =>
   status === 401 || status === 403 ? 'auth' : status === 429 ? 'quota' : 'error';
 
 /**
@@ -130,7 +133,10 @@ export class GeminiClient implements AiProvider {
       if (data.promptFeedback?.blockReason) return { failure: 'refused' };
       const c = data.candidates?.[0];
       if (!c) return { failure: 'empty' };
-      if (c.finishReason === 'SAFETY' || c.finishReason === 'PROHIBITED_CONTENT' || c.finishReason === 'RECITATION') return { failure: 'refused' };
+      // Recusas de segurança/política (não podem ser contornadas por outro provedor).
+      if (typeof c.finishReason === 'string' && SAFETY_FINISH.has(c.finishReason)) return { failure: 'refused' };
+      // Recitação não é segurança: o modelo só não pôde responder com aquele texto.
+      if (c.finishReason === 'RECITATION') return { failure: 'recitation' };
       // MAX_TOKENS = o modelo parou no teto (muitas vezes porque o raciocínio consumiu o orçamento): a resposta
       // está incompleta e NÃO pode ser tratada como concluída, mesmo que haja texto parcial.
       if (c.finishReason === 'MAX_TOKENS') return { failure: 'truncated' };

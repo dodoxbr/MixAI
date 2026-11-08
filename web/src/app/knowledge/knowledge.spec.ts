@@ -80,7 +80,7 @@ describe('knowledgeView (validação do que o servidor envia)', () => {
     expect(fb.fallbackNote).toBe('Resumo gerado pelo modelo local porque o Gemini atingiu o limite de uso.');
     expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'openai', verified: false } })!.narrativeSource).toBeUndefined();
     expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'gemini', verified: true } })!.narrativeSource).toBeUndefined();
-    for (const [status, text] of [['auth', /chave foi recusada/], ['quota', /limite de uso/], ['refused', /recusou o pedido/], ['withheld', /documentos locais/]] as const) {
+    for (const [status, text] of [['auth', /chave foi recusada/], ['quota', /limite de uso/], ['refused', /recusou o pedido por segurança/], ['recitation', /reproduzir texto protegido/], ['withheld', /documentos locais/]] as const) {
       expect(knowledgeView({ ...base, narrativeStatus: { status } })!.narrativeNote, status).toMatch(text);
     }
   });

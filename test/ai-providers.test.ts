@@ -128,6 +128,9 @@ describe('GeminiClient: segredo, rede e erros', () => {
     [{ status: 401 }, 'auth'], [{ status: 403 }, 'auth'], [{ status: 429 }, 'quota'], [{ status: 400 }, 'error'], [{ status: 404 }, 'error'], [{ status: 503 }, 'error'],
     [{ throws: new TypeError('fetch failed') }, 'unavailable'], [{ throws: Object.assign(new Error('t'), { name: 'TimeoutError' }) }, 'timeout'],
     [{ json: { promptFeedback: { blockReason: 'SAFETY' } } }, 'refused'], [{ json: { candidates: [{ finishReason: 'SAFETY' }] } }, 'refused'],
+    [{ json: { candidates: [{ finishReason: 'PROHIBITED_CONTENT' }] } }, 'refused'], [{ json: { candidates: [{ finishReason: 'BLOCKLIST' }] } }, 'refused'],
+    [{ json: { candidates: [{ finishReason: 'SPII' }] } }, 'refused'], [{ json: { promptFeedback: { blockReason: 'OTHER' } } }, 'refused'],
+    [{ json: { candidates: [{ finishReason: 'RECITATION' }] } }, 'recitation'], // não é segurança: pode usar a reserva
     [{ json: { candidates: [] } }, 'empty'], [{ json: { candidates: [{ content: { parts: [{ text: '  ' }] } }] } }, 'empty'],
   ] as Array<[Reply, string]>)('erro %j vira o código "%s" sem vazar o corpo do servidor', async (reply, failure) => {
     const g = fakeGemini({ chat: { ...reply, text: reply.status ? 'detalhe-interno-segredo-do-servidor' : undefined } });
@@ -392,7 +395,7 @@ describe('indisponibilidade e fallback', () => {
     ['chave recusada', { status: 403, text: 'key detalhe-secreto' }, 'auth'],
     ['erro do servidor', { status: 500, text: 'oops detalhe-secreto' }, 'error'],
     ['sem rede', { throws: new TypeError('fetch failed: getaddrinfo detalhe-secreto') }, 'unavailable'],
-    ['bloqueio do provedor', { json: { promptFeedback: { blockReason: 'SAFETY' } } }, 'refused'],
+    ['recitação (não é recusa de segurança)', { json: { candidates: [{ finishReason: 'RECITATION' }] } }, 'recitation'],
   ];
   it.each(failing)('Gemini com %s → Ollama local responde, com o motivo registrado e sem vazar nada', async (_n, reply, reason) => {
     const logs: string[] = [];
@@ -406,6 +409,66 @@ describe('indisponibilidade e fallback', () => {
     const text = logs.join('\n') + JSON.stringify(r) + JSON.stringify(await k.status());
     expect(logs.join('\n')).toContain(`motivo=${reason}, provedor=gemini`);
     expect(text).not.toMatch(/detalhe-secreto|AIza/);
+  });
+  describe('recusa de segurança do provedor NÃO é contornada pelo fallback', () => {
+    const securityRefusals: Array<[string, Reply]> = [
+      ['prompt bloqueado (SAFETY)', { json: { promptFeedback: { blockReason: 'SAFETY' } } }],
+      ['prompt bloqueado (OTHER)', { json: { promptFeedback: { blockReason: 'OTHER' } } }],
+      ['prompt bloqueado (BLOCKLIST)', { json: { promptFeedback: { blockReason: 'BLOCKLIST' } } }],
+      ['resposta bloqueada (SAFETY)', { json: { candidates: [{ finishReason: 'SAFETY' }] } }],
+      ['resposta bloqueada (PROHIBITED_CONTENT)', { json: { candidates: [{ finishReason: 'PROHIBITED_CONTENT' }] } }],
+      ['resposta bloqueada (BLOCKLIST)', { json: { candidates: [{ finishReason: 'BLOCKLIST' }] } }],
+      ['resposta bloqueada (SPII)', { json: { candidates: [{ finishReason: 'SPII' }] } }],
+      ['recusa com texto parcial (SAFETY)', { json: { candidates: [{ content: { parts: [{ text: 'Pode ser que o ganho esteja alto; o operador pode conferir o cabo.' }] }, finishReason: 'SAFETY' }] } }],
+    ];
+    it.each(securityRefusals)('%s: o Ollama NÃO é consultado, o resumo é descartado e o motor determinístico segue', async (_n, reply) => {
+      const logs: string[] = [];
+      let ollamaChatCalls = 0;
+      const ollama = fakeOllama({ spy: () => { ollamaChatCalls++; } });
+      const { k } = await service({ ollama, gemini: fakeGemini({ chat: reply }).client(), chat: 'gemini', log: (m) => logs.push(m) });
+      const r = await ask(k);
+      expect(ollamaChatCalls).toBe(0); // nenhuma segunda tentativa com outro modelo
+      expect(r.narrative).toBeUndefined();
+      expect(r.narrativeStatus).toMatchObject({ status: 'refused', provider: 'gemini' });
+      expect(r.narrativeStatus).not.toHaveProperty('fellBackFrom');
+      expect(r.narrativeStatus).not.toHaveProperty('fallbackReason');
+      // Base e diagnóstico determinístico intactos: trechos e modo de busca continuam.
+      expect(r.passages.length).toBeGreaterThan(0);
+      expect(r.mode).not.toBe('deterministic');
+      const stats = (await k.status()).narrativeStats;
+      expect(stats.used).toBe(0);
+      expect(stats.dropped['refused']).toBe(1);
+      expect(logs.join('\n')).toContain('motivo=refused, provedor=gemini');
+      expect(logs.join('\n') + JSON.stringify(r)).not.toMatch(/ganho esteja alto|AIza/); // sem conteúdo no log
+    });
+    it('a recusa do PRIMEIRO provedor também para a cadeia: o seguinte não é tentado', async () => {
+      const g = fakeGemini();
+      const refuser = { id: 'ollama' as const, external: false, health: async () => ({ reachable: true, embedModel: true, chatModel: true, detail: 'ok' }), embed: async () => undefined, generateDetailed: vi.fn(async () => ({ failure: 'refused' as const })) };
+      const dir = tmp();
+      const store = new FileKnowledgeStore(join(dir, 'knowledge.json'));
+      await store.init();
+      const k = new LocalKnowledge({ store, chatProviders: [refuser, g.client()], chat: 'ollama', inboxDir: join(dir, 'inbox'), seedDir: SEED, maxDocumentBytes: 1024 * 1024, maxPassages: 3, narrative: true });
+      await k.importSeed();
+      mkdirSync(join(dir, 'inbox'), { recursive: true });
+      writeFileSync(join(dir, 'inbox', 'shure-live.md'), PUBLIC_DOC);
+      await k.ingest();
+      const r = await ask(k);
+      expect(refuser.generateDetailed).toHaveBeenCalledTimes(1);
+      expect(generateCalls(g.calls)).toHaveLength(0); // o Gemini nem recebeu a pergunta
+      expect(r.narrativeStatus).toMatchObject({ status: 'refused', provider: 'ollama' });
+      expect(r.narrative).toBeUndefined();
+    });
+    it('já os motivos de disponibilidade e de forma da resposta continuam usando a reserva', async () => {
+      for (const reply of [
+        { status: 503 }, { status: 429 }, { throws: new TypeError('x') }, { throws: Object.assign(new Error('t'), { name: 'TimeoutError' }) },
+        { json: { candidates: [{ content: { parts: [{ text: 'Pode ser o' }] }, finishReason: 'MAX_TOKENS' }] } },
+        { json: { candidates: [{ finishReason: 'RECITATION' }] } },
+      ] as Reply[]) {
+        const { k } = await service({ gemini: fakeGemini({ chat: reply }).client(), chat: 'gemini' });
+        const r = await ask(k);
+        expect(r.narrativeStatus, JSON.stringify(reply)).toMatchObject({ status: 'used', provider: 'ollama', fellBackFrom: 'gemini' });
+      }
+    });
   });
   it('Gemini e Ollama fora: sem resumo, motor determinístico e diagnóstico intactos', async () => {
     const { k } = await service({ ollama: fakeOllama({ up: false }), gemini: fakeGemini({ chat: { throws: new TypeError('x') } }).client(), chat: 'gemini' });

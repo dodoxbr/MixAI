@@ -11,7 +11,7 @@ export class KnowledgeError extends Error {
 }
 
 /** Por que o resumo do modelo local foi (ou não) mostrado. Só códigos: nunca o texto do modelo. */
-export type NarrativeStatus = 'used' | 'disabled' | 'no_passages' | 'unavailable' | 'timeout' | 'error' | 'empty' | 'echo' | 'blocked' | 'auth' | 'quota' | 'refused' | 'withheld' | 'truncated';
+export type NarrativeStatus = 'used' | 'disabled' | 'no_passages' | 'unavailable' | 'timeout' | 'error' | 'empty' | 'echo' | 'blocked' | 'auth' | 'quota' | 'refused' | 'recitation' | 'withheld' | 'truncated';
 export interface NarrativeStats { used: number; usedBy: Record<string, number>; dropped: Record<string, number> }
 
 /** Provedores de IA: o que existe, o que o operador escolheu e se os dados saem do computador. */
@@ -114,9 +114,16 @@ function race<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
   });
 }
 
-const FAILURE_STATUS: Record<GenerateFailure, NarrativeStatus> = { unavailable: 'unavailable', timeout: 'timeout', error: 'error', empty: 'empty', auth: 'auth', quota: 'quota', refused: 'refused', truncated: 'truncated' };
-/** Falhas de disponibilidade: passam para o provedor local de reserva. Descarte de segurança não passa. */
-const FALLBACK_STATUS: ReadonlySet<NarrativeStatus> = new Set<NarrativeStatus>(['unavailable', 'timeout', 'error', 'auth', 'quota', 'refused', 'withheld', 'truncated']);
+const FAILURE_STATUS: Record<GenerateFailure, NarrativeStatus> = { unavailable: 'unavailable', timeout: 'timeout', error: 'error', empty: 'empty', auth: 'auth', quota: 'quota', refused: 'refused', recitation: 'recitation', truncated: 'truncated' };
+/**
+ * Falhas de DISPONIBILIDADE ou de forma da resposta: passam para o provedor de reserva.
+ * Fora desta lista o encadeamento PARA, e o motor determinístico segue sozinho:
+ *  - `refused`: o provedor recusou o pedido ou a resposta por SEGURANÇA/política (bloqueio do prompt, SAFETY,
+ *    PROHIBITED_CONTENT, BLOCKLIST, SPII). Mandar a mesma pergunta a outro modelo contornaria essa recusa.
+ *  - `blocked`/`echo`/`empty`: descarte feito pelas regras do próprio MixAI (comando, valor, "ouvi/medi"…).
+ * `recitation` (resposta que reproduziria texto protegido) não é recusa de segurança: é falha do modelo, então pode usar a reserva.
+ */
+const FALLBACK_STATUS: ReadonlySet<NarrativeStatus> = new Set<NarrativeStatus>(['unavailable', 'timeout', 'error', 'auth', 'quota', 'recitation', 'withheld', 'truncated']);
 
 export class LocalKnowledge {
   private readonly stats: NarrativeStats = { used: 0, usedBy: {}, dropped: {} };
