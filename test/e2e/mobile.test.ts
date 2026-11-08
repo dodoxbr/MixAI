@@ -188,6 +188,8 @@ describe('Mesa do operador no celular Android', () => {
     const { page, sent } = await open(l, OPERATOR_PIN, LANDSCAPE);
     const before = writes(sent).length;
     // toque REAL do Chromium no fader: encosta, arrasta e o sistema cancela (como ao girar)
+    // As barras de ferramentas podem deslocar o SVG além da janela; toque exige alvo visível.
+    await page.locator('.strips mx-fader svg').first().scrollIntoViewIfNeeded();
     const f = await box(page, '.strips mx-fader svg');
     const x = f.x + f.width / 2;
     const y = f.y + f.height / 2;

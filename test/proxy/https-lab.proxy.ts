@@ -261,3 +261,18 @@ it('keeps reference/request routes on central HTTPS auth, private sessions and r
   await http('/api/logout', { token: musician, body: {} });
   expect((await http(`/api/mix-requests/${created.body.id}`, { token: musician })).status).toBe(401);
 });
+
+it('soundcheck event routes retain operator authorization, proxy MCP rejection and LAB-only records over TLS',async()=>{
+ const operator=(await http('/api/login',{body:{pin:OPERATOR_PIN}})).body.token;
+ const musician=(await http('/api/login',{body:{pin:MUSICIAN_PIN}})).body.token;
+ const agent=readFileSync(join(t!.dir,'agent-lab.token'),'utf8');
+ expect((await http('/api/soundchecks')).status).toBe(401);
+ expect((await http('/api/soundchecks',{token:agent})).status).toBe(401);
+ expect((await http('/api/soundchecks',{token:musician})).status).toBe(403);
+ const list=await http('/api/soundchecks',{token:operator});expect(list.status).toBe(200);expect(list.headers['cache-control']).toBe('no-store');
+ const before=t!.server.core.snapshotFor('operator').revision;
+ const created=await http('/api/soundchecks',{token:operator,body:{serverId:list.body.serverId,id:'tls-soundcheck-event',name:'TLS LAB',date:'2026-11-08',operatorName:'Operador declarado'}});
+ expect(created.status).toBe(200);expect(created.body.pendingSteps.length).toBeGreaterThan(0);
+ expect((await http(`/api/soundchecks/${created.body.id}`,{token:musician})).status).toBe(403);
+ expect(t!.server.core.snapshotFor('operator').revision).toBe(before);
+});

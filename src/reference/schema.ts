@@ -1,3 +1,4 @@
+import { SoundcheckEvent } from '../soundcheck/schema.js';
 import { z } from 'zod';
 import { SceneSchema, DeviceProfileSchema } from '../core/scene.js';
 import { Envelope, Id, Observation, Scope, Text } from './values.js';
@@ -24,7 +25,7 @@ export const RequestSchema = z.object({
   response: Text.optional(), recommendation: z.object({ text: z.string().trim().min(1).max(24000).refine(s => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u202a-\u202e\u2066-\u2069]/.test(s)), status: z.enum(['needs_context', 'theoretical_guidance']).optional(), source: z.enum(['operator', 'diagnosis']), references: z.array(z.string().url().max(500).refine(s => /^https?:\/\//i.test(s))).max(10).optional() }).strict().optional(),
   history: z.array(History).min(1).max(50),
 }).strict();
-export const DocumentSchema = z.object({ schemaVersion: z.literal(1), revision: z.number().int().nonnegative(), references: z.array(ReferenceSchema).max(100), requests: z.array(RequestSchema).max(500) }).strict();
+export const DocumentSchema = z.object({ schemaVersion: z.literal(1), revision: z.number().int().nonnegative(), references: z.array(ReferenceSchema).max(100), requests: z.array(RequestSchema).max(500), soundchecks: z.array(SoundcheckEvent).max(50).default([]) }).strict();
 export type Reference = z.infer<typeof ReferenceSchema>;
 export type HelpRequest = z.infer<typeof RequestSchema>;
 export type Document = z.infer<typeof DocumentSchema>;
