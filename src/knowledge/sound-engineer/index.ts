@@ -12,3 +12,7 @@ export { KNOWLEDGE_VERSION, technicalModules, technicalModuleSchema, citations, 
 export { instrumentProfiles, interactions, voiceRole } from './band-context.js';
 export * from './conversation-contracts.js';
 export { diagnosticChecks, planDiagnosticConversation } from './conversation-plan.js';
+
+export * from './instructor-contracts.js';
+export { technicalArticles, instructorProcedures, queryInstructorGuidance, FIELD_LIBRARY_VERSION } from './field-library.js';
+export { instructorFixtures } from './instructor-fixtures.js';

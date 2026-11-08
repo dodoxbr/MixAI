@@ -360,3 +360,5 @@ Push-to-talk privado E9D (opt-in server-side, operador em HTTPS LAB, prévia sem
 No LAB, o operador pode vincular uma sessão de músico aos canais autorizados, sem mudar os
 dois PINs existentes. Veja [músicos e canais vinculados](docs/musicians/session-channel-access.md).
 AUX1 continua sendo o retorno compartilhado de todos no HA800.
+
+Biblioteca técnica e Instrutor somente leitura: [Issue #65](docs/sound-engineer/ISSUE-65-LIBRARY.md), com contratos, importação reversível e avaliação lexical reproduzível.

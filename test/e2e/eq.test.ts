@@ -89,7 +89,7 @@ for (const [name, device] of [
     expect(await eqButton.evaluate(el => el.closest('mx-status-bar') !== null)).toBe(true);
     const eqBox = (await eqButton.boundingBox())!;
     expect(eqBox.x + eqBox.width).toBeLessThanOrEqual(device.viewport!.width);
-    for (const selector of ['[data-testid=mode]', '[data-testid=link]', '.mx-status-bar button:last-child']) {
+    for (const selector of ['[data-testid=mode]', '[data-testid=link]', '.mx-status-bar > button:last-child', '.mx-status-bar mx-instructor-launcher > button']) {
       const other = (await page.locator(selector).boundingBox())!;
       const overlap = eqBox.x < other.x + other.width && other.x < eqBox.x + eqBox.width && eqBox.y < other.y + other.height && other.y < eqBox.y + eqBox.height;
       expect(overlap, `EQ LAB não sobrepõe ${selector}`).toBe(false);

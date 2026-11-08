@@ -1,3 +1,5 @@
+import { instructorProcedures, queryInstructorGuidance } from '../sound-engineer/index.js';
+import { importTechnicalCorpus, removeTechnicalCorpus } from './technical-corpus.js';
 import { ingestInbox, type IngestReport } from './ingest.js';
 import { modelKeyOf, scopeOf, type PerceptionModel } from './models.js';
 import { readPackFromDir, readPackFromZip, type Assignment, type CatalogEntry, type KnowledgePack } from './pack.js';
@@ -188,6 +190,10 @@ export class LocalKnowledge {
     await this.o.store.importPack(pack.catalog, pack.microphones, pack.cases);
     return { sources: pack.catalog.length, models: Object.keys(pack.microphones.candidateModels).length, assignments: Object.keys(pack.microphones.channelAssignments).length, cases: pack.cases.cases.length };
   }
+  technicalProcedures() { return structuredClone(instructorProcedures); }
+  technicalGuidance(raw: unknown) { return queryInstructorGuidance(raw); }
+  importTechnical() { return importTechnicalCorpus(this.o.store); }
+  removeTechnical() { return removeTechnicalCorpus(this.o.store); }
   importSeed() { return this.importPack(readPackFromDir(this.o.seedDir)); }
   importZip(bytes: Uint8Array) { return this.importPack(readPackFromZip(bytes)); }
 
