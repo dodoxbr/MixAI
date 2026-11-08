@@ -335,7 +335,11 @@ describe('configuração e abertura', () => {
     expect(() => parseConfig({ knowledge: { ollama: { url: 'http://user:pw@127.0.0.1:11434' } } })).toThrow();
     expect(() => parseConfig({ knowledge: { postgres: { host: '10.0.0.5' } } })).toThrow();
     expect(() => parseConfig({ knowledge: { inboxDir: '../fora' } })).toThrow();
-    expect(() => parseConfig({ knowledge: { inboxDir: 'C:\\Windows' } })).toThrow();
+    // Absoluto em qualquer sistema, não só no que roda o teste (o CI Linux pegou isso).
+    for (const abs of ['C:\\Windows', 'C:/Windows', 'D:dados', '\\\\servidor\\pasta', '\\pasta', '/etc', '/home/x']) {
+      expect(() => parseConfig({ knowledge: { inboxDir: abs } }), abs).toThrow();
+    }
+    expect(parseConfig({ knowledge: { inboxDir: 'knowledge/inbox' } }).knowledge.inboxDir).toBe('knowledge/inbox');
     expect(() => parseConfig({ knowledge: { desconhecido: 1 } })).toThrow();
     expect(parseConfig({ knowledge: { enabled: true, ollama: { url: 'http://localhost:11434' } } }).knowledge.enabled).toBe(true);
     expect(() => inboxPath(tmp(), '../x')).toThrow(/dentro de data/);
