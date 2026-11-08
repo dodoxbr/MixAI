@@ -88,6 +88,11 @@ export class ReferenceUiService {
   async assess(request: Help) { return this.mutation(`/api/mix-requests/${request.id}/assess`, { expectedVersion: request.version, expectedStateRevision: this.live.state()?.revision }); }
   async cancel(request: Help) { return this.mutation(`/api/mix-requests/${request.id}/cancel`, { expectedVersion: request.version }); }
   async reply(request: Help, text: string) { return this.mutation(`/api/mix-requests/${request.id}/reply`, { expectedVersion: request.version, text }); }
+  async soundcheckRead(path: string) {
+    try { return await this.request(path); }
+    catch (e) { this.error.set(errors[(e as Error).message] ?? 'Passagem indisponível.'); return undefined; }
+  }
+  soundcheckWrite(path: string, body: object) { return this.mutation(path, body); }
   async details(request: Help) {
     try { const result = await this.request(`/api/mix-requests/${request.id}`); this.history.update(h => ({ ...h, [request.id]: result.history })); }
     catch (e) { this.error.set(errors[(e as Error).message] ?? 'Histórico indisponível.'); }

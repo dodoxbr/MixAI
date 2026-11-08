@@ -1,3 +1,4 @@
+import { SoundcheckService } from '../soundcheck/service.js';
 import { GuidedInput, type GuidedPreview } from './guided.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { SceneStore } from '../core/scene-store.js';
@@ -11,6 +12,7 @@ import { ReferenceStore } from './store.js';
 import { CaptureInput, DecisionInput, RequestInput, RevisionInput, ReplyInput, RequestSchema, ReferenceError, type Document, type HelpRequest, type Reference } from './schema.js';
 const terminal = new Set(['rejected', 'failed', 'cancelled', 'expired', 'applied', 'closed']);
 export class ReferenceService {
+  readonly soundcheck: SoundcheckService;
   private previews = new Map<string, { preview: GuidedPreview; owner: Principal; binding: ReturnType<ReferenceService['identity']> }>();
   async preview(p: Principal, raw: unknown): Promise<GuidedPreview> {
     this.guard(p); const input = this.parse(GuidedInput, raw); const identity = this.identity(p);
@@ -43,7 +45,7 @@ export class ReferenceService {
   constructor(private store: ReferenceStore, private read: {
     mode: string; serverId: string; snapshot(): WireSnapshot; channels(): { number: number; name: string }[];
     device: DeviceProfile; scenes: SceneStore; supports(key: string): boolean; active(p: Principal): boolean;
-  }, private ports: ReferencePorts = {}, private clock = Date.now) {}
+  }, private ports: ReferencePorts = {}, private clock = Date.now) { this.soundcheck = new SoundcheckService(store, read, clock); }
   private now() { return new Date(this.clock()).toISOString(); }
   private guard(p: Principal, operator = false) {
     if (this.read.mode !== 'lab') throw new ReferenceError('MODE_MISMATCH');

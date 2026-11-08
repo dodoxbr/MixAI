@@ -74,7 +74,7 @@ for (const [label, device] of [['Yoga', YOGA], ['celular', PHONE]] as const) {
 
     await panel.getByRole('button', { name: 'Importar pacote base' }).click();
     await expect.poll(() => panel.textContent()).toContain('Pacote base importado.');
-    expect(await panel.locator('.knowledge-sources li').count()).toBeGreaterThanOrEqual(10);
+    await expect.poll(() => panel.locator('.knowledge-sources li').count()).toBeGreaterThanOrEqual(10);
     expect(await panel.getByRole('table', { name: 'Microfones por canal' }).textContent()).toContain('Fred');
 
     await panel.getByRole('button', { name: 'Ingerir pasta de documentos' }).click();

@@ -117,6 +117,13 @@ horizontal dos canais, MASTER separado à direita e a página rolando na vertica
 envia nenhum comando. O músico tem **MUTE / ABRIR** por canal nos FONES (e no PA, se
 `server.musicianAccess` permitir). Detalhes e capturas: `docs/lab/11-CELULAR-PAISAGEM-MUTE.md`.
 
+## Passagem de som (LAB)
+
+Na Mesa do operador, **Passagem de som — assistente LAB** oferece checklist por evento,
+aprovações humanas, histórico e retomada após interrupção, reutilizando referências e
+pedidos existentes. Não executa ajustes nem carrega cenas. Veja o [procedimento e os
+limites de evidência](docs/lab/SOUNDCHECK-ASSISTANT.md).
+
 ## Referência e solicitações (LAB)
 
 O painel na Mesa/Fones permite salvar referências aprovadas do estado observado, comparar

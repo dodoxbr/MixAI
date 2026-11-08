@@ -25,6 +25,10 @@ export async function referenceRoutes(app: FastifyInstance, opts: {
     const code = error instanceof ReferenceError ? error.code : 'INVALID';
     reply.code(statuses[code]).send({ code }); // No report, identity or filesystem path in logs/errors.
   });
+  app.get('/api/soundchecks', req => opts.service.soundcheck.list(actors.get(req)!));
+  app.get<{Params:{id:string}}>('/api/soundchecks/:id', req => opts.service.soundcheck.detail(actors.get(req)!,req.params.id));
+  app.post('/api/soundchecks', {bodyLimit:8192}, req => opts.service.soundcheck.create(actors.get(req)!,req.body));
+  app.post<{Params:{id:string}}>('/api/soundchecks/:id', {bodyLimit:8192}, req => opts.service.soundcheck.update(actors.get(req)!,req.params.id,req.body));
   app.get('/api/reference-workspace', req => opts.service.view(actors.get(req)!));
   app.get<{ Params: { id: string } }>('/api/mix-requests/:id', req => opts.service.detail(actors.get(req)!, req.params.id));
   app.get<{ Params: { id: string } }>('/api/mix-references/:id/compare', req => opts.service.compare(actors.get(req)!, req.params.id));
