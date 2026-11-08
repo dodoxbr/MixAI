@@ -63,7 +63,7 @@ describe('knowledgeView (validação do que o servidor envia)', () => {
     expect(v.narrativeNote).toMatch(/descartado por segurança/);
     expect(v.narrativeNote).not.toMatch(/phantom/); // o código da regra não vai para a tela
     expect(v.modelNote).toBe('2 trecho(s) que só descrevem outros modelos de microfone foram ocultados (este canal usa o P3).');
-    for (const [status, text] of [['timeout', /demorou demais/], ['unavailable', /não está pronto/], ['error', /erro no serviço/], ['empty', /sem base suficiente/], ['echo', /repetia os trechos/]] as const) {
+    for (const [status, text] of [['timeout', /demorou demais/], ['unavailable', /não está pronto/], ['error', /erro no serviço/], ['empty', /sem base suficiente/], ['echo', /repetia os trechos/], ['truncated', /veio incompleta/]] as const) {
       expect(knowledgeView({ ...base, narrativeStatus: { status } })!.narrativeNote, status).toMatch(text);
     }
     for (const quiet of ['disabled', 'no_passages', 'used', 'desconhecido']) expect(knowledgeView({ ...base, narrativeStatus: { status: quiet } })!.narrativeNote, quiet).toBeUndefined();
@@ -80,7 +80,7 @@ describe('knowledgeView (validação do que o servidor envia)', () => {
     expect(fb.fallbackNote).toBe('Resumo gerado pelo modelo local porque o Gemini atingiu o limite de uso.');
     expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'openai', verified: false } })!.narrativeSource).toBeUndefined();
     expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'gemini', verified: true } })!.narrativeSource).toBeUndefined();
-    for (const [status, text] of [['auth', /chave foi recusada/], ['quota', /limite de uso/], ['refused', /recusou o pedido/], ['withheld', /documentos locais/]] as const) {
+    for (const [status, text] of [['auth', /chave foi recusada/], ['quota', /limite de uso/], ['refused', /recusou o pedido por segurança/], ['recitation', /reproduzir texto protegido/], ['withheld', /documentos locais/]] as const) {
       expect(knowledgeView({ ...base, narrativeStatus: { status } })!.narrativeNote, status).toMatch(text);
     }
   });

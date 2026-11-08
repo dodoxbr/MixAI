@@ -11,7 +11,7 @@ export class KnowledgeError extends Error {
 }
 
 /** Por que o resumo do modelo local foi (ou não) mostrado. Só códigos: nunca o texto do modelo. */
-export type NarrativeStatus = 'used' | 'disabled' | 'no_passages' | 'unavailable' | 'timeout' | 'error' | 'empty' | 'echo' | 'blocked' | 'auth' | 'quota' | 'refused' | 'withheld';
+export type NarrativeStatus = 'used' | 'disabled' | 'no_passages' | 'unavailable' | 'timeout' | 'error' | 'empty' | 'echo' | 'blocked' | 'auth' | 'quota' | 'refused' | 'recitation' | 'withheld' | 'truncated';
 export interface NarrativeStats { used: number; usedBy: Record<string, number>; dropped: Record<string, number> }
 
 /** Provedores de IA: o que existe, o que o operador escolheu e se os dados saem do computador. */
@@ -80,8 +80,20 @@ export const NARRATIVE_RULES: ReadonlyArray<readonly [string, RegExp]> = [
 /** Tags <trecho …> que o modelo eventualmente repete na resposta (eco do prompt). */
 const TRECHO_TAG = /<\/?trecho\b[^>]*>/gi;
 
-export function judgeNarrative(raw: string, passages: ReadonlyArray<{ excerpt: string }>): { text: string } | { status: 'echo' | 'empty' | 'blocked'; rule?: string } {
-  const stripped = cleanText(raw.replace(TRECHO_TAG, ' ')).slice(0, NARRATIVE_MAX_CHARS);
+/**
+ * Acima do limite de exibição, corta na última frase COMPLETA (nunca no meio de uma palavra ou ideia).
+ * Sem nenhum ponto final aproveitável, o texto não tem como ser mostrado inteiro: devolve undefined.
+ */
+function fitToLimit(text: string): string | undefined {
+  if (text.length <= NARRATIVE_MAX_CHARS) return text;
+  const head = text.slice(0, NARRATIVE_MAX_CHARS);
+  const end = Math.max(head.lastIndexOf('. '), head.lastIndexOf('! '), head.lastIndexOf('? '), /[.!?]$/.test(head) ? head.length - 1 : -1);
+  return end >= 20 ? head.slice(0, end + 1) : undefined;
+}
+
+export function judgeNarrative(raw: string, passages: ReadonlyArray<{ excerpt: string }>): { text: string } | { status: 'echo' | 'empty' | 'blocked' | 'truncated'; rule?: string } {
+  const stripped = fitToLimit(cleanText(raw.replace(TRECHO_TAG, ' ')));
+  if (stripped === undefined) return { status: 'truncated', rule: 'acima_do_limite' };
   if (stripped.length < 20) return { status: raw.length ? 'echo' : 'empty' };
   // Eco: o "resumo" é só um trecho copiado (sequência longa idêntica a um dos blocos recebidos).
   const norm = (t: string) => t.toLowerCase().replace(/\s+/g, ' ');
@@ -102,9 +114,16 @@ function race<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
   });
 }
 
-const FAILURE_STATUS: Record<GenerateFailure, NarrativeStatus> = { unavailable: 'unavailable', timeout: 'timeout', error: 'error', empty: 'empty', auth: 'auth', quota: 'quota', refused: 'refused' };
-/** Falhas de disponibilidade: passam para o provedor local de reserva. Descarte de segurança não passa. */
-const FALLBACK_STATUS: ReadonlySet<NarrativeStatus> = new Set<NarrativeStatus>(['unavailable', 'timeout', 'error', 'auth', 'quota', 'refused', 'withheld']);
+const FAILURE_STATUS: Record<GenerateFailure, NarrativeStatus> = { unavailable: 'unavailable', timeout: 'timeout', error: 'error', empty: 'empty', auth: 'auth', quota: 'quota', refused: 'refused', recitation: 'recitation', truncated: 'truncated' };
+/**
+ * Falhas de DISPONIBILIDADE ou de forma da resposta: passam para o provedor de reserva.
+ * Fora desta lista o encadeamento PARA, e o motor determinístico segue sozinho:
+ *  - `refused`: o provedor recusou o pedido ou a resposta por SEGURANÇA/política (bloqueio do prompt, SAFETY,
+ *    PROHIBITED_CONTENT, BLOCKLIST, SPII). Mandar a mesma pergunta a outro modelo contornaria essa recusa.
+ *  - `blocked`/`echo`/`empty`: descarte feito pelas regras do próprio MixAI (comando, valor, "ouvi/medi"…).
+ * `recitation` (resposta que reproduziria texto protegido) não é recusa de segurança: é falha do modelo, então pode usar a reserva.
+ */
+const FALLBACK_STATUS: ReadonlySet<NarrativeStatus> = new Set<NarrativeStatus>(['unavailable', 'timeout', 'error', 'auth', 'quota', 'recitation', 'withheld', 'truncated']);
 
 export class LocalKnowledge {
   private readonly stats: NarrativeStats = { used: 0, usedBy: {}, dropped: {} };
@@ -306,7 +325,7 @@ export class LocalKnowledge {
       + `\nPergunta do operador: ${question}`;
     const res = await race(provider.generateDetailed(NARRATIVE_SYSTEM, prompt), (this.o.narrativeTimeoutMs ?? 30_000) + 2000);
     if (!res) return { status: 'timeout' };
-    if (!res.text) return { status: FAILURE_STATUS[res.failure ?? 'error'] };
+    if (!res.text) return { status: FAILURE_STATUS[res.failure ?? 'error'], ...(res.failure === 'truncated' ? { rule: 'max_tokens' } : {}) };
     const verdict = judgeNarrative(res.text, sent);
     return 'text' in verdict ? { status: 'used', text: verdict.text } : { status: verdict.status, rule: verdict.rule, chars: res.text.length };
   }

@@ -13,13 +13,20 @@ export interface GeminiOptions {
   embedDimensions: number;
   timeoutMs: number;
   generateTimeoutMs?: number;
+  /** Teto de tokens da resposta, contando o raciocínio dos modelos Gemini 3 (padrão 2048). */
+  maxOutputTokens?: number;
+  /** "default" = não enviar. Padrão "low". */
+  thinkingLevel?: 'default' | 'minimal' | 'low' | 'medium' | 'high';
 }
 
 class HttpFailure extends Error {
   constructor(readonly status: number) { super(`HTTP ${status}`); }
 }
 
-const failureFor = (status: number): GenerateFailure =>
+/** finishReason que representam bloqueio de segurança/política do provedor. */
+const SAFETY_FINISH: ReadonlySet<string> = new Set(['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'IMAGE_SAFETY']);
+
+const failureFor =(status: number): GenerateFailure =>
   status === 401 || status === 403 ? 'auth' : status === 429 ? 'quota' : 'error';
 
 /**
@@ -114,16 +121,28 @@ export class GeminiClient implements AiProvider {
       const data = (await this.call(`models/${this.o.chatModel}:generateContent`, {
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: user }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 320 },
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: this.o.maxOutputTokens ?? 2048,
+          ...((this.o.thinkingLevel ?? 'low') !== 'default' ? { thinkingConfig: { thinkingLevel: this.o.thinkingLevel ?? 'low' } } : {}),
+        },
       }, this.o.generateTimeoutMs ?? this.o.timeoutMs)) as {
         promptFeedback?: { blockReason?: unknown };
-        candidates?: Array<{ finishReason?: unknown; content?: { parts?: Array<{ text?: unknown }> } }>;
+        candidates?: Array<{ finishReason?: unknown; content?: { parts?: Array<{ text?: unknown; thought?: unknown }> } }>;
       };
       if (data.promptFeedback?.blockReason) return { failure: 'refused' };
       const c = data.candidates?.[0];
       if (!c) return { failure: 'empty' };
-      if (c.finishReason === 'SAFETY' || c.finishReason === 'PROHIBITED_CONTENT' || c.finishReason === 'RECITATION') return { failure: 'refused' };
-      const text = (c.content?.parts ?? []).map((p) => (typeof p.text === 'string' ? p.text : '')).join('').trim();
+      // Recusas de segurança/política (não podem ser contornadas por outro provedor).
+      if (typeof c.finishReason === 'string' && SAFETY_FINISH.has(c.finishReason)) return { failure: 'refused' };
+      // Recitação não é segurança: o modelo só não pôde responder com aquele texto.
+      if (c.finishReason === 'RECITATION') return { failure: 'recitation' };
+      // MAX_TOKENS = o modelo parou no teto (muitas vezes porque o raciocínio consumiu o orçamento): a resposta
+      // está incompleta e NÃO pode ser tratada como concluída, mesmo que haja texto parcial.
+      if (c.finishReason === 'MAX_TOKENS') return { failure: 'truncated' };
+      // Qualquer outro motivo de parada que não seja o normal (STOP) também não é uma resposta concluída.
+      if (c.finishReason !== undefined && c.finishReason !== 'STOP') return { failure: 'error' };
+      const text = (c.content?.parts ?? []).map((p) => (p.thought !== true && typeof p.text === 'string' ? p.text : '')).join('').trim();
       return text ? { text } : { failure: 'empty' };
     } catch (e) {
       if (e instanceof HttpFailure) { if (e.status === 401 || e.status === 403) this.cache = undefined; return { failure: failureFor(e.status) }; }

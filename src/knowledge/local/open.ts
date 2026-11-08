@@ -33,7 +33,7 @@ export async function openLocalKnowledge(loaded: LoadedConfig, deps: OpenDeps = 
 
   // Gemini (serviço externo): só existe com knowledge.gemini.enabled; a chave vem só de secrets/ambiente.
   const gemini = k.gemini.enabled
-    ? new GeminiClient({ chatModel: k.gemini.chatModel, embedModel: k.gemini.embedModel, embedDimensions: k.gemini.embedDimensions, timeoutMs: k.gemini.timeoutMs, generateTimeoutMs: k.gemini.narrativeTimeoutMs }, loaded.secrets?.geminiApiKey, deps.geminiFetch ?? fetch, clock)
+    ? new GeminiClient({ chatModel: k.gemini.chatModel, embedModel: k.gemini.embedModel, embedDimensions: k.gemini.embedDimensions, timeoutMs: k.gemini.timeoutMs, generateTimeoutMs: k.gemini.narrativeTimeoutMs, maxOutputTokens: k.gemini.maxOutputTokens, thinkingLevel: k.gemini.thinkingLevel }, loaded.secrets?.geminiApiKey, deps.geminiFetch ?? fetch, clock)
     : undefined;
   const embedder: AiProvider = k.embedProvider === 'gemini' && gemini ? gemini : ollama;
   const embedDimensions = embedder.id === 'gemini' ? k.gemini.embedDimensions : k.ollama.embedDimensions;

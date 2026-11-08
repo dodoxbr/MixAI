@@ -31,12 +31,15 @@ const NARRATIVE_NOTES: Record<string, string> = {
   blocked: 'Resumo do modelo local descartado por segurança (continha valores, comandos ou afirmação sobre o áudio).',
   auth: 'Resumo do Gemini indisponível: a chave foi recusada.',
   quota: 'Resumo do Gemini indisponível: limite de uso atingido.',
-  refused: 'Resumo descartado: o provedor recusou o pedido.',
+  refused: 'Resumo descartado: o provedor recusou o pedido por segurança. Nenhum outro modelo foi consultado.',
+  recitation: 'Resumo descartado: o modelo não pôde responder sem reproduzir texto protegido.',
   withheld: 'Resumo não enviado ao serviço externo: os trechos vêm de documentos locais.',
+  truncated: 'Resumo descartado: a resposta do modelo veio incompleta (parou no limite de tamanho).',
 };
 const FALLBACK_REASONS: Record<string, string> = {
   auth: 'recusou a chave', quota: 'atingiu o limite de uso', timeout: 'demorou demais', unavailable: 'não respondeu',
-  error: 'deu erro', refused: 'recusou o pedido', withheld: 'não recebe trechos de documentos locais',
+  error: 'deu erro', recitation: 'não pôde responder sem reproduzir texto protegido', withheld: 'não recebe trechos de documentos locais',
+  truncated: 'devolveu a resposta incompleta',
 };
 const str = (v: unknown, max: number): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});

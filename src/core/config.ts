@@ -191,8 +191,18 @@ const ConfigSchema = z.object({
         .object({
           /** Desligado até configuração explícita: sem isto nenhum dado sai do computador. */
           enabled: z.boolean().default(false),
-          chatModel: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/).default('gemini-2.5-flash'),
+          chatModel: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/).default('gemini-3.8-flash'),
           embedModel: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/).default('gemini-embedding-001'),
+          /**
+           * Teto de tokens da resposta. Os modelos Gemini 3 contam o "raciocínio" dentro deste teto: com 320 sobravam
+           * 10 tokens de texto (finishReason=MAX_TOKENS). Uma resposta que bate no teto é descartada, nunca exibida.
+           */
+          maxOutputTokens: z.number().int().min(256).max(8192).default(2048),
+          /**
+           * Esforço de raciocínio. "default" = não enviar (o modelo decide). Cada modelo aceita níveis diferentes
+           * (ex.: "minimal" dá erro 400 no gemini-3.8-flash). Para um resumo curto, "low" basta.
+           */
+          thinkingLevel: z.enum(['default', 'minimal', 'low', 'medium', 'high']).default('low'),
           /** Dimensão pedida ao modelo (o Gemini aceita reduzir; o vetor é normalizado). */
           embedDimensions: z.number().int().min(8).max(3072).default(768),
           timeoutMs: z.number().int().min(500).max(120_000).default(10_000),
