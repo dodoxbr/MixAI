@@ -63,6 +63,7 @@ desequilibrada") e especulação sobre o operador. Correção em [`service.ts`](
 - **Checklist progressivo:** uma etapa por vez (1 formulário em vez de um seletor solto), lista com a situação de cada uma, barra de progresso falada
   ("5 de 13 etapas concluídas · 1 com problema"), Anterior/Próxima, foco no título após salvar. Celular/tablet: faixa compacta de números coloridos.
   Campos de relato/problema/observações viraram áreas de texto largas; "Problema" ganha destaque quando a situação é problema.
+- **Navegação no celular em retrato:** as abas viram uma barra fixa **embaixo** (ao alcance do polegar). No topo elas custavam uma linha inteira e empurravam os faders para fora da primeira tela (garantia de `portrait.test.ts`, que falhou no CI do Ubuntu a 320×640: fader a 547 px, limite 520; agora ~437 px). Tablet, desktop e celular deitado mantêm as abas no topo.
 - **Sobreposição corrigida (causa raiz):** a Mesa tinha altura fixa de `100dvh` com a área dos faders em `flex: 1 1 0`; qualquer coisa que crescesse acima a espremia e o
   conteúdo transbordava sobre o que vinha depois (MASTER sobre a Base de conhecimento; texto do assistente cortado). Agora a página cresce e a área dos faders tem
   altura mínima; no celular em retrato o MASTER aparece inteiro, em vez de uma fatia dentro de rolagem interna.

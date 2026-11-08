@@ -21,6 +21,7 @@ import { MesaComponent } from './views/mesa.component';
       <mx-speech-spike />
       <mx-private-ptt />
       <mx-knowledge-admin />
+      <div class="bar-spacer" aria-hidden="true"></div>
     } @else {
       <mx-fones />
     }

@@ -217,3 +217,26 @@ it('aprovações pendentes continuam visíveis na tela da passagem de som, com a
   await page.locator('.strips').first().waitFor();
   await expect.poll(() => page.locator('mx-pending-cards').innerText()).not.toBe('');
 });
+
+it('celular em retrato: abas numa barra fixa embaixo e, no fim da página, nada fica coberto por ela', async () => {
+  const t = await lab();
+  const { page } = await enter(browser, t.base, OPERATOR_PIN, PHONE);
+  await page.locator('mx-knowledge-admin').waitFor();
+  const vh = await page.evaluate(() => innerHeight);
+  const bar = (await page.locator('.main-nav').boundingBox())!;
+  expect(Math.round(bar.y + bar.height), 'barra encostada no fim da tela').toBeGreaterThanOrEqual(vh - 1);
+  expect(bar.y, 'o topo não gasta uma linha com as abas').toBeGreaterThan(vh / 2);
+  // os faders continuam na primeira tela (garantia de portrait.test.ts)
+  expect((await page.locator('.strips mx-fader').first().boundingBox())!.y).toBeLessThan(vh - 120);
+  for (const screen of ['mesa', 'passagem']) {
+    if (screen === 'passagem') await goPassagem(page);
+    await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(250);
+    const covered = await page.evaluate(() => {
+      const navTop = document.querySelector('.main-nav')!.getBoundingClientRect().top;
+      const admin = document.querySelector('mx-knowledge-admin')!.getBoundingClientRect();
+      return admin.bottom > navTop + 1;
+    });
+    expect(covered, 'Base de conhecimento coberta pela barra no fim da ' + screen).toBe(false);
+  }
+});
