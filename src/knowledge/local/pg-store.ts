@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import pg from 'pg';
 import type { Assignment, CasesPack, CatalogEntry, MicModel, MicPack } from './pack.js';
-import type { DocumentIn, DocumentRow, KnowledgeStore, MicrophoneState, Passage, SourceRow, StoreHealth } from './store.js';
-import { excerpt } from './text.js';
+import { DEFAULT_MIN_SCORE, type DocumentIn, type DocumentRow, type KnowledgeStore, type MicrophoneState, type Passage, type SearchOptions, type SourceRow, type StoreHealth } from './store.js';
+import { mentionedModels } from './models.js';
+import { excerpt, fuse } from './text.js';
 
 /** Fatia mínima do cliente PostgreSQL, para trocar por um falso nos testes. */
 export interface SqlClient {
@@ -10,10 +11,15 @@ export interface SqlClient {
   end(): Promise<void>;
 }
 
-export interface PgConnection { host: string; port: number; database: string; user: string; password: string }
+export interface PgConnection { host: string; port: number; database: string; user: string; password: string; /** Schema da coleção (padrão: public). */ schema?: string }
+
+const SCHEMA_RE = /^[a-z][a-z0-9_]{0,40}$/;
 
 export function createPgClient(c: PgConnection): SqlClient {
-  const pool = new pg.Pool({ host: c.host, port: c.port, database: c.database, user: c.user, password: c.password, max: 3, connectionTimeoutMillis: 3000, idleTimeoutMillis: 10_000, statement_timeout: 15_000 });
+  if (c.schema && c.schema !== 'public' && !SCHEMA_RE.test(c.schema)) throw new Error('Schema inválido.');
+  // O schema entra pelo search_path da conexão: as consultas não mudam e o nome é validado acima.
+  const options = c.schema && c.schema !== 'public' ? `-c search_path=${c.schema},public` : undefined;
+  const pool = new pg.Pool({ host: c.host, port: c.port, database: c.database, user: c.user, password: c.password, options, max: 3, connectionTimeoutMillis: 3000, idleTimeoutMillis: 10_000, statement_timeout: 15_000 });
   pool.on('error', () => undefined); // queda do servidor não derruba o processo
   return pool as unknown as SqlClient;
 }
@@ -26,15 +32,28 @@ export function vectorLiteral(v: readonly number[]): string {
 
 type R = Record<string, unknown>;
 
+/**
+ * Consulta de palavras com semântica OR ("a | b | c"): perguntas naturais quase nunca contêm todas as
+ * palavras de um mesmo trecho (plainto_tsquery exige todas). Só letras e números entram, então nenhum
+ * operador do tsquery pode ser injetado; o valor ainda vai como parâmetro ($1). O PostgreSQL remove
+ * as palavras vazias (stop words) e faz o radical em português.
+ */
+export function orTsQuery(query: string): string {
+  const words = [...new Set(query.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2 && w.length <= 40))];
+  return words.slice(0, 12).join(' | ');
+}
+
 /** PostgreSQL + pgvector. Todas as consultas são parametrizadas ($1…); dimensão vem da configuração. */
 export class PgKnowledgeStore implements KnowledgeStore {
   readonly kind = 'postgres' as const;
-  constructor(private readonly db: SqlClient, private readonly dimensions: number, private readonly clock: () => number = Date.now) {
+  constructor(private readonly db: SqlClient, private readonly dimensions: number, private readonly clock: () => number = Date.now, private readonly schema: string = 'public') {
     if (!Number.isInteger(dimensions) || dimensions < 8 || dimensions > 4096) throw new Error('Dimensão de embedding inválida.');
+    if (schema !== 'public' && !SCHEMA_RE.test(schema)) throw new Error('Schema inválido.');
   }
 
   async init(): Promise<void> {
-    await this.db.query('CREATE EXTENSION IF NOT EXISTS vector');
+    await this.db.query('CREATE EXTENSION IF NOT EXISTS vector SCHEMA public');
+    if (this.schema !== 'public') await this.db.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`); // nome validado no construtor
     const dim = this.dimensions; // inteiro validado acima: único valor interpolado no DDL
     const ddl = [
       `CREATE TABLE IF NOT EXISTS knowledge_sources (id text PRIMARY KEY, title text NOT NULL, url text NOT NULL, description text NOT NULL, verified_online date, downloaded boolean NOT NULL DEFAULT false, local boolean NOT NULL DEFAULT false)`,
@@ -53,7 +72,12 @@ export class PgKnowledgeStore implements KnowledgeStore {
   async health(): Promise<StoreHealth> {
     try {
       const r = await this.db.query<{ v: string | null }>("SELECT extversion AS v FROM pg_extension WHERE extname = 'vector'");
-      return r.rows[0]?.v ? { ok: true, detail: `PostgreSQL com pgvector ${r.rows[0].v}` } : { ok: false, detail: 'PostgreSQL sem a extensão pgvector.' };
+      if (!r.rows[0]?.v) return { ok: false, detail: 'PostgreSQL sem a extensão pgvector.' };
+      // A dimensão da coluna é fixa: se a configuração mudou de modelo, a coleção precisa ser outra.
+      const dim = await this.db.query<{ d: number | null }>("SELECT a.atttypmod AS d FROM pg_attribute a WHERE a.attrelid = to_regclass('knowledge_chunks') AND a.attname = 'embedding'");
+      const stored = dim.rows[0]?.d;
+      if (stored && stored > 0 && stored !== this.dimensions) return { ok: false, detail: `A coleção guarda vetores de ${stored} dimensões e a configuração pede ${this.dimensions}: use outra knowledge.collection.` };
+      return { ok: true, detail: `PostgreSQL com pgvector ${r.rows[0].v}${this.schema !== 'public' ? ` · coleção ${this.schema}` : ''}` };
     } catch {
       return { ok: false, detail: 'PostgreSQL indisponível.' };
     }
@@ -144,20 +168,35 @@ export class PgKnowledgeStore implements KnowledgeStore {
     const r = await this.db.query<{ id: string }>('DELETE FROM knowledge_documents WHERE id = $1 RETURNING id', [id]);
     return r.rows.length > 0;
   }
-  async search(query: string, embedding: number[] | undefined, limit: number): Promise<Passage[]> {
-    if (embedding && embedding.length === this.dimensions) {
-      const r = await this.db.query<R>(
-        `SELECT c.locator, c.content, d.id AS document_id, d.source_id, 1 - (c.embedding <=> $1::vector) AS score
-         FROM knowledge_chunks c JOIN knowledge_documents d ON d.id = c.document_id
-         WHERE c.embedding IS NOT NULL ORDER BY c.embedding <=> $1::vector LIMIT $2`, [vectorLiteral(embedding), limit]);
-      const found = r.rows.filter((x) => Number(x.score) > 0.3);
-      if (found.length) return found.map((x) => ({ sourceId: String(x.source_id), documentId: String(x.document_id), locator: String(x.locator), excerpt: excerpt(String(x.content)), score: Number(Number(x.score).toFixed(4)), method: 'vector' as const }));
-    }
+  private async vector(embedding: number[], limit: number, minScore: number): Promise<Passage[]> {
+    if (embedding.length !== this.dimensions) return [];
     const r = await this.db.query<R>(
-      `SELECT c.locator, c.content, d.id AS document_id, d.source_id, ts_rank(c.tsv, plainto_tsquery('portuguese', $1)) AS score
+      `SELECT c.locator, c.content, d.id AS document_id, d.source_id, 1 - (c.embedding <=> $1::vector) AS score
        FROM knowledge_chunks c JOIN knowledge_documents d ON d.id = c.document_id
-       WHERE c.tsv @@ plainto_tsquery('portuguese', $1) ORDER BY score DESC LIMIT $2`, [query.slice(0, 300), limit]);
-    return r.rows.map((x) => ({ sourceId: String(x.source_id), documentId: String(x.document_id), locator: String(x.locator), excerpt: excerpt(String(x.content)), score: Number(Number(x.score).toFixed(4)), method: 'keyword' as const }));
+       WHERE c.embedding IS NOT NULL ORDER BY c.embedding <=> $1::vector LIMIT $2`, [vectorLiteral(embedding), limit]);
+    return r.rows.filter((x) => Number(x.score) > minScore)
+      .map((x) => ({ sourceId: String(x.source_id), documentId: String(x.document_id), locator: String(x.locator), excerpt: excerpt(String(x.content)), models: [...mentionedModels(String(x.content))].sort(), score: Number(Number(x.score).toFixed(4)), method: 'vector' as const }));
+  }
+  private async keyword(query: string, limit: number): Promise<Passage[]> {
+    const q = orTsQuery(query.slice(0, 300));
+    if (!q) return [];
+    const r = await this.db.query<R>(
+      `SELECT c.locator, c.content, d.id AS document_id, d.source_id, ts_rank(c.tsv, to_tsquery('portuguese', $1)) AS score
+       FROM knowledge_chunks c JOIN knowledge_documents d ON d.id = c.document_id
+       WHERE c.tsv @@ to_tsquery('portuguese', $1) ORDER BY score DESC LIMIT $2`, [q, limit]);
+    return r.rows.map((x) => ({ sourceId: String(x.source_id), documentId: String(x.document_id), locator: String(x.locator), excerpt: excerpt(String(x.content)), models: [...mentionedModels(String(x.content))].sort(), score: Number(Number(x.score).toFixed(4)), method: 'keyword' as const }));
+  }
+  async search(query: string, embedding: number[] | undefined, limit: number, opts: SearchOptions = {}): Promise<Passage[]> {
+    const min = opts.minScore ?? DEFAULT_MIN_SCORE;
+    if (opts.mode === 'hybrid') {
+      const wide = Math.max(limit * 3, 12);
+      return fuse(embedding ? await this.vector(embedding, wide, min) : [], await this.keyword(query, wide), limit);
+    }
+    if (embedding) {
+      const found = await this.vector(embedding, limit, min);
+      if (found.length) return found;
+    }
+    return this.keyword(query, limit);
   }
   async close(): Promise<void> { await this.db.end().catch(() => undefined); }
 }

@@ -55,6 +55,21 @@ describe('knowledgeView (validação do que o servidor envia)', () => {
     expect(v.narrative).toBe('Resumo teórico.');
     expect(knowledgeView({ mode: 'keyword', passages: [], narrative: { text: 'afirma ser verificado', verified: true } })!.narrative).toBeUndefined();
   });
+  it('avisa quando o trecho mistura modelos, explica a falta do resumo e mostra o filtro de modelo', () => {
+    const base = { mode: 'vector', degraded: false, passages: [{ title: 'AKG', excerpt: 'P3 P5 tabela', caution: 'Trecho com dados de mais de um modelo (P3, P5): não misture as características.'.padEnd(400, '!') }] };
+    const v = knowledgeView({ ...base, narrativeStatus: { status: 'blocked', rule: 'phantom' }, modelFilter: { model: 'P3', excluded: 2 } })!;
+    expect(v.passages[0]!.caution!.length).toBe(200);
+    expect(v.narrative).toBeUndefined();
+    expect(v.narrativeNote).toMatch(/descartado por segurança/);
+    expect(v.narrativeNote).not.toMatch(/phantom/); // o código da regra não vai para a tela
+    expect(v.modelNote).toBe('2 trecho(s) que só descrevem outros modelos de microfone foram ocultados (este canal usa o P3).');
+    for (const [status, text] of [['timeout', /demorou demais/], ['unavailable', /não está pronto/], ['error', /erro no serviço/], ['empty', /sem base suficiente/], ['echo', /repetia os trechos/]] as const) {
+      expect(knowledgeView({ ...base, narrativeStatus: { status } })!.narrativeNote, status).toMatch(text);
+    }
+    for (const quiet of ['disabled', 'no_passages', 'used', 'desconhecido']) expect(knowledgeView({ ...base, narrativeStatus: { status: quiet } })!.narrativeNote, quiet).toBeUndefined();
+    expect(knowledgeView({ ...base, narrative: { text: 'Resumo.', verified: false }, narrativeStatus: { status: 'blocked' } })!.narrativeNote).toBeUndefined();
+    expect(knowledgeView({ ...base, modelFilter: { model: 'P3', excluded: -1 } })!.modelNote).toBeUndefined();
+  });
   it('formato inesperado vira nada, nunca erro', () => {
     for (const bad of [undefined, null, 5, 'x', [], { mode: 'outro' }, { passages: 'não-lista' }]) expect(knowledgeView(bad)).toBeUndefined();
     expect(knowledgeView({ mode: 'deterministic', passages: 'não-lista', microphone: 'x' })).toMatchObject({ mode: 'deterministic', passages: [] });
@@ -68,6 +83,28 @@ describe('painel de administração', () => {
     expect(el.textContent).toContain('Base: arquivo local');
     expect(el.textContent).toContain('Ollama: desligado');
     expect(el.textContent).toContain('Busca: por palavras');
+  });
+  it('mostra a coleção em uso e, com resumo ligado, quantos resumos foram exibidos ou descartados e por quê', async () => {
+    const on = { ...status, store: { kind: 'postgres', ok: true, detail: 'PostgreSQL com pgvector 0.8.7 · coleção kb_bgem3' }, ollama: { ...status.ollama, reachable: true, narrative: true }, narrativeStats: { used: 5, dropped: { 'blocked:phantom': 1, timeout: 2 } } };
+    const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ body: on }) }); await settle(f);
+    svc.open.set(true); f.detectChanges();
+    expect(el.textContent).toContain('coleção kb_bgem3');
+    expect(el.textContent).toContain('5 exibido(s), 3 descartado(s)');
+    expect(el.textContent).toContain('blocked:phantom × 1');
+    expect(el.textContent).toContain('timeout × 2');
+  });
+  it('com o resumo desligado o painel não fala em resumos', async () => {
+    const { f, el, svc } = boot(); await settle(f);
+    svc.open.set(true); f.detectChanges();
+    expect(el.textContent).toContain('Base de conhecimento');
+    expect(el.textContent).not.toContain('descartado(s)');
+  });
+  it('servidor antigo (resumo ligado, sem estatística) não quebra o painel', async () => {
+    const old = { ...status, ollama: { ...status.ollama, narrative: true } };
+    const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ body: old }) }); await settle(f);
+    svc.open.set(true); f.detectChanges();
+    expect(el.textContent).toContain('Base de conhecimento');
+    expect(el.textContent).not.toContain('descartado(s)');
   });
   it('base desligada no servidor (404) esconde a seção sem erro', async () => {
     const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ status: 404, body: { code: 'NOT_FOUND' } }) }); await settle(f);
@@ -155,6 +192,17 @@ describe('chat: fontes locais dentro dos detalhes técnicos', () => {
     expect(block.textContent).toContain('busca por palavras'); expect(block.textContent).toContain('Ollama indisponível');
     expect(block.textContent).toContain('CH3 Fred'); expect(block.textContent).toContain('Shure'); expect(block.textContent).toContain('não verificado');
     expect(block.closest('details.technical-details')).not.toBeNull();
+    expect(c.el.querySelectorAll('.card-actions button').length).toBe(0);
+  });
+  it('mostra o aviso de tabela com vários modelos, o filtro de modelo e o motivo de não haver resumo', async () => {
+    const c = await chat();
+    await ask(c, { mode: 'vector', degraded: false, passages: [{ title: 'AKG', url: '', locator: 'p.2', excerpt: 'P3 P5/P5 S padrão polar', caution: 'Trecho com dados de mais de um modelo (P3, P5): não misture as características.' }],
+      narrativeStatus: { status: 'timeout' }, modelFilter: { model: 'P3', excluded: 1 } });
+    const block = c.el.querySelector('.knowledge-block')!;
+    expect(block.textContent).toContain('não misture as características');
+    expect(block.textContent).toContain('Resumo do modelo local indisponível: demorou demais.');
+    expect(block.textContent).toContain('1 trecho(s) que só descrevem outros modelos de microfone foram ocultados (este canal usa o P3).');
+    expect(block.textContent).not.toContain('não verificado, teoria a conferir');
     expect(c.el.querySelectorAll('.card-actions button').length).toBe(0);
   });
   it('sem o campo knowledge o chat é idêntico ao de antes', async () => {

@@ -7,13 +7,14 @@ export interface KStatus {
   ollama: { reachable: boolean; embedModel: boolean; chatModel: boolean; detail: string; narrative: boolean };
   sources: number; documents: number; chunks: number; embeddedChunks: number;
   mode: 'vector' | 'keyword' | 'deterministic'; note: string;
+  narrativeStats?: { used: number; dropped: Record<string, number> };
 }
 export interface KSource { id: string; title: string; url: string; downloaded: boolean; documents: number; local: boolean }
 export interface KDocument { id: string; sourceId: string; fileName: string; chunks: number; embedded: number; ingestedAt: string }
 export interface KMicModel { model: string; pattern: string }
 export interface KAssignment { musician: string; modelId: string | null; role: string; evidence: string }
 export interface KMics { verifiedModel: string | null; bandMicModel: string; safety: string; models: Record<string, KMicModel>; assignments: Record<string, KAssignment> }
-export interface KPassage { title: string; url: string; locator: string; excerpt: string }
+export interface KPassage { title: string; url: string; locator: string; excerpt: string; caution?: string }
 export interface KIngestItem { file: string; status: string; chunks?: number; embedded?: number; reason?: string }
 
 const ERRORS: Record<string, string> = {

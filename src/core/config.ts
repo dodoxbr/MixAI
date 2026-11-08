@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { z } from 'zod';
@@ -164,15 +164,32 @@ const ConfigSchema = z.object({
           /** Redigir um texto de apoio com o modelo local. Desligado: só trechos recuperados. */
           narrative: z.boolean().default(false),
           timeoutMs: z.number().int().min(500).max(120_000).default(8000),
+          /** Prefixos exigidos por alguns modelos de embedding (nomic-embed-text: "search_query: " e "search_document: "). Mudar exige reingerir. */
+          queryPrefix: z.string().max(40).default(''),
+          documentPrefix: z.string().max(40).default(''),
+          /** Tempo máximo do resumo do modelo (CPU gera devagar; embeddings usam timeoutMs). */
+          narrativeTimeoutMs: z.number().int().min(1000).max(180_000).default(30_000),
+          /** Similaridade mínima (cosseno) para um trecho contar como relevante; depende do modelo de embedding. */
+          minScore: z.number().min(0).max(0.95).default(0.3),
         })
         .strict()
         .prefault({}),
+      /**
+       * Coleção de vetores. "default" = tabelas e arquivo originais. Outro nome (ex.: bgem3) usa um schema
+       * próprio no PostgreSQL (kb_<nome>) ou knowledge-<nome>.json: trocar de modelo de embedding sem
+       * perder a base anterior, e voltar mudando só esta linha.
+       */
+      collection: z.string().regex(/^[a-z][a-z0-9_]{0,30}$/, 'minúsculas, números e _').default('default'),
+      /** auto = vetor, depois palavras (comportamento original); hybrid = fusão dos dois (RRF). */
+      search: z.enum(['auto', 'hybrid']).default('auto'),
       /** Pasta (relativa a data/) com os documentos a ingerir. */
       inboxDir: z
         .string()
         .min(1)
         .default('knowledge/inbox')
-        .refine((p) => !isAbsolute(p) && !p.split(/[\\/]/).includes('..'), 'caminho relativo a data/, sem ".."'),
+        // Absoluto em QUALQUER sistema é recusado: a configuração viaja entre Windows e Linux, e o
+        // isAbsolute do Node só conhece o sistema em que está rodando ("C:\x" não é absoluto no Linux).
+        .refine((p) => !win32.isAbsolute(p) && !posix.isAbsolute(p) && !/^[A-Za-z]:/.test(p) && !p.split(/[\\/]/).includes('..'), 'caminho relativo a data/, sem ".."'),
       maxDocumentMB: z.number().min(1).max(100).default(30),
       maxPassages: z.number().int().min(1).max(10).default(4),
     })
