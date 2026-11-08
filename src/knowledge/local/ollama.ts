@@ -81,7 +81,9 @@ export class OllamaClient implements AiProvider {
         model: this.o.chatModel, stream: false,
         options: { temperature: 0.2, num_predict: 260 },
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      }, this.o.generateTimeoutMs ?? this.o.timeoutMs)) as { message?: { content?: unknown } };
+      }, this.o.generateTimeoutMs ?? this.o.timeoutMs)) as { message?: { content?: unknown }; done_reason?: unknown };
+      // done_reason "length" = parou em num_predict: texto incompleto, não é uma resposta concluída.
+      if (data.done_reason === 'length') return { failure: 'truncated' };
       const out = data.message?.content;
       return typeof out === 'string' && out.trim() ? { text: out } : { failure: 'empty' };
     } catch (err) {

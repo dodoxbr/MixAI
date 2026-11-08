@@ -9,7 +9,7 @@ import { openLocalKnowledge } from '../src/knowledge/local/open.js';
 import { readChatPreference, writeChatPreference } from '../src/knowledge/local/preference.js';
 import type { SqlClient } from '../src/knowledge/local/pg-store.js';
 import { isPublicSource, redactForExternal } from '../src/knowledge/local/privacy.js';
-import { KnowledgeError, LocalKnowledge } from '../src/knowledge/local/service.js';
+import { judgeNarrative, KnowledgeError, LocalKnowledge } from '../src/knowledge/local/service.js';
 import { FileKnowledgeStore } from '../src/knowledge/local/store.js';
 
 const SEED = join(PROJECT_ROOT, 'knowledge', 'seed', 'banda-v1_2');
@@ -139,6 +139,98 @@ describe('GeminiClient: segredo, rede e erros', () => {
     const r = await fakeGemini({ chat: { text: '<html>erro</html>' } }).client().generateDetailed('s', 'u');
     expect(r.failure).toBeDefined();
     expect(r.text).toBeUndefined();
+  });
+  describe('resposta incompleta (regressão: finishReason=MAX_TOKENS)', () => {
+    const partial = (finishReason: string, text = 'Pode ser que o ganho esteja alto e o') => ({ json: { candidates: [{ content: { parts: [{ text }] }, finishReason }] } });
+    it('MAX_TOKENS NÃO é resposta concluída, mesmo com texto parcial', async () => {
+      const r = await fakeGemini({ chat: partial('MAX_TOKENS') }).client().generateDetailed('s', 'u');
+      expect(r).toEqual({ failure: 'truncated' });
+      expect(r.text).toBeUndefined();
+    });
+    it('motivo de parada desconhecido também não conta como concluído; STOP e ausência contam', async () => {
+      expect((await fakeGemini({ chat: partial('OTHER') }).client().generateDetailed('s', 'u')).failure).toBe('error');
+      expect((await fakeGemini({ chat: partial('MALFORMED_FUNCTION_CALL') }).client().generateDetailed('s', 'u')).failure).toBe('error');
+      expect((await fakeGemini({ chat: partial('STOP', GOOD) }).client().generateDetailed('s', 'u')).text).toBe(GOOD);
+      expect((await fakeGemini({ chat: { json: { candidates: [{ content: { parts: [{ text: GOOD }] } }] } } }).client().generateDetailed('s', 'u')).text).toBe(GOOD);
+    });
+    it('partes de raciocínio (thought) nunca entram no texto', async () => {
+      const chat = { json: { candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'RACIOCINIO-INTERNO', thought: true }, { text: GOOD }] } }] } };
+      expect((await fakeGemini({ chat }).client().generateDetailed('s', 'u')).text).toBe(GOOD);
+    });
+    it('o teto de tokens padrão comporta o raciocínio e o nível de raciocínio vai no corpo', async () => {
+      const g = fakeGemini();
+      await g.client().generateDetailed('s', 'u');
+      const gc = JSON.parse(generateCalls(g.calls)[0]!.body).generationConfig;
+      expect(gc.maxOutputTokens).toBe(2048); // 320 deixava ~10 tokens de texto nos modelos Gemini 3
+      expect(gc.thinkingConfig).toEqual({ thinkingLevel: 'low' });
+    });
+    it('"default" não envia thinkingConfig; teto e nível vêm da configuração', async () => {
+      const g = fakeGemini();
+      const mk = (extra: object) => new GeminiClient({ ...GEMINI_OPTS, ...extra }, KEY, g.fetchFn as unknown as typeof fetch);
+      await mk({ thinkingLevel: 'default', maxOutputTokens: 4096 }).generateDetailed('s', 'u');
+      await mk({ thinkingLevel: 'medium', maxOutputTokens: 512 }).generateDetailed('s', 'u');
+      const [a, b] = generateCalls(g.calls).map((c) => JSON.parse(c.body).generationConfig);
+      expect(a.thinkingConfig).toBeUndefined();
+      expect(a.maxOutputTokens).toBe(4096);
+      expect(b).toMatchObject({ thinkingConfig: { thinkingLevel: 'medium' }, maxOutputTokens: 512 });
+    });
+    it('a configuração rejeita teto e nível inválidos e usa os padrões novos', () => {
+      const ok = parseConfig({ knowledge: { gemini: {} } }).knowledge.gemini;
+      expect(ok).toMatchObject({ chatModel: 'gemini-3.8-flash', maxOutputTokens: 2048, thinkingLevel: 'low' });
+      expect(() => parseConfig({ knowledge: { gemini: { maxOutputTokens: 10 } } })).toThrow();
+      expect(() => parseConfig({ knowledge: { gemini: { thinkingLevel: 'ultra' } } })).toThrow();
+    });
+    it('Ollama: done_reason "length" também é resposta incompleta', async () => {
+      const fetchFn = async (input: URL | string) => {
+        const u = String(input);
+        if (u.endsWith('/api/tags')) return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }, { name: 'llama3.2:3b' }] }));
+        return new Response(JSON.stringify({ message: { content: 'Pode ser o cabo e a' }, done_reason: 'length' }));
+      };
+      const r = await new OllamaClient(OLLAMA_OPTS, fetchFn as unknown as typeof fetch).generateDetailed('s', 'u');
+      expect(r).toEqual({ failure: 'truncated' });
+    });
+    it('no serviço: resposta cortada do Gemini é descartada, registrada só com o motivo, e o Ollama assume', async () => {
+      const logs: string[] = [];
+      const g = fakeGemini({ chat: partial('MAX_TOKENS') });
+      const { k } = await service({ gemini: g.client(), chat: 'gemini', log: (m) => logs.push(m) });
+      const ctx = await ask(k);
+      expect(generateCalls(g.calls)).toHaveLength(1);
+      expect(ctx.narrative?.source).toBe('ollama');
+      expect(ctx.narrativeStatus).toMatchObject({ status: 'used', provider: 'ollama', fellBackFrom: 'gemini', fallbackReason: 'truncated' });
+      const line = logs.find((l) => /truncated/.test(l))!;
+      expect(line).toMatch(/motivo=truncated:max_tokens, provedor=gemini/);
+      expect(logs.join('\n')).not.toMatch(/ganho esteja alto/); // o texto parcial não vai para o log
+    });
+    it('sem reserva local, o texto parcial nunca é exibido', async () => {
+      const g = fakeGemini({ chat: partial('MAX_TOKENS') });
+      const dir = tmp();
+      const store = new FileKnowledgeStore(join(dir, 'knowledge.json'));
+      await store.init();
+      const k = new LocalKnowledge({ store, chatProviders: [g.client()], chat: 'gemini', inboxDir: join(dir, 'inbox'), seedDir: SEED, maxDocumentBytes: 1024 * 1024, maxPassages: 3, narrative: true });
+      await k.importSeed();
+      mkdirSync(join(dir, 'inbox'), { recursive: true });
+      writeFileSync(join(dir, 'inbox', 'shure-live.md'), PUBLIC_DOC);
+      await k.ingest();
+      const ctx = await ask(k);
+      expect(ctx.narrative).toBeUndefined();
+      expect(ctx.narrativeStatus).toMatchObject({ status: 'truncated', rule: 'max_tokens', provider: 'gemini' });
+    });
+  });
+  describe('judgeNarrative: limite de exibição sem cortar no meio da frase', () => {
+    const sentence = 'Pode ser que o posicionamento do microfone esteja afastado da boca. ';
+    it('acima de 700 caracteres corta na última frase completa', () => {
+      const v = judgeNarrative(sentence.repeat(20), [{ excerpt: 'outro assunto' }]);
+      expect('text' in v).toBe(true);
+      const text = (v as { text: string }).text;
+      expect(text.length).toBeLessThanOrEqual(700);
+      expect(text.endsWith('.')).toBe(true);
+    });
+    it('sem nenhum ponto final aproveitável, não exibe um pedaço de frase', () => {
+      expect(judgeNarrative('pode ser que o posicionamento do microfone esteja afastado '.repeat(20), [{ excerpt: 'x' }])).toEqual({ status: 'truncated', rule: 'acima_do_limite' });
+    });
+    it('texto curto passa inteiro', () => {
+      expect(judgeNarrative(GOOD, [{ excerpt: 'x' }])).toEqual({ text: GOOD });
+    });
   });
   it('embeddings: tipo de tarefa, dimensão pedida, normalização e lotes de 50', async () => {
     const g = fakeGemini();

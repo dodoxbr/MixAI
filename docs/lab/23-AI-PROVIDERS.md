@@ -64,7 +64,7 @@ a fila ou o mixer; as rotas de provedor são **exclusivas do operador**, com ver
 
 ## Limitações
 
-- **Não foi testado contra o serviço real do Gemini**: não havia chave. Os testes usam um Gemini falso que reproduz o contrato
+- **(Histórico — veja "Validação com o Gemini real" abaixo)** O PR original não foi testado contra o serviço real: não havia chave. Os testes usam um Gemini falso que reproduz o contrato
   REST documentado (`generateContent`, `batchEmbedContents`, cabeçalho `x-goog-api-key`). Antes de uso real é preciso conferir
   nomes de modelos, formato da resposta e cotas na documentação atual do Google; os nomes padrão (`gemini-2.5-flash`,
   `gemini-embedding-001`) são configuráveis justamente por isso.
@@ -75,3 +75,32 @@ a fila ou o mixer; as rotas de provedor são **exclusivas do operador**, com ver
   tem `ai.dailyBudgetUSD`; o Gemini ainda não).
 - Com internet via celular (como nos eventos), o resumo externo depende dessa conexão e pode estourar o tempo; o fallback local cobre.
 - Embeddings externos exigem reindexar numa coleção nova (os de 768 dimensões do Ollama não servem).
+
+## Validação com o Gemini real (2026-11-08, LAB, sem mesa)
+
+Primeiro teste contra o serviço real (a seção "Limitações" acima descreve o estado antes dele).
+
+- **Modelo padrão trocado:** `gemini-2.5-flash` devolve 404 para contas novas ("no longer available to new users");
+  o padrão agora é `gemini-3.8-flash`. Modelos listados pela API na data: `gemini-3.8-flash`, `gemini-3.5-flash`,
+  `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-flash-latest`.
+- **Respostas cortadas (causa e correção):** os modelos Gemini 3 contam o raciocínio dentro de `maxOutputTokens`. Com o teto
+  antigo de 320, `gemini-3.8-flash` gastou 306 tokens pensando e 10 escrevendo (`finishReason=MAX_TOKENS`); o cliente
+  concatenava o texto parcial e o exibia. Agora: `MAX_TOKENS` (Gemini) e `done_reason=length` (Ollama) viram a falha
+  `truncated` e **nunca** são exibidos; o log registra só `motivo=truncated:max_tokens, provedor=…`, sem conteúdo. Outro
+  motivo de parada diferente de `STOP` vira `error`. O teto padrão é 2048 e há `thinkingLevel` (padrão `low`), ambos em
+  `knowledge.gemini`. O limite de exibição de 700 caracteres agora corta na última frase completa, não no meio.
+- **`thinkingLevel` depende do modelo:** `minimal` dá HTTP 400 no `gemini-3.8-flash`; no `gemini-3.5-flash`, `low` ainda gastou
+  929 tokens e `minimal` não gastou nenhum. Use `default` para não enviar o campo.
+- **Recuperação em português:** o `nomic-embed-text` casa mal perguntas em português com manuais em inglês. Avaliação
+  (`npm run knowledge -- eval --live`, 367 trechos reais, acerto@k): Ollama + `auto` 21%, Ollama + `hybrid` 38%,
+  **Gemini embeddings (`gemini-embedding-001`, coleção `gem768`) + `hybrid` 79%**. Só os manuais públicos do catálogo
+  foram enviados para gerar vetores; documentos locais não saem. Configuração local usada: `collection: gem768`,
+  `embedProvider: gemini`, `search: hybrid`.
+- **Latência (resumo, 4 perguntas, trechos já recuperados):** `gemini-3.5-flash` ≈ 1,2–1,8 s, `gemini-3.1-flash-lite` ≈ 1,6–2,1 s,
+  `gemini-3.8-flash` ≈ 2,2–4,6 s. O `gemini-3.5-flash-lite` descartou todas as respostas como "sem base".
+- **Fundamentação:** com trechos relevantes (Shure, Ui12/16) as respostas vieram completas, em frases inteiras, sem valores
+  nem comandos. Sem trecho que sustente a resposta, o modelo responde "não há base suficiente" e o MixAI descarta o resumo.
+- **Limites que continuam:** ficha técnica do AKG P3/P5 é tabela com vários modelos (trecho com aviso, fora do resumo por
+  desenho); a página oficial do AKG P3 S (`br.akg.com`) bloqueia download automático (403) e o manual Ui16 v3 (39 MB) passa de
+  `maxDocumentMB`; perguntas só com vocabulário coloquial ("abafada", "sem grave") ainda recuperam pouco; falta expansão de
+  consulta PT→EN. Nada disso toca a mesa; a Ui16 não foi acessada.

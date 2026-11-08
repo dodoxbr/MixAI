@@ -33,10 +33,12 @@ const NARRATIVE_NOTES: Record<string, string> = {
   quota: 'Resumo do Gemini indisponível: limite de uso atingido.',
   refused: 'Resumo descartado: o provedor recusou o pedido.',
   withheld: 'Resumo não enviado ao serviço externo: os trechos vêm de documentos locais.',
+  truncated: 'Resumo descartado: a resposta do modelo veio incompleta (parou no limite de tamanho).',
 };
 const FALLBACK_REASONS: Record<string, string> = {
   auth: 'recusou a chave', quota: 'atingiu o limite de uso', timeout: 'demorou demais', unavailable: 'não respondeu',
   error: 'deu erro', refused: 'recusou o pedido', withheld: 'não recebe trechos de documentos locais',
+  truncated: 'devolveu a resposta incompleta',
 };
 const str = (v: unknown, max: number): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});

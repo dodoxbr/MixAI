@@ -133,7 +133,9 @@ knowledge:
   embedProvider: ollama   # ollama | gemini (gemini exige outra "collection": os vetores não são compatíveis)
   gemini:
     enabled: false        # desligado: nenhum dado sai deste computador
-    chatModel: gemini-2.5-flash
+    chatModel: gemini-3.8-flash   # gemini-2.5-flash não está mais disponível para contas novas (404)
+    maxOutputTokens: 2048         # teto da resposta; o raciocínio dos modelos Gemini 3 conta dentro dele
+    thinkingLevel: low            # default | minimal | low | medium | high (cada modelo aceita níveis diferentes)
     embedModel: gemini-embedding-001
     embedDimensions: 768
     timeoutMs: 10000

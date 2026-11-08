@@ -9,9 +9,10 @@ export interface ProviderHealth { reachable: boolean; embedModel: boolean; chatM
 
 /**
  * Por que não houve texto. Só códigos: nunca a mensagem do servidor, a chave nem o conteúdo.
- * auth = chave recusada; quota = limite de uso; refused = o provedor bloqueou o pedido/resposta.
+ * auth = chave recusada; quota = limite de uso; refused = o provedor bloqueou o pedido/resposta;
+ * truncated = a resposta parou no teto de tokens (incompleta: nunca é exibida como se estivesse concluída).
  */
-export type GenerateFailure = 'unavailable' | 'timeout' | 'error' | 'empty' | 'auth' | 'quota' | 'refused';
+export type GenerateFailure = 'unavailable' | 'timeout' | 'error' | 'empty' | 'auth' | 'quota' | 'refused' | 'truncated';
 export interface GenerateResult { text?: string; failure?: GenerateFailure }
 
 export interface AiProvider {
