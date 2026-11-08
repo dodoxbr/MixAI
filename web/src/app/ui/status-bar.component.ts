@@ -20,6 +20,7 @@ import { SessionService } from '../core/session.service';
     <div class="link-chip" [class]="'link-chip state-' + linkState()" data-testid="link" role="status">
       <span class="dot"></span>{{ linkText() }}
     </div>
+    <ng-content select="[status-nav]" />
     <div class="spacer"></div>
     <div class="role-chip">{{ session.role() === 'operator' ? 'Operador' : 'Músico' }}</div>
     <ng-content select="[status-action]" />

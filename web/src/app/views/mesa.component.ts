@@ -34,9 +34,16 @@ const UNKNOWN: StateValue = { status: 'unknown' };
   selector: 'mx-mesa',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [SoundcheckComponent, ReferenceWorkspaceComponent, MusiciansComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
-  host: { class: 'mx-view mx-mesa' },
+  host: { class: 'mx-view mx-mesa', '[class.is-passagem]': 'onPassagem()' },
   template: `
     <mx-status-bar>
+      <!-- Navegação principal: destinos (telas). As ferramentas ficam à direita; Sair por último. -->
+      <nav status-nav class="main-nav" aria-label="Seções do MixAI">
+        <button type="button" class="nav-tab" [class.on]="!onPassagem()" [attr.aria-current]="!onPassagem() ? 'page' : null" (click)="go('mesa')">Mesa</button>
+        @if (soundcheckEligible()) {
+          <button type="button" class="nav-tab" [class.on]="onPassagem()" [attr.aria-current]="onPassagem() ? 'page' : null" (click)="go('passagem')">Passagem de som</button>
+        }
+      </nav>
       @if (live.hello()?.mode === 'lab' && live.hello()?.role === 'operator') {
         <ng-container status-action>
         <button status-action type="button" class="btn" (click)="showEq.set(true)" [attr.aria-expanded]="showEq()">EQ LAB</button>
@@ -45,6 +52,21 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       }
     </mx-status-bar>
     @if (showMusicians()) { <mx-musicians (closed)="showMusicians.set(false)" /> }
+    @if (onPassagem()) {
+      <main class="screen-passagem" aria-label="Passagem de som">
+        @if (!live.writable()) {
+          <div class="offline-banner" role="alert">{{ offlineText() }}</div>
+        }
+        @if (live.pending().length) {
+          <div class="pending-banner" role="status">
+            <span>{{ live.pending().length === 1 ? '1 aprovação pendente' : live.pending().length + ' aprovações pendentes' }} na Mesa.</span>
+            <button type="button" class="btn" (click)="go('mesa')">Ir para a Mesa</button>
+          </div>
+        }
+        @defer (on immediate) { <mx-soundcheck /> } @placeholder { <p role="status" class="screen-loading">Abrindo a passagem de som…</p> }
+      </main>
+      <mx-reference-workspace />
+    } @else {
     <div class="toolbar">
       <div class="segmented" role="tablist" aria-label="Mix">
         <button type="button" role="tab" [attr.aria-selected]="bus() === 'pa'" [class.on]="bus() === 'pa'" (click)="bus.set('pa')">PA</button>
@@ -83,7 +105,6 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       <div class="offline-banner" role="alert">{{ offlineText() }}</div>
     }
 
-    @defer (on idle) { <mx-soundcheck /> }
     <mx-reference-workspace />
     <div class="mesa-main">
       @if (bus() === 'fones' && narrow()) {
@@ -153,6 +174,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
         </aside>
       }
     </div>
+    }
     @if (scenes.open()) {
       <mx-scenes />
     }
@@ -166,6 +188,12 @@ export class MesaComponent {
   readonly actions = inject(ActionsService);
   readonly assistant = inject(AssistantUiService);
   readonly scenes = inject(ScenesUiService);
+
+  /** Telas do operador: a Mesa (faders) e a Passagem de som (tela própria, sem competir por altura com os faders). */
+  readonly screen = signal<'mesa' | 'passagem'>('mesa');
+  readonly soundcheckEligible = computed(() => this.live.hello()?.mode === 'lab' && this.live.hello()?.role === 'operator');
+  readonly onPassagem = computed(() => this.screen() === 'passagem' && this.soundcheckEligible());
+  go(screen: 'mesa' | 'passagem'): void { this.screen.set(screen); }
 
   readonly showEq = signal(false);
   readonly bus = signal<'pa' | 'fones'>('pa');
