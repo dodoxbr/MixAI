@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { words, type ChannelMap } from '../core/channels.js';
 import {
-  diagnose, diagnosticInputSchema, instrumentSchema, sources, symptomSchema, technicalModules, modulesFor,
+  queryInstructorGuidance, type InstructorGuidance, diagnose, diagnosticInputSchema, instrumentSchema, sources, symptomSchema, technicalModules, modulesFor,
   diagnosticSessionSchema, type DiagnosticSession, type DiagnosticProgress, type DiagnosticCheck, type DiagnosticQuestionField,
   type Diagnosis, type Instrument, type Reference, type Symptom,
 } from '../knowledge/sound-engineer/index.js';
@@ -11,6 +11,7 @@ import { findChannels } from './nl-parser.js';
 export const consultationSchema = diagnosticInputSchema.omit({ sourceLabel: true }).extend({
   symptom: symptomSchema.optional(),
   symptomCandidates: z.array(symptomSchema).max(12).optional(),
+  ambiguity: z.literal('dry').optional(),
   channel: z.number().int().positive().optional(),
   evidence: diagnosticInputSchema.shape.evidence.max(20).default([]),
 }).superRefine((input, ctx) => {
@@ -27,14 +28,14 @@ export interface ConsultationReply {
   diagnosticOptions: ConsultationChoice[];
   clarification?: { field: DiagnosticQuestionField; question: string };
   diagnosticSession: DiagnosticSession;
-  technicalDetails: { modules: Array<(typeof technicalModules)[keyof typeof technicalModules]> };
+  technicalDetails: { modules: Array<(typeof technicalModules)[keyof typeof technicalModules]>; instructor?: InstructorGuidance };
 }
 
 const vocabulary: Record<Symptom, string[]> = {
   embolado: ['embolado', 'embolada', 'embolados', 'emboladas', 'embolando'],
   estridente: ['estridente', 'estridentes', 'agressivo', 'agressiva'],
-  abafado: ['abafado', 'abafada', 'abafados', 'abafadas'],
-  magro: ['magro', 'magra', 'sem corpo'],
+  abafado: ['abafado', 'abafada', 'abafados', 'abafadas', 'sem brilho'],
+  magro: ['magro', 'magra', 'sem corpo', 'sem grave', 'sem graves', 'fino', 'fina'],
   desequilibrio: ['desequilibrio', 'desequilibrado', 'desequilibrada', 'sumindo', 'sumiu', 'encobrindo', 'encoberta', 'encoberto', 'dominando', 'baixo', 'baixa', 'alto', 'alta', 'sobressaindo'],
   microfonia: ['microfonia', 'microfonando', 'apito', 'apitando', 'feedback'],
   sibilancia: ['sibilancia', 'sibilante', 'sibilantes', 'consoantes agressivas'],
@@ -42,7 +43,7 @@ const vocabulary: Record<Symptom, string[]> = {
   ruido: ['ruido', 'chiado', 'zumbido', 'ronco'],
   monitoracao: ['nao me ouco', 'nao me escuto', 'nao estou me ouvindo', 'sem retorno', 'retorno sumiu'],
   ganho: ['ganho', 'gain', 'preamp', 'headroom'],
-  processamento: ['phantom', '48v', 'afs2', 'hpf', 'equalizador', 'compressor', 'gate', 'eq'],
+  processamento: ['phantom', '48v', 'afs2', 'hpf', 'equalizador', 'compressor', 'gate', 'eq', 'nasal', 'anasalada', 'anasalado'],
 };
 const instrumentTerms: Record<Instrument, string[]> = {
   cavaco: ['cavaco', 'cavaquinho', 'cava'], violao: ['violao', 'viola', '7 cordas'],
@@ -64,6 +65,9 @@ export function parseConsultation(raw: string, names: ChannelMap): ConsultationI
   const text = normalized(raw);
   const symptoms = symptomSchema.options.filter(s => vocabulary[s].some(term => has(text, term)
     && (!['baixo', 'baixa', 'alto', 'alta'].includes(term) || /\b(esta|estao|ta|tao|ficou|ficaram|soa)\b/.test(text))));
+  // 'Seco' is ambiguous: do not silently turn it into a reverb/EQ prescription.
+  const dry = /\b(seco|seca)\b/.test(text);
+  if (dry) { for (const s of ['magro', 'processamento'] as const) if (!symptoms.includes(s)) symptoms.push(s); }
   if (!symptoms.length && !/\b(diagnostico|diagnosticar)\b|consulta tecnica|o que (podemos|posso) fazer|como (melhorar|resolver)/.test(text)) return undefined;
   const channels = findChannels(raw.replace(/\bch(\d+)\b/gi, 'ch $1'), names);
   const numericChannels = [...text.matchAll(/\b(?:canal|ch) ?(\d+)\b/g)].map(m => Number(m[1]));
@@ -79,17 +83,17 @@ export function parseConsultation(raw: string, names: ChannelMap): ConsultationI
     const clause = normalized(sentence);
     const explicitMonitoringReport = vocabulary.monitoracao.some(t => has(clause, t));
     const negativeAudibility = ['nao me ouco', 'nao me escuto', 'nao estou me ouvindo'].some(t => has(clause, t));
-    return !sentence.trim().endsWith('?') && !/^(?:por que|porque|como|quando|onde|qual|quais|o que|sera que)\b/.test(clause) && (/\b(esta|estao|ta|tao|ficou|ficaram|soa|soando|sumiu|tenho|microfonando|clipando|distorcendo)\b/.test(clause) || explicitMonitoringReport)
+    return !sentence.trim().endsWith('?') && !/^(?:por que|porque|como|quando|onde|qual|quais|o que|sera que)\b/.test(clause) && (/\b(esta|estao|ta|tao|ficou|ficaram|soa|soando|sumiu|tenho|microfonando|clipando|distorcendo)\b/.test(clause) || explicitMonitoringReport || /\b(sem grave|sem graves|sem corpo|sem brilho)\b/.test(clause))
       && !/\b(se|hipoteticamente|sera|talvez)\b|o que (e|significa)/.test(clause)
       && (!/\bnao\b/.test(clause) || negativeAudibility)
       && !/nao e (verdade|o caso)/.test(clause);
   });
   return {
     symptom: symptoms.includes('microfonia') ? 'microfonia' : symptoms.length === 1 ? symptoms[0] : undefined,
-    relatedInstruments, symptomCandidates: symptoms,
+    relatedInstruments, symptomCandidates: symptoms, ...(dry ? { ambiguity: 'dry' as const } : {}),
     channel, instrument: channel ? instrumentFor(channel, names) : relatedInstruments.length === 1 ? relatedInstruments[0] : undefined, destination,
     evidence: symptoms.flatMap(symptom => {
-      const observed = observations.filter(sentence => (symptom === 'monitoracao' || !/\bnao\b/.test(normalized(sentence))) && vocabulary[symptom].some(term => has(normalized(sentence), term)));
+      const observed = observations.filter(sentence => (symptom === 'monitoracao' || !/\bnao\b/.test(normalized(sentence))) && (vocabulary[symptom].some(term => has(normalized(sentence), term)) || dry && ['magro', 'processamento'].includes(symptom) && /\b(seco|seca)\b/.test(normalized(sentence))));
       return observed.length ? [{ id: `chat-${symptom}`, kind: 'operator_report' as const, symptom, detail: observed.join(' ').replace(/[\u0000-\u001f\u007f]/g, ' ').trim() }] : [];
     }),
   };
@@ -107,8 +111,8 @@ export function consult(input: ConsultationInput, names: ChannelMap, fonesAux: n
   let field: NonNullable<ConsultationReply['clarification']>['field'] | undefined;
   if (!context.symptom) {
     field = 'symptom';
-    missing.push('Qual sintoma você deseja investigar?');
-    for (const symptom of context.symptomCandidates?.length ? [...new Set(context.symptomCandidates)] : symptomSchema.options) choices.push({ label: symptom, input: { ...context, symptom } });
+    missing.push(context.ambiguity === 'dry' ? 'Quando diz seco, falta corpo/grave ou sustentação/ambiência?' : 'Qual sintoma você deseja investigar?');
+    for (const symptom of context.symptomCandidates?.length ? [...new Set(context.symptomCandidates)] : symptomSchema.options) choices.push({ label: context.ambiguity === 'dry' && symptom === 'magro' ? 'Falta corpo ou grave' : context.ambiguity === 'dry' && symptom === 'processamento' ? 'Falta sustentação ou ambiência' : symptom, input: { ...context, symptom } });
   } else if (!context.channel) {
     field = 'channel';
     missing.push(context.instrument === 'vozes' ? 'Qual vocalista está com o problema?' : 'Qual canal/fonte da banda apresenta a queixa?');
@@ -153,7 +157,8 @@ export function consult(input: ConsultationInput, names: ChannelMap, fonesAux: n
     text: summarizeDiagnosticTurn(context, names, diagnosis, diagnosticSession),
     references: [...new Map(refs.map(ref => [`${ref.source}:${ref.locator}`, { title: sources[ref.source].title, url: sources[ref.source].url, locator: ref.locator, version: sources[ref.source].version, consultedOn: sources[ref.source].consultedOn }])).values()],
     diagnosticOptions: choices, clarification: field ? { field, question: missing[0]! } : undefined,
-    technicalDetails: { modules: context.symptom ? modulesFor(context.symptom).map(id => technicalModules[id]) : [] },
+    technicalDetails: { modules: context.symptom ? modulesFor(context.symptom).map(id => technicalModules[id]) : [],
+      ...(context.symptom ? { instructor: queryInstructorGuidance({ symptom: context.symptom, channel: context.channel, instrument: context.instrument, destination: context.destination, evidence: context.evidence }) } : {}) },
   });
 }
 

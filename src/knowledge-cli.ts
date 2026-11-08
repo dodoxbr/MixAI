@@ -16,6 +16,8 @@ import { PROJECT_ROOT } from './core/config.js';
 
 export const KNOWLEDGE_HELP = `MixAI — base de conhecimento local (somente leitura de documentos; não toca na mesa).
   npm run knowledge -- doctor                 verifica Docker, PostgreSQL, Ollama e a base
+  npm run knowledge -- import-technical       indexa sínteses técnicas versionadas (sem IA/rede)
+  npm run knowledge -- remove-technical       remove só essas sínteses, preservando manuais
   npm run knowledge -- import-seed            importa o pacote base versionado (knowledge/seed)
   npm run knowledge -- import-zip ARQUIVO.zip importa um pacote .zip (catalog, microfones, casos)
   npm run knowledge -- ingest                 ingere .md/.txt/.pdf de data/knowledge/inbox
@@ -111,6 +113,8 @@ export async function runKnowledgeCli(args: string[], write: (s: string) => void
         write(`Modo:      ${s.mode} — ${s.note}`);
         return 0;
       }
+      if (cmd === 'import-technical') { write(JSON.stringify(await k.importTechnical())); return 0; }
+      if (cmd === 'remove-technical') { write(JSON.stringify(await k.removeTechnical())); return 0; }
       if (cmd === 'import-seed') { write(JSON.stringify(await k.importSeed())); return 0; }
       if (cmd === 'import-zip') {
         if (!arg || statSync(arg).size > 5 * 1024 * 1024) { write('Informe um .zip de até 5 MB.'); return 1; }

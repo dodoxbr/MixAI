@@ -1,0 +1,514 @@
+{
+  "schemaVersion": 1,
+  "scope": "controlled_seed_keyword_only",
+  "libraryVersion": "1.0.0",
+  "limitation": "Não reproduz o corpus privado do ROG, vetores Gemini/Ollama ou respostas de IA. Acerto de busca não mede correção técnica; julgamento automático usa critérios de conteúdo preexistentes.",
+  "before": {
+    "embedder": "nenhum (só palavras)",
+    "chunks": 6,
+    "cases": 24,
+    "k": 4,
+    "minScore": 0.3,
+    "indexMs": 5,
+    "queryMs": 0,
+    "methods": [
+      {
+        "method": "keyword",
+        "hit1": 0.042,
+        "hit3": 0.125,
+        "hitK": 0.125,
+        "mrr": 0.083,
+        "precisionK": 0.066,
+        "byTopic": {
+          "voz abafada": {
+            "cases": 4,
+            "hitK": 0
+          },
+          "microfonia": {
+            "cases": 4,
+            "hitK": 1
+          },
+          "cavaco estridente": {
+            "cases": 4,
+            "hitK": 1
+          },
+          "surdo embolado": {
+            "cases": 4,
+            "hitK": 0
+          },
+          "retorno AUX1": {
+            "cases": 4,
+            "hitK": 0
+          },
+          "equalização e compressão": {
+            "cases": 4,
+            "hitK": 1
+          }
+        },
+        "misses": [
+          "voz-abafada-1",
+          "voz-abafada-2",
+          "voz-abafada-3",
+          "voz-abafada-4",
+          "microfonia-2",
+          "microfonia-3",
+          "microfonia-4",
+          "cavaco-1",
+          "cavaco-2",
+          "cavaco-4",
+          "surdo-1",
+          "surdo-2",
+          "surdo-3",
+          "surdo-4",
+          "aux1-1",
+          "aux1-2",
+          "aux1-3",
+          "aux1-4",
+          "eqcomp-1",
+          "eqcomp-3",
+          "eqcomp-4"
+        ]
+      }
+    ]
+  },
+  "after": {
+    "embedder": "nenhum (só palavras)",
+    "chunks": 60,
+    "cases": 24,
+    "k": 4,
+    "minScore": 0.3,
+    "indexMs": 6,
+    "queryMs": 0,
+    "methods": [
+      {
+        "method": "keyword",
+        "hit1": 0.542,
+        "hit3": 0.625,
+        "hitK": 0.625,
+        "mrr": 0.576,
+        "precisionK": 0.313,
+        "byTopic": {
+          "voz abafada": {
+            "cases": 4,
+            "hitK": 2
+          },
+          "microfonia": {
+            "cases": 4,
+            "hitK": 4
+          },
+          "cavaco estridente": {
+            "cases": 4,
+            "hitK": 1
+          },
+          "surdo embolado": {
+            "cases": 4,
+            "hitK": 0
+          },
+          "retorno AUX1": {
+            "cases": 4,
+            "hitK": 4
+          },
+          "equalização e compressão": {
+            "cases": 4,
+            "hitK": 4
+          }
+        },
+        "misses": [
+          "voz-abafada-2",
+          "voz-abafada-4",
+          "cavaco-1",
+          "cavaco-2",
+          "cavaco-4",
+          "surdo-1",
+          "surdo-2",
+          "surdo-3",
+          "surdo-4"
+        ]
+      }
+    ]
+  },
+  "displayedBefore": {
+    "method": "auto",
+    "hit1": 0.042,
+    "hit3": 0.125,
+    "hitK": 0.125,
+    "mrr": 0.083,
+    "precisionK": 0.066,
+    "byTopic": {
+      "voz abafada": {
+        "cases": 4,
+        "hitK": 0
+      },
+      "microfonia": {
+        "cases": 4,
+        "hitK": 1
+      },
+      "cavaco estridente": {
+        "cases": 4,
+        "hitK": 1
+      },
+      "surdo embolado": {
+        "cases": 4,
+        "hitK": 0
+      },
+      "retorno AUX1": {
+        "cases": 4,
+        "hitK": 0
+      },
+      "equalização e compressão": {
+        "cases": 4,
+        "hitK": 1
+      }
+    },
+    "misses": [
+      "voz-abafada-1",
+      "voz-abafada-2",
+      "voz-abafada-3",
+      "voz-abafada-4",
+      "microfonia-2",
+      "microfonia-3",
+      "microfonia-4",
+      "cavaco-1",
+      "cavaco-2",
+      "cavaco-4",
+      "surdo-1",
+      "surdo-2",
+      "surdo-3",
+      "surdo-4",
+      "aux1-1",
+      "aux1-2",
+      "aux1-3",
+      "aux1-4",
+      "eqcomp-1",
+      "eqcomp-3",
+      "eqcomp-4"
+    ]
+  },
+  "displayedAfter": {
+    "method": "auto",
+    "hit1": 0.542,
+    "hit3": 0.625,
+    "hitK": 0.625,
+    "mrr": 0.576,
+    "precisionK": 0.313,
+    "byTopic": {
+      "voz abafada": {
+        "cases": 4,
+        "hitK": 2
+      },
+      "microfonia": {
+        "cases": 4,
+        "hitK": 4
+      },
+      "cavaco estridente": {
+        "cases": 4,
+        "hitK": 1
+      },
+      "surdo embolado": {
+        "cases": 4,
+        "hitK": 0
+      },
+      "retorno AUX1": {
+        "cases": 4,
+        "hitK": 4
+      },
+      "equalização e compressão": {
+        "cases": 4,
+        "hitK": 4
+      }
+    },
+    "misses": [
+      "voz-abafada-2",
+      "voz-abafada-4",
+      "cavaco-1",
+      "cavaco-2",
+      "cavaco-4",
+      "surdo-1",
+      "surdo-2",
+      "surdo-3",
+      "surdo-4"
+    ]
+  },
+  "displayedAdditionalBefore": {
+    "method": "auto",
+    "hit1": 0.083,
+    "hit3": 0.083,
+    "hitK": 0.083,
+    "mrr": 0.083,
+    "precisionK": 0.042,
+    "byTopic": {
+      "surdo sem grave": {
+        "cases": 1,
+        "hitK": 0
+      },
+      "tantã": {
+        "cases": 1,
+        "hitK": 0
+      },
+      "pandeiro": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "violão seis cordas": {
+        "cases": 1,
+        "hitK": 0
+      },
+      "voz nasal": {
+        "cases": 1,
+        "hitK": 0
+      },
+      "som seco": {
+        "cases": 1,
+        "hitK": 0
+      },
+      "voz sibilante": {
+        "cases": 1,
+        "hitK": 0
+      },
+      "P3 S": {
+        "cases": 1,
+        "hitK": 0
+      },
+      "ganho": {
+        "cases": 1,
+        "hitK": 0
+      },
+      "dinâmica": {
+        "cases": 1,
+        "hitK": 0
+      },
+      "HPF": {
+        "cases": 1,
+        "hitK": 0
+      },
+      "AUX microfonia": {
+        "cases": 1,
+        "hitK": 0
+      }
+    },
+    "misses": [
+      "surdo-sem-grave",
+      "tanta-mix",
+      "violao-p10",
+      "voz-nasal",
+      "seco-ambiguidade",
+      "sibilancia",
+      "p3-distancia",
+      "ganho-fader",
+      "gate-finais",
+      "hpf-corpo",
+      "retorno-apito"
+    ]
+  },
+  "displayedAdditionalAfter": {
+    "method": "auto",
+    "hit1": 0.75,
+    "hit3": 0.917,
+    "hitK": 1,
+    "mrr": 0.854,
+    "precisionK": 0.396,
+    "byTopic": {
+      "surdo sem grave": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "tantã": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "pandeiro": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "violão seis cordas": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "voz nasal": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "som seco": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "voz sibilante": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "P3 S": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "ganho": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "dinâmica": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "HPF": {
+        "cases": 1,
+        "hitK": 1
+      },
+      "AUX microfonia": {
+        "cases": 1,
+        "hitK": 1
+      }
+    },
+    "misses": []
+  },
+  "additionalBefore": {
+    "embedder": "nenhum (só palavras)",
+    "chunks": 6,
+    "cases": 12,
+    "k": 4,
+    "minScore": 0.3,
+    "indexMs": 4,
+    "queryMs": 0,
+    "methods": [
+      {
+        "method": "keyword",
+        "hit1": 0.083,
+        "hit3": 0.083,
+        "hitK": 0.083,
+        "mrr": 0.083,
+        "precisionK": 0.042,
+        "byTopic": {
+          "surdo sem grave": {
+            "cases": 1,
+            "hitK": 0
+          },
+          "tantã": {
+            "cases": 1,
+            "hitK": 0
+          },
+          "pandeiro": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "violão seis cordas": {
+            "cases": 1,
+            "hitK": 0
+          },
+          "voz nasal": {
+            "cases": 1,
+            "hitK": 0
+          },
+          "som seco": {
+            "cases": 1,
+            "hitK": 0
+          },
+          "voz sibilante": {
+            "cases": 1,
+            "hitK": 0
+          },
+          "P3 S": {
+            "cases": 1,
+            "hitK": 0
+          },
+          "ganho": {
+            "cases": 1,
+            "hitK": 0
+          },
+          "dinâmica": {
+            "cases": 1,
+            "hitK": 0
+          },
+          "HPF": {
+            "cases": 1,
+            "hitK": 0
+          },
+          "AUX microfonia": {
+            "cases": 1,
+            "hitK": 0
+          }
+        },
+        "misses": [
+          "surdo-sem-grave",
+          "tanta-mix",
+          "violao-p10",
+          "voz-nasal",
+          "seco-ambiguidade",
+          "sibilancia",
+          "p3-distancia",
+          "ganho-fader",
+          "gate-finais",
+          "hpf-corpo",
+          "retorno-apito"
+        ]
+      }
+    ]
+  },
+  "additionalAfter": {
+    "embedder": "nenhum (só palavras)",
+    "chunks": 60,
+    "cases": 12,
+    "k": 4,
+    "minScore": 0.3,
+    "indexMs": 7,
+    "queryMs": 0,
+    "methods": [
+      {
+        "method": "keyword",
+        "hit1": 0.75,
+        "hit3": 0.917,
+        "hitK": 1,
+        "mrr": 0.854,
+        "precisionK": 0.396,
+        "byTopic": {
+          "surdo sem grave": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "tantã": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "pandeiro": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "violão seis cordas": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "voz nasal": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "som seco": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "voz sibilante": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "P3 S": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "ganho": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "dinâmica": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "HPF": {
+            "cases": 1,
+            "hitK": 1
+          },
+          "AUX microfonia": {
+            "cases": 1,
+            "hitK": 1
+          }
+        },
+        "misses": []
+      }
+    ]
+  }
+}

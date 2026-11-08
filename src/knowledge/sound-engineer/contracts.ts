@@ -4,7 +4,7 @@ export const symptomSchema = z.enum(['embolado', 'estridente', 'abafado', 'magro
 export const instrumentSchema = z.enum(['cavaco', 'violao', 'surdo', 'tanta', 'pandeiro', 'vozes']);
 export type Symptom = z.infer<typeof symptomSchema>;
 export type Instrument = z.infer<typeof instrumentSchema>;
-export const sourceIdSchema = z.enum(['ui16-manual', 'library-7.1.0', 'yamaha-eq', 'yamaha-gain', 'yamaha-dynamics', 'shure-placement', 'shure-live', 'shure-feedback', 'ui16-manual-pt']);
+export const sourceIdSchema = z.enum(['ui16-manual', 'library-7.1.0', 'yamaha-eq', 'yamaha-gain', 'yamaha-dynamics', 'shure-placement', 'shure-live', 'shure-feedback', 'ui16-manual-pt', 'akg-p3', 'band-report-65']);
 export type SourceId = z.infer<typeof sourceIdSchema>;
 export interface Reference { source: SourceId; locator: string }
 
