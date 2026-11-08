@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { FIELD_LIBRARY_VERSION, instructorProcedureSchema, instructorProcedures } from '../knowledge/sound-engineer/index.js';
+import { publishedInstructorLibrary } from '../assistant/sound-engineer.js';
 import type { Principal } from './auth.js';
 
 /**
@@ -10,15 +10,6 @@ import type { Principal } from './auth.js';
  * IA, mesa, controlador nem fila: o conteúdo é estático, validado pelo esquema estrito e entregue sem campo extra.
  * Só GET; nenhum método de escrita é registrado. Músico não ganha acesso a nenhuma rota administrativa.
  */
-const published = (() => {
-  // Releitura pelo esquema ESTRITO: só os campos do contrato saem; qualquer campo interno novo seria recusado aqui.
-  const list = instructorProcedures.map((p) => instructorProcedureSchema.parse(structuredClone(p)));
-  if (list.some((p) => p.execution !== 'not_executable' || p.realWrites !== false || !p.requiresHumanReview)) {
-    throw new Error('Biblioteca do instrutor contém procedimento executável: recusada.');
-  }
-  return Object.freeze({ schemaVersion: 1 as const, libraryVersion: FIELD_LIBRARY_VERSION, procedures: list });
-})();
-
 export async function instructorRoutes(app: FastifyInstance, opts: {
   principal(req: FastifyRequest, reply: FastifyReply): Principal | undefined;
   active(p: Principal): boolean;
@@ -38,5 +29,5 @@ export async function instructorRoutes(app: FastifyInstance, opts: {
     if (p && !opts.active(p)) { reply.code(401); return JSON.stringify({ code: 'UNAUTHORIZED' }); }
     return payload;
   });
-  app.get('/api/instructor/procedures', async () => published);
+  app.get('/api/instructor/procedures', async () => publishedInstructorLibrary());
 }

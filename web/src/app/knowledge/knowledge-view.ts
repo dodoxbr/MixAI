@@ -26,7 +26,7 @@ const NARRATIVE_NOTES: Record<string, string> = {
   timeout: 'Resumo do modelo local indisponível: demorou demais.',
   unavailable: 'Resumo do modelo local indisponível: o modelo de conversa não está pronto.',
   error: 'Resumo do modelo local indisponível: erro no serviço local.',
-  empty: 'Resumo do modelo local: sem base suficiente nos trechos.',
+  empty: 'Resumo do modelo: sem base suficiente nos trechos para responder com segurança. Descreva o problema com mais detalhes ou consulte o operador.',
   echo: 'Resumo do modelo local descartado: apenas repetia os trechos.',
   blocked: 'Resumo do modelo local descartado por segurança (continha valores, comandos ou afirmação sobre o áudio).',
   auth: 'Resumo do Gemini indisponível: a chave foi recusada.',

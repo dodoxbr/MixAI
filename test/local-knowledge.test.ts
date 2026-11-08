@@ -23,7 +23,7 @@ const OLLAMA = { url: 'http://127.0.0.1:11434', embedModel: 'nomic-embed-text', 
 
 /** Ollama falso: vetor determinístico por palavra-chave, sem rede. */
 function fakeOllama(opts: { up?: boolean; embed?: boolean; chat?: boolean; reply?: string; spy?: (url: string, body: unknown) => void } = {}) {
-  const { up = true, embed = true, chat = true, reply = 'Resumo teórico dos trechos, a conferir pelo operador.' } = opts;
+  const { up = true, embed = true, chat = true, reply = 'Pode ser que o ganho esteja alto; o operador pode conferir o posicionamento do microfone no palco.' } = opts;
   const fetchFn = vi.fn(async (input: URL | string, init?: RequestInit) => {
     if (!up) throw new TypeError('ECONNREFUSED');
     const url = String(input);

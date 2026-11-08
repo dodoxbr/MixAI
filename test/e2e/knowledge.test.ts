@@ -260,7 +260,7 @@ it('provedor: sem Gemini habilitado a escolha não existe; com ele o operador l�
 
 it('provedor: Gemini com cota esgotada → o modelo local assume, a tela explica e não vaza detalhes', async () => {
   const g = fakeGemini({ chat: { status: 429 } });
-  const { t } = await lab({ ollama: fakeOllama({ chat: 'Pode ser o cabo; o operador pode conferir a ligação do microfone no palco.' }), narrative: true, ingested: true, gemini: g.client, chat: 'gemini' });
+  const { t } = await lab({ ollama: fakeOllama({ chat: 'Pode ser que o ganho do retorno esteja alto; o operador pode conferir o posicionamento do microfone em relação às caixas.' }), narrative: true, ingested: true, gemini: g.client, chat: 'gemini' });
   const { page } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
   const panel = await open(page);
   await expect.poll(() => panel.textContent()).toContain('Em uso: Gemini (externo)');
