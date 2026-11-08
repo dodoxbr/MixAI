@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { z } from 'zod';
@@ -207,7 +207,9 @@ const ConfigSchema = z.object({
         .string()
         .min(1)
         .default('knowledge/inbox')
-        .refine((p) => !isAbsolute(p) && !p.split(/[\\/]/).includes('..'), 'caminho relativo a data/, sem ".."'),
+        // Absoluto em QUALQUER sistema é recusado: a configuração viaja entre Windows e Linux, e o
+        // isAbsolute do Node só conhece o sistema em que está rodando ("C:\x" não é absoluto no Linux).
+        .refine((p) => !win32.isAbsolute(p) && !posix.isAbsolute(p) && !/^[A-Za-z]:/.test(p) && !p.split(/[\\/]/).includes('..'), 'caminho relativo a data/, sem ".."'),
       maxDocumentMB: z.number().min(1).max(100).default(30),
       maxPassages: z.number().int().min(1).max(10).default(4),
     })
