@@ -189,6 +189,19 @@ describe('GeminiClient: segredo, rede e erros', () => {
       const r = await new OllamaClient(OLLAMA_OPTS, fetchFn as unknown as typeof fetch).generateDetailed('s', 'u');
       expect(r).toEqual({ failure: 'truncated' });
     });
+    it('Ollama: pede resposta sem raciocínio (think:false) e mantém o modelo carregado só nesta requisição', async () => {
+      let body: Record<string, unknown> = {};
+      const fetchFn = async (input: URL | string, init?: RequestInit) => {
+        const u = String(input);
+        if (u.endsWith('/api/tags')) return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }, { name: 'llama3.2:3b' }] }));
+        body = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ message: { content: GOOD }, done_reason: 'stop' }));
+      };
+      const r = await new OllamaClient(OLLAMA_OPTS, fetchFn as unknown as typeof fetch).generateDetailed('s', 'u');
+      expect(r).toEqual({ text: GOOD });
+      expect(body).toMatchObject({ think: false, keep_alive: '30m', stream: false });
+      expect(Object.keys(body)).not.toContain('tools'); // sem ferramentas/funções
+    });
     it('no serviço: resposta cortada do Gemini é descartada, registrada só com o motivo, e o Ollama assume', async () => {
       const logs: string[] = [];
       const g = fakeGemini({ chat: partial('MAX_TOKENS') });

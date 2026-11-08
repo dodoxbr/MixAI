@@ -79,6 +79,12 @@ export class OllamaClient implements AiProvider {
     try {
       const data = (await this.call('/api/chat', {
         model: this.o.chatModel, stream: false,
+        // Modelos que "pensam" (qwen3, deepseek-r1…) gastavam o num_predict no raciocínio e a resposta saía cortada
+        // (medido: qwen3:8b, 260 tokens, 818 caracteres de raciocínio, done_reason=length). O resumo não precisa disso.
+        think: false,
+        // Mantém o modelo na GPU entre perguntas (carga a frio do 8B levou ~30 s, o mesmo do tempo limite do resumo).
+        // É por requisição: não altera a configuração global do Ollama nem os modelos de outros projetos.
+        keep_alive: '30m',
         options: { temperature: 0.2, num_predict: 260 },
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       }, this.o.generateTimeoutMs ?? this.o.timeoutMs)) as { message?: { content?: unknown }; done_reason?: unknown };

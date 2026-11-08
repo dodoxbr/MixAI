@@ -104,3 +104,36 @@ Primeiro teste contra o serviço real (a seção "Limitações" acima descreve o
   desenho); a página oficial do AKG P3 S (`br.akg.com`) bloqueia download automático (403) e o manual Ui16 v3 (39 MB) passa de
   `maxDocumentMB`; perguntas só com vocabulário coloquial ("abafada", "sem grave") ainda recuperam pouco; falta expansão de
   consulta PT→EN. Nada disso toca a mesa; a Ui16 não foi acessada.
+
+## BGE-M3 × Gemini embeddings × Nomic e Qwen3 8B local (2026-11-08, ROG Zephyrus M16, LAB)
+
+Hardware: i9-13900H, 31,6 GB de RAM, RTX 4070 Laptop (8 GB de VRAM). Mesmos 7 documentos (367 trechos), mesmo conjunto
+`knowledge/eval/relevance-ptbr.json` (24 perguntas em português), `npm run knowledge -- eval --live`, k = 4, minScore 0,3.
+
+| Embeddings (coleção) | Busca | Acerto@k | Hit@1 | Hit@3 | MRR | Indexação (367 trechos) |
+|---|---|---|---|---|---|---|
+| nomic-embed-text 768d (`default`) | auto | 21% | 13% | 13% | 0,15 | ≈ 29 s |
+| nomic-embed-text 768d | hybrid | 38% | 17% | 21% | 0,23 | — |
+| gemini-embedding-001 768d (`gem768`) | auto | 75% | 50% | 75% | 0,61 | ≈ 30 s |
+| gemini-embedding-001 768d | hybrid | **79%** | 46% | 71% | 0,60 | — |
+| **bge-m3 1024d (`bgem3`, local)** | **auto** | **79%** | 42% | 71% | 0,57 | **≈ 17 s** |
+| bge-m3 1024d | hybrid | 63% | 42% | 63% | 0,49 | — |
+
+- **BGE-M3 empata com o Gemini em Acerto@k (79%), roda 100% local e não envia nada ao Google.** Com BGE-M3 a busca
+  `hybrid` piora (63%): use `search: auto`. Configuração: `ollama.embedModel: bge-m3`, `embedDimensions: 1024`,
+  `collection: bgem3` (a dimensão é fixa por coleção; trocar de modelo exige coleção nova).
+- Latência da busca vetorial com o modelo carregado ≈ 46 ms (Nomic); picos de 2–3 s quando o Ollama recarrega o modelo.
+  Ollama fora do ar: cai para palavras em ≈ 5 ms.
+
+### Qwen3 8B como resumo local
+- `ollama ps`: `qwen3:8b` 5,6 GB, **100% GPU**, contexto 4096, ≈ 37 tokens/s; `bge-m3` 0,7 GB, 100% GPU. VRAM total em uso ≈ 7,3 de
+  8,2 GB: sem folga para um terceiro modelo grande.
+- **Defeito corrigido:** o Qwen3 "pensa" antes de responder e gastava o `num_predict` no raciocínio (818 caracteres de raciocínio,
+  `done_reason=length`, resposta cortada; 13 s). O cliente agora envia `think: false` (60 tokens em 2 s) e `keep_alive: 30m` só nesta
+  requisição (a carga a frio do 8B levava ≈ 30 s, igual ao tempo limite do resumo). Não altera a configuração global do Ollama.
+- **Qualidade (5 perguntas, trechos de manuais públicos):** o Qwen3 respondeu todas em 2–3 s, mas com texto genérico e, às vezes,
+  fora do que os trechos sustentam (microfonia → "resposta de frequência desequilibrada"). O Gemini 3.8 respondeu só a pergunta
+  sobre o HPF (fundamentada no manual) e recusou as demais com "sem base" (recusa por falta de apoio não aciona o Qwen). Para uma
+  mesa de som, recusar é mais seguro do que preencher; por isso o Gemini fica como opção do operador e o Qwen3 como reserva local.
+- **Fallback verificado:** Gemini indisponível → Qwen3 assume (`fellBackFrom=gemini`); Ollama fora → busca por palavras + Gemini;
+  Gemini e Ollama fora → busca por palavras, ficha do microfone e motor determinístico continuam (12 ms).
