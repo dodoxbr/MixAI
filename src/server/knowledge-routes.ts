@@ -54,6 +54,8 @@ export async function knowledgeRoutes(app: FastifyInstance, opts: {
     return reply.code(500).send({ code: 'UNAVAILABLE' });
   });
 
+  app.get('/api/knowledge/procedures', () => ({ procedures: opts.service.technicalProcedures() }));
+  app.post('/api/knowledge/procedures/query', { bodyLimit: 16_384 }, req => opts.service.technicalGuidance(req.body));
   app.get('/api/knowledge/status', () => opts.service.status());
   app.get('/api/knowledge/providers', () => opts.service.providers());
   app.post('/api/knowledge/providers', { bodyLimit: 1024 }, async (req) => {

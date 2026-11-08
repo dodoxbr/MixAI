@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "description": "Casos adicionais #65: julgamento de conteúdo recuperado, separado de factualidade e de acerto clínico. Não substitui as 24 perguntas do PR #62.",
+  "cases": [
+    { "id": "surdo-sem-grave", "topic": "surdo sem grave", "query": "O surdo tá sem grave e seco no PA", "anyOf": ["capacidade de reproducao", "abafamento", "hpf/cortes"] },
+    { "id": "tanta-mix", "topic": "tantã", "query": "O tantã está embolando com o surdo", "anyOf": ["cauda", "passagens alternadas", "notas suaves"] },
+    { "id": "pandeiro-pele", "topic": "pandeiro", "query": "Pandeiro estridente e sem corpo de pele", "anyOf": ["platinelas", "angulo de captacao", "pele"] },
+    { "id": "violao-p10", "topic": "violão seis cordas", "query": "Violão seis cordas P10 magro, ligo em qualquer entrada?", "anyOf": ["p10 nao", "p10 descreve", "captador ativo", "impedancia"] },
+    { "id": "voz-nasal", "topic": "voz nasal", "query": "Minha voz está anasalada, corto onde?", "anyOf": ["descricao perceptiva", "nasalidade", "nao e cura"] },
+    { "id": "seco-ambiguidade", "topic": "som seco", "query": "Vocal tá seco, preciso abrir reverb?", "anyOf": ["pouca sustentacao", "preferencia", "peca esclarecimento"] },
+    { "id": "sibilancia", "topic": "voz sibilante", "query": "Os esses da voz estão incomodando", "anyOf": ["sibilancia acompanha", "s/ch", "consoantes"] },
+    { "id": "p3-distancia", "topic": "P3 S", "query": "P3 S perto da boca fica grave", "anyOf": ["proximity effect", "distancia", "cardioide"] },
+    { "id": "ganho-fader", "topic": "ganho", "query": "Abaixei fader mas ainda distorce na entrada", "anyOf": ["transiente ja saturado", "ganho de entrada", "fader baixo nao"] },
+    { "id": "gate-finais", "topic": "dinâmica", "query": "Compressor e gate cortam finais das palavras", "anyOf": ["gate pode cortar", "notas suaves", "articulacao"] },
+    { "id": "hpf-corpo", "topic": "HPF", "query": "HPF pode tirar o corpo do tantã?", "anyOf": ["retiram corpo", "corpo musical", "corpo"] },
+    { "id": "retorno-apito", "topic": "AUX microfonia", "query": "O apito aparece só no fone, a caixa está aberta", "anyOf": ["vazamento acustico", "origem do apito", "nao comprova que os fones"] }
+  ]
+}
