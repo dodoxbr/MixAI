@@ -2,12 +2,18 @@ import { Injectable, effect, inject, signal } from '@angular/core';
 import { LiveService } from '../core/live.service';
 import { SessionService } from '../core/session.service';
 
+export interface KProviders {
+  chat: { selected: 'ollama' | 'gemini'; options: Array<{ id: 'ollama' | 'gemini'; external: boolean; configured: boolean }> };
+  embed: { id: 'ollama' | 'gemini'; external: boolean };
+  narrative: boolean;
+}
 export interface KStatus {
   store: { kind: 'file' | 'postgres'; ok: boolean; detail: string; fallbackFrom?: string };
   ollama: { reachable: boolean; embedModel: boolean; chatModel: boolean; detail: string; narrative: boolean };
   sources: number; documents: number; chunks: number; embeddedChunks: number;
   mode: 'vector' | 'keyword' | 'deterministic'; note: string;
-  narrativeStats?: { used: number; dropped: Record<string, number> };
+  narrativeStats?: { used: number; usedBy?: Record<string, number>; dropped: Record<string, number> };
+  providers?: KProviders;
 }
 export interface KSource { id: string; title: string; url: string; downloaded: boolean; documents: number; local: boolean }
 export interface KDocument { id: string; sourceId: string; fileName: string; chunks: number; embedded: number; ingestedAt: string }
@@ -102,6 +108,11 @@ export class KnowledgeAdminService {
   removeDocument(id: string) { return this.act(async () => { await this.call('DELETE', `/api/knowledge/documents/${encodeURIComponent(id)}`); }, 'Documento removido da base.'); }
   setMicrophone(channel: number, modelId: string | null) {
     return this.act(async () => { await this.call('POST', '/api/knowledge/microphones', { channel, modelId }); }, modelId ? `CH${channel}: microfone confirmado.` : `CH${channel}: confirmação removida.`);
+  }
+  /** Escolha do provedor do resumo. O serviço externo só entra com a confirmação do operador. */
+  setProvider(chat: 'ollama' | 'gemini', confirmExternal: boolean) {
+    return this.act(async () => { await this.call('POST', '/api/knowledge/providers', confirmExternal ? { chat, confirmExternal: true } : { chat }); },
+      chat === 'gemini' ? 'Resumo agora pelo Gemini (serviço externo).' : 'Resumo agora pelo Ollama (local).');
   }
   search(query: string) {
     return this.act(async () => { this.results.set(await this.call('POST', '/api/knowledge/search', { query })); });

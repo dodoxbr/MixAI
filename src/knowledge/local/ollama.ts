@@ -1,7 +1,8 @@
+import type { AiProvider, GenerateFailure, GenerateResult, ProviderHealth } from './provider.js';
+export type { GenerateFailure, GenerateResult } from './provider.js';
+
 export interface OllamaOptions { url: string; embedModel: string; chatModel: string; embedDimensions: number; timeoutMs: number; /** Geração é bem mais lenta que embedding em CPU: tempo próprio. */ generateTimeoutMs?: number; /** Prefixos que alguns modelos exigem (ex.: nomic: "search_query: " / "search_document: "). */ queryPrefix?: string; documentPrefix?: string }
-export type GenerateFailure = 'unavailable' | 'timeout' | 'error' | 'empty';
-export interface GenerateResult { text?: string; failure?: GenerateFailure }
-export interface OllamaHealth { reachable: boolean; embedModel: boolean; chatModel: boolean; detail: string }
+export type OllamaHealth = ProviderHealth;
 
 const MAX_BODY = 4 * 1024 * 1024;
 /** Lote de documento (16 trechos, em CPU) leva bem mais que uma pergunta: não herda o limite curto da consulta. */
@@ -11,7 +12,9 @@ const DOCUMENT_EMBED_TIMEOUT_MS = 60_000;
  * Cliente mínimo do Ollama local. Falha SEMPRE de forma contida (retorna indisponível): o chamador
  * cai para busca por palavras e para o motor determinístico. Nunca recebe segredos nem a mesa.
  */
-export class OllamaClient {
+export class OllamaClient implements AiProvider {
+  readonly id = 'ollama' as const;
+  readonly external = false;
   private cache?: { at: number; value: OllamaHealth };
   constructor(private readonly o: OllamaOptions, private readonly fetchFn: typeof fetch = fetch, private readonly clock: () => number = Date.now) {}
 

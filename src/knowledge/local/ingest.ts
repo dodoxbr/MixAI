@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstatSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CatalogEntry } from './pack.js';
-import type { OllamaClient } from './ollama.js';
+import type { AiProvider } from './provider.js';
 import type { ChunkIn, KnowledgeStore } from './store.js';
 import { chunkText, cleanText, type RawChunk } from './text.js';
 
@@ -85,7 +85,7 @@ export async function extractChunks(bytes: Uint8Array, ext: string): Promise<{ c
  * limitado). O conteúdo é tratado como dado não confiável: vira trechos, nunca instruções.
  */
 export async function ingestInbox(deps: {
-  inbox: string; store: KnowledgeStore; ollama?: OllamaClient; maxBytes: number; catalogIds: ReadonlySet<string>;
+  inbox: string; store: KnowledgeStore; ollama?: AiProvider; maxBytes: number; catalogIds: ReadonlySet<string>;
   makeSource(id: string, file: string): CatalogEntry;
 }): Promise<IngestReport> {
   mkdirSync(deps.inbox, { recursive: true });
@@ -101,6 +101,8 @@ export async function ingestInbox(deps: {
     if (!st.isFile() || st.isSymbolicLink()) { items.push({ file, status: 'skipped', reason: 'não é arquivo comum' }); continue; }
     if (st.size > deps.maxBytes) { items.push({ file, status: 'skipped', reason: 'maior que o limite configurado' }); continue; }
     const { id: sourceId, local } = sourceIdFor(file, deps.catalogIds);
+    // Documento do próprio operador (fora do catálogo) nunca é enviado a um provedor externo de embeddings.
+    if (local && deps.ollama?.external) { items.push({ file, sourceId, status: 'skipped', reason: 'documento local não é enviado a provedor externo' }); continue; }
     try {
       const bytes = readFileSync(full);
       const sha256 = createHash('sha256').update(bytes).update(INGEST_VERSION).digest('hex');

@@ -70,6 +70,20 @@ describe('knowledgeView (validação do que o servidor envia)', () => {
     expect(knowledgeView({ ...base, narrative: { text: 'Resumo.', verified: false }, narrativeStatus: { status: 'blocked' } })!.narrativeNote).toBeUndefined();
     expect(knowledgeView({ ...base, modelFilter: { model: 'P3', excluded: -1 } })!.modelNote).toBeUndefined();
   });
+  it('mostra de onde veio o resumo (Gemini ou local) e por que o modelo local assumiu', () => {
+    const base = { mode: 'vector', degraded: false, passages: [] };
+    const gem = knowledgeView({ ...base, narrative: { text: 'Resumo.', source: 'gemini', verified: false }, narrativeStatus: { status: 'used', provider: 'gemini' } })!;
+    expect(gem.narrativeSource).toBe('gemini');
+    expect(gem.fallbackNote).toBeUndefined();
+    const fb = knowledgeView({ ...base, narrative: { text: 'Resumo.', source: 'ollama', verified: false }, narrativeStatus: { status: 'used', provider: 'ollama', fellBackFrom: 'gemini', fallbackReason: 'quota' } })!;
+    expect(fb.narrativeSource).toBe('ollama');
+    expect(fb.fallbackNote).toBe('Resumo gerado pelo modelo local porque o Gemini atingiu o limite de uso.');
+    expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'openai', verified: false } })!.narrativeSource).toBeUndefined();
+    expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'gemini', verified: true } })!.narrativeSource).toBeUndefined();
+    for (const [status, text] of [['auth', /chave foi recusada/], ['quota', /limite de uso/], ['refused', /recusou o pedido/], ['withheld', /documentos locais/]] as const) {
+      expect(knowledgeView({ ...base, narrativeStatus: { status } })!.narrativeNote, status).toMatch(text);
+    }
+  });
   it('formato inesperado vira nada, nunca erro', () => {
     for (const bad of [undefined, null, 5, 'x', [], { mode: 'outro' }, { passages: 'não-lista' }]) expect(knowledgeView(bad)).toBeUndefined();
     expect(knowledgeView({ mode: 'deterministic', passages: 'não-lista', microphone: 'x' })).toMatchObject({ mode: 'deterministic', passages: [] });
@@ -105,6 +119,75 @@ describe('painel de administração', () => {
     svc.open.set(true); f.detectChanges();
     expect(el.textContent).toContain('Base de conhecimento');
     expect(el.textContent).not.toContain('descartado(s)');
+  });
+  describe('provedor do resumo', () => {
+    const providers = (gemini: { configured: boolean } | null, selected: 'ollama' | 'gemini' = 'ollama') => ({
+      chat: { selected, options: [{ id: 'ollama', external: false, configured: true }, ...(gemini ? [{ id: 'gemini', external: true, configured: gemini.configured }] : [])] },
+      embed: { id: 'ollama', external: false }, narrative: true,
+    });
+    const withProviders = (p: unknown) => ({ ...status, ollama: { ...status.ollama, narrative: true }, providers: p });
+    const radios = (el: HTMLElement) => Array.from(el.querySelectorAll('input[name=chat-provider]')) as HTMLInputElement[];
+    const applyButton = (el: HTMLElement) => Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Aplicar provedor')) as HTMLButtonElement | undefined;
+
+    it('só com o Ollama a escolha nem aparece (Gemini desligado por padrão)', async () => {
+      const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(providers(null)) }) }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      expect(radios(el).length).toBe(0);
+      expect(el.textContent).not.toContain('Provedor do resumo');
+    });
+    it('Gemini sem chave aparece desabilitado e avisa onde configurar', async () => {
+      const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(providers({ configured: false })) }) }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      const [ollama, gemini] = radios(el);
+      expect(ollama!.disabled).toBe(false);
+      expect(gemini!.disabled).toBe(true);
+      expect(el.textContent).toContain('falta a chave em config/secrets.yaml');
+    });
+    it('Gemini exige ler o aviso e marcar o consentimento; o corpo enviado leva a confirmação', async () => {
+      const bodies: unknown[] = [];
+      const { f, el, svc } = boot('operator', {
+        '/api/knowledge/status': () => ({ body: withProviders(providers({ configured: true })) }),
+        '/api/knowledge/providers': (init) => { bodies.push(JSON.parse(String(init?.body))); return { body: {} }; },
+      }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      expect(applyButton(el)).toBeUndefined(); // nada pendente
+      radios(el)[1]!.click(); f.detectChanges();
+      expect(el.textContent).toContain('saem deste computador para o Google');
+      expect(el.textContent).toContain('Documentos locais nunca são enviados');
+      expect(applyButton(el)!.disabled).toBe(true); // sem consentimento
+      (el.querySelector('.provider-consent input') as HTMLInputElement).click(); f.detectChanges();
+      expect(applyButton(el)!.disabled).toBe(false);
+      applyButton(el)!.click(); await settle(f);
+      expect(bodies).toEqual([{ chat: 'gemini', confirmExternal: true }]);
+      expect(el.textContent).toContain('Resumo agora pelo Gemini (serviço externo).');
+      expect(JSON.stringify(bodies)).not.toMatch(/AIza|key/i);
+    });
+    it('voltar ao Ollama não pede consentimento nem envia confirmação', async () => {
+      const bodies: unknown[] = [];
+      const { f, el, svc } = boot('operator', {
+        '/api/knowledge/status': () => ({ body: withProviders(providers({ configured: true }, 'gemini')) }),
+        '/api/knowledge/providers': (init) => { bodies.push(JSON.parse(String(init?.body))); return { body: {} }; },
+      }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      expect(radios(el)[1]!.checked).toBe(true);
+      expect(el.textContent).toContain('Em uso: Gemini (externo)');
+      radios(el)[0]!.click(); f.detectChanges();
+      expect(el.textContent).not.toContain('saem deste computador');
+      applyButton(el)!.click(); await settle(f);
+      expect(bodies).toEqual([{ chat: 'ollama' }]);
+    });
+    it('recusa do servidor (ex.: chave recusada) aparece sem detalhes e a escolha não é aplicada', async () => {
+      const { f, el, svc } = boot('operator', {
+        '/api/knowledge/status': () => ({ body: withProviders(providers({ configured: true })) }),
+        '/api/knowledge/providers': () => ({ status: 400, body: { code: 'INVALID', message: 'O Gemini recusou a chave configurada.' } }),
+      }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      radios(el)[1]!.click(); f.detectChanges();
+      (el.querySelector('.provider-consent input') as HTMLInputElement).click(); f.detectChanges();
+      applyButton(el)!.click(); await settle(f);
+      expect(el.querySelector('[role=alert]')!.textContent).toMatch(/inválido|andamento/);
+      expect(el.textContent).not.toContain('recusou a chave configurada'); // a tela mostra a mensagem genérica
+    });
   });
   it('base desligada no servidor (404) esconde a seção sem erro', async () => {
     const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ status: 404, body: { code: 'NOT_FOUND' } }) }); await settle(f);
@@ -204,6 +287,18 @@ describe('chat: fontes locais dentro dos detalhes técnicos', () => {
     expect(block.textContent).toContain('1 trecho(s) que só descrevem outros modelos de microfone foram ocultados (este canal usa o P3).');
     expect(block.textContent).not.toContain('não verificado, teoria a conferir');
     expect(c.el.querySelectorAll('.card-actions button').length).toBe(0);
+  });
+  it('rotula o resumo do Gemini como serviço externo', async () => {
+    const c = await chat();
+    await ask(c, { mode: 'vector', degraded: false, passages: [], narrative: { text: 'Pode ser o ganho.', source: 'gemini', verified: false }, narrativeStatus: { status: 'used', provider: 'gemini' } });
+    expect(c.el.querySelector('.knowledge-block')!.textContent).toContain('Resumo do Gemini (serviço externo) · não verificado, teoria a conferir');
+  });
+  it('avisa quando o modelo local assumiu porque o Gemini falhou', async () => {
+    const c = await chat();
+    await ask(c, { mode: 'vector', degraded: false, passages: [], narrative: { text: 'Pode ser o cabo.', source: 'ollama', verified: false }, narrativeStatus: { status: 'used', provider: 'ollama', fellBackFrom: 'gemini', fallbackReason: 'auth' } });
+    const text = c.el.querySelector('.knowledge-block')!.textContent!;
+    expect(text).toContain('Resumo do modelo local · não verificado, teoria a conferir');
+    expect(text).toContain('Resumo gerado pelo modelo local porque o Gemini recusou a chave.');
   });
   it('sem o campo knowledge o chat é idêntico ao de antes', async () => {
     const c = await chat();

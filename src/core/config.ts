@@ -180,6 +180,26 @@ const ConfigSchema = z.object({
        * perder a base anterior, e voltar mudando só esta linha.
        */
       collection: z.string().regex(/^[a-z][a-z0-9_]{0,30}$/, 'minúsculas, números e _').default('default'),
+      /**
+       * Provedor do resumo e dos embeddings. Padrão: Ollama local. "gemini" (serviço EXTERNO do Google)
+       * exige gemini.enabled: true; a chave fica em config/secrets.yaml (geminiApiKey) ou
+       * MIXAI_GEMINI_API_KEY, nunca neste arquivo. O operador também pode escolher o do resumo na tela.
+       */
+      chatProvider: z.enum(['ollama', 'gemini']).default('ollama'),
+      embedProvider: z.enum(['ollama', 'gemini']).default('ollama'),
+      gemini: z
+        .object({
+          /** Desligado até configuração explícita: sem isto nenhum dado sai do computador. */
+          enabled: z.boolean().default(false),
+          chatModel: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/).default('gemini-2.5-flash'),
+          embedModel: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/).default('gemini-embedding-001'),
+          /** Dimensão pedida ao modelo (o Gemini aceita reduzir; o vetor é normalizado). */
+          embedDimensions: z.number().int().min(8).max(3072).default(768),
+          timeoutMs: z.number().int().min(500).max(120_000).default(10_000),
+          narrativeTimeoutMs: z.number().int().min(1000).max(180_000).default(30_000),
+        })
+        .strict()
+        .prefault({}),
       /** auto = vetor, depois palavras (comportamento original); hybrid = fusão dos dois (RRF). */
       search: z.enum(['auto', 'hybrid']).default('auto'),
       /** Pasta (relativa a data/) com os documentos a ingerir. */
@@ -194,6 +214,14 @@ const ConfigSchema = z.object({
       maxPassages: z.number().int().min(1).max(10).default(4),
     })
     .strict()
+    .superRefine((k, ctx) => {
+      if ((k.chatProvider === 'gemini' || k.embedProvider === 'gemini') && !k.gemini.enabled) {
+        ctx.addIssue({ code: 'custom', path: ['gemini', 'enabled'], message: 'para usar o Gemini (serviço externo) habilite knowledge.gemini.enabled: true' });
+      }
+      if (k.embedProvider === 'gemini' && k.collection === 'default') {
+        ctx.addIssue({ code: 'custom', path: ['collection'], message: 'embeddings do Gemini exigem outra knowledge.collection (os vetores não são compatíveis com os do Ollama)' });
+      }
+    })
     .prefault({}),
   safety: SafetySchema.prefault({}),
   logs: z.object({ dir: z.string().nullable().default('logs') }).prefault({}),
@@ -235,7 +263,7 @@ function readYaml(path: string): unknown {
 }
 
 /** Campos que NUNCA podem ir no config.local.yaml (segredos ficam em secrets.yaml ou no ambiente). */
-const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|postgrespassword|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
+const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|geminiapikey|postgrespassword|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
@@ -260,7 +288,7 @@ function assertNoSecrets(value: unknown, file: string, path: string[] = []): voi
   for (const [k, v] of Object.entries(value)) {
     if (SECRET_KEYS.test(k)) {
       throw new Error(
-        `${file}: o campo "${[...path, k].join('.')}" é um segredo e não pode ficar aqui. PINs: "npm run pin"; chave da API: config/secrets.yaml ou ANTHROPIC_API_KEY.`,
+        `${file}: o campo "${[...path, k].join('.')}" é um segredo e não pode ficar aqui. PINs: "npm run pin"; chaves de API: config/secrets.yaml ou variável de ambiente (ANTHROPIC_API_KEY, MIXAI_GEMINI_API_KEY).`,
       );
     }
     assertNoSecrets(v, file, [...path, k]);
@@ -278,6 +306,8 @@ const SecretsSchema = z.object({
   anthropicApiKey: z.string().optional(),
   /** Senha do PostgreSQL local da base de conhecimento (opcional; ou MIXAI_PG_PASSWORD). */
   postgresPassword: z.string().min(8).max(200).optional(),
+  /** Chave da API do Gemini (opcional; ou MIXAI_GEMINI_API_KEY). Só o servidor lê; nunca vai ao navegador, ao log nem ao Git. */
+  geminiApiKey: z.string().min(20).max(200).optional(),
 });
 export type Secrets = z.infer<typeof SecretsSchema>;
 
@@ -339,6 +369,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
   if (env.MIXAI_MUSICIAN_PIN_HASH) secrets.musicianPinHash = env.MIXAI_MUSICIAN_PIN_HASH;
   if (env.ANTHROPIC_API_KEY) secrets.anthropicApiKey = env.ANTHROPIC_API_KEY;
   if (env.MIXAI_PG_PASSWORD) secrets.postgresPassword = env.MIXAI_PG_PASSWORD;
+  if (env.MIXAI_GEMINI_API_KEY) secrets.geminiApiKey = env.MIXAI_GEMINI_API_KEY;
   const dataDir = env.MIXAI_DATA_DIR ? resolve(env.MIXAI_DATA_DIR) : join(PROJECT_ROOT, 'data');
 
   let logDir: string | null = env.MIXAI_LOG_DIR ?? config.logs.dir;
