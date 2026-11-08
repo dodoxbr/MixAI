@@ -1,3 +1,4 @@
+import { InstructorLauncherComponent } from '../instructor/instructor-launcher.component';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { LiveService } from '../core/live.service';
 import { SessionService } from '../core/session.service';
@@ -5,6 +6,8 @@ import { SessionService } from '../core/session.service';
 /** Faixa de modo (azul LAB / vermelho REAL), estado da ligação e saída. */
 @Component({
   selector: 'mx-status-bar',
+  styles: [':host.mode-lab { flex-wrap:wrap; }'],
+  imports: [InstructorLauncherComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'mx-status-bar',
@@ -20,6 +23,7 @@ import { SessionService } from '../core/session.service';
     <div class="spacer"></div>
     <div class="role-chip">{{ session.role() === 'operator' ? 'Operador' : 'Músico' }}</div>
     <ng-content select="[status-action]" />
+    <mx-instructor-launcher />
     <button type="button" class="btn btn-ghost" (click)="session.logout()">Sair</button>
   `,
 })
