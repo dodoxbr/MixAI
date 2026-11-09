@@ -1,3 +1,4 @@
+import { AutoPlan } from '../autoconfig/contracts.js';
 import { SoundcheckEvent } from '../soundcheck/schema.js';
 import { z } from 'zod';
 import { SceneSchema, DeviceProfileSchema } from '../core/scene.js';
@@ -8,7 +9,8 @@ export const History = z.object({ version: z.number().int().positive(), at: z.is
 export const ReferenceSchema = z.object({
   id: Id, eventId: Id, eventName: Text, eventDate: z.iso.date(), version: z.number().int().positive(), scope: Scope,
   createdAt: z.iso.datetime(), deviceProfile: DeviceProfileSchema,
-  source: z.object({ mode: z.literal('lab'), app: z.literal('MixAI'), serverId: z.string().max(64), stateRevision: z.number().int().nonnegative() }).strict(),
+  simulation: z.object({ planId: Id, mode: z.enum(['lab', 'mock']), notApplied: z.literal(true) }).strict().optional(),
+  source: z.object({ mode: z.enum(['lab', 'mock']), app: z.literal('MixAI'), serverId: z.string().max(64), stateRevision: z.number().int().nonnegative() }).strict(),
   validationStatus: z.literal('UNVERIFIED'), operatorApprovedAt: z.iso.datetime(), approvedBy: z.object({ sourceSessionId: z.string().max(64), role: z.literal('operator') }).strict(),
   channels: z.array(z.object({ number: z.number().int().min(1).max(64), name: Text }).strict()).max(64),
   scene: SceneSchema, observations: z.record(z.string().regex(/^(?:master\.level|ch\.\d+\.(?:main|aux\.1)\.(?:level|mute))$/), Observation),
@@ -25,7 +27,7 @@ export const RequestSchema = z.object({
   response: Text.optional(), recommendation: z.object({ text: z.string().trim().min(1).max(24000).refine(s => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u202a-\u202e\u2066-\u2069]/.test(s)), status: z.enum(['needs_context', 'theoretical_guidance']).optional(), source: z.enum(['operator', 'diagnosis']), references: z.array(z.string().url().max(500).refine(s => /^https?:\/\//i.test(s))).max(10).optional() }).strict().optional(),
   history: z.array(History).min(1).max(50),
 }).strict();
-export const DocumentSchema = z.object({ schemaVersion: z.literal(1), revision: z.number().int().nonnegative(), references: z.array(ReferenceSchema).max(100), requests: z.array(RequestSchema).max(500), soundchecks: z.array(SoundcheckEvent).max(50).default([]) }).strict();
+export const DocumentSchema = z.object({ schemaVersion: z.literal(1), revision: z.number().int().nonnegative(), references: z.array(ReferenceSchema).max(100), requests: z.array(RequestSchema).max(500), soundchecks: z.array(SoundcheckEvent).max(50).default([]), autoconfig: z.array(AutoPlan).max(50).default([]) }).strict();
 export type Reference = z.infer<typeof ReferenceSchema>;
 export type HelpRequest = z.infer<typeof RequestSchema>;
 export type Document = z.infer<typeof DocumentSchema>;

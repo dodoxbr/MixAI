@@ -1,256 +1,122 @@
-import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { Browser, Page } from "playwright";
 import {
-  enter,
   launch,
+  enter,
   startLab,
   OPERATOR_PIN,
   MUSICIAN_PIN,
-  PHONE,
+  physicalBandChannels,
   YOGA,
 } from "./harness.js";
+import { voiceReturnFixture } from "../../src/autoconfig/fixtures.js";
 let browser: Browser;
-const labs: Awaited<ReturnType<typeof startLab>>[] = [];
 beforeAll(async () => {
   browser = await launch();
-});
-afterEach(async () => {
-  for (const ctx of browser.contexts()) await ctx.close();
-  for (const lab of labs.splice(0)) await lab.server.close();
 });
 afterAll(async () => {
   await browser.close();
 });
-async function open(page: Page) {
-  await page
-    .getByRole("button", { name: "Passagem de som", exact: true })
-    .click();
-  await page
-    .getByLabel("Nome do evento da passagem", { exact: true })
-    .fill("Ensaio AutoConfig");
-  await page.getByLabel("Data da passagem", { exact: true }).fill("2026-11-09");
-  await page
-    .getByLabel("Operador da passagem", { exact: true })
-    .fill("Operador LAB");
-  await page
-    .getByRole("button", { name: "Iniciar passagem LAB", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Iniciar AutoConfig LAB", exact: true })
-    .waitFor();
+async function api(page: Page, path: string, body?: object) {
+  return page.evaluate(
+    async ({ path, body }) => {
+      const response = await fetch(path, {
+        method: body ? "POST" : "GET",
+        headers: {
+          authorization: `Bearer ${sessionStorage.getItem("mixai.token")}`,
+          ...(body ? { "content-type": "application/json" } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      return { status: response.status, body: await response.json() };
+    },
+    { path, body },
+  );
 }
-async function prepare(page: Page) {
-  const auto = page.locator("mx-autoconfig");
-  await auto
-    .getByRole("button", { name: "Iniciar AutoConfig LAB", exact: true })
-    .click();
-  await auto
-    .getByRole("button", { name: "Melhorar clareza", exact: true })
-    .click();
-  await auto
-    .getByLabel("Canal do AutoConfig", { exact: true })
-    .selectOption("3");
-  await auto
-    .getByRole("button", { name: "Confirmar canal", exact: true })
-    .click();
-  await auto
-    .getByRole("button", { name: "FONES · AUX1 compartilhado", exact: true })
-    .click();
-  await auto
-    .getByLabel("Relato do AutoConfig", { exact: true })
-    .fill("Voz abafada no retorno");
-  await auto
-    .getByRole("button", { name: "Visualizar plano LAB", exact: true })
-    .click();
-  await auto
-    .getByRole("heading", { name: "Revise cada teste", exact: true })
-    .waitFor();
-  return auto;
-}
-for (const [name, device] of [
-  ["Yoga", YOGA],
-  ["celular", PHONE],
-  ["paisagem", { ...PHONE, viewport: { width: 780, height: 360 } }],
-] as const) {
-  it(`per-item approvals, simulated review, rejection, versioned copy and one-touch Mesa — ${name}`, async () => {
-    const lab = await startLab();
-    labs.push(lab);
-    const { page } = await enter(browser, lab.base, OPERATOR_PIN, device);
-    const write = vi.spyOn(lab.mixer, "write");
-    const commands: string[] = [];
-    page.on("request", (r) => {
-      if (r.url().includes("/api/command")) commands.push(r.url());
-    });
-    await open(page);
-    const auto = await prepare(page);
-    expect(await auto.textContent()).toContain(
-      "Demonstração local de interface",
+it("operator individually consents to virtual tests, verifies/reviews and saves an unapplied reference; musician cannot authorize", async () => {
+  const t = await startLab({ channels: physicalBandChannels() });
+  try {
+    const { page: op } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
+    const { page: music } = await enter(
+      browser,
+      t.base,
+      MUSICIAN_PIN,
+      YOGA,
+      undefined,
+      false,
     );
-    expect(await auto.textContent()).toContain("SIMULAÇÃO LAB");
-    expect(await auto.textContent()).toContain("AUX1 compartilhado");
-    expect(await auto.locator("article").count()).toBe(2);
-    const first = auto.locator("article").first(),
-      second = auto.locator("article").nth(1);
-    expect(
-      await auto
-        .getByRole("button", {
-          name: "Executar este teste simulado",
-          exact: true,
-        })
-        .count(),
-    ).toBe(0);
-    const approve = first.getByRole("button", {
-      name: "Autorizar somente este teste LAB",
-      exact: true,
+    const write = vi.spyOn(t.mixer, "write");
+    const baseline = t.server.core.snapshotFor("operator");
+    const base = { serverId: t.server.core.serverId };
+    let r = await api(op, "/api/autoconfig", {
+      ...base,
+      id: crypto.randomUUID(),
+      title: "Retorno virtual",
+      scope: "AUX1",
+      items: [voiceReturnFixture],
     });
-    expect((await approve.boundingBox())!.height).toBeGreaterThanOrEqual(48);
-    await approve.focus();
-    await page.keyboard.press("Enter");
-    await first
-      .getByRole("button", {
-        name: "Executar este teste simulado",
-        exact: true,
-      })
-      .click();
-    await first
-      .getByText("Resultado SIMULADO — acústica não validada", { exact: true })
-      .waitFor();
-    expect(await second.textContent()).toContain("Não autorizado");
-    await first
-      .getByRole("button", {
-        name: "Confirmar resultado simulado",
-        exact: true,
-      })
-      .click();
-    const save = auto.getByRole("button", {
-      name: "Salvar referência temporária da sessão",
-      exact: true,
+    expect(r.status).toBe(200);
+    let p = r.body;
+    const act = async (action: string, extra: object = {}) =>
+      api(op, `/api/autoconfig/${p.id}/actions`, {
+        ...base,
+        requestId: crypto.randomUUID(),
+        expectedVersion: p.version,
+        action,
+        ...extra,
+      });
+    p = (await act("prepare", { confirmed: true })).body;
+    expect(p.state).toBe("proposed");
+    expect(p.context.realObservation).toBe("unavailable");
+    expect(p.context.acousticMeasurement).toBe("unavailable");
+    const consent = {
+      action: "approve",
+      itemId: p.items[0].spec.id,
+      digest: p.items[0].digest,
+      confirmed: true,
+      scope: "simulation_only",
+      expectedStateRevision: baseline.revision,
+    };
+    const denied = await api(music, `/api/autoconfig/${p.id}/actions`, {
+      ...base,
+      requestId: crypto.randomUUID(),
+      expectedVersion: p.version,
+      ...consent,
     });
-    expect(await save.isDisabled()).toBe(true);
-    await second
-      .getByRole("button", {
-        name: "Rejeitar e descartar cenário",
-        exact: true,
+    expect(denied.status).toBe(403);
+    p = (await act("approve", consent)).body;
+    expect(p.state).toBe("approved_for_lab");
+    p = (
+      await act("simulate", {
+        itemId: p.items[0].spec.id,
+        approvalId: p.items[0].approval.id,
+        expectedStateRevision: baseline.revision,
       })
-      .click();
-    await save.click();
-    await auto.getByText(/Referência v1 · 1 item/).waitFor();
-    await save.click();
-    await auto.getByText(/Referência v2 · 1 item/).waitFor();
-    const downloaded = page.waitForEvent("download");
-    await auto
-      .getByRole("button", {
-        name: "Baixar referência simulada v2",
-        exact: true,
+    ).body;
+    expect(p.items[0].result.outcome).toBe("passed");
+    expect(p.virtualState["ch.6.aux.1.level"].appliedToMixer).toBe(false);
+    p = (
+      await act("review", {
+        itemId: p.items[0].spec.id,
+        accepted: true,
+        assessment: "Apenas valor virtual conferido.",
       })
-      .click();
-    const download = await downloaded;
-    expect(download.suggestedFilename()).toBe("mixai-simulacao-lab-v2.json");
-    const stream = (await download.createReadStream())!;
-    let json = "";
-    for await (const chunk of stream) json += chunk;
-    expect(JSON.parse(json)).toMatchObject({
-      scope: "lab_simulation",
-      temporary: true,
-      version: 2,
-    });
-    expect(json).not.toMatch(/token|pin|authorization/i);
-    expect(await auto.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
-      true,
-    );
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
-    ).toBe(true);
-    await page.getByRole("button", { name: "Mesa", exact: true }).click();
-    await page.locator(".mesa-main").waitFor();
-    expect(await page.locator("mx-autoconfig").count()).toBe(0);
+    ).body;
+    p = (
+      await act("save", {
+        confirmed: true,
+        expectedStateRevision: baseline.revision,
+      })
+    ).body;
+    expect(p.state).toBe("saved");
+    const detail = await api(op, `/api/autoconfig/${p.id}`);
+    expect(detail.body.reference.simulation.notApplied).toBe(true);
+    expect(detail.body.reference.validationStatus).toBe("UNVERIFIED");
     expect(write).not.toHaveBeenCalled();
-    expect(commands).toEqual([]);
-  });
-}
-it("offline disables approvals, reconnect requires new review, logout clears temporary history", async () => {
-  const lab = await startLab();
-  labs.push(lab);
-  const { page, ctx } = await enter(browser, lab.base, OPERATOR_PIN, PHONE);
-  const write = vi.spyOn(lab.mixer, "write");
-  await open(page);
-  const auto = await prepare(page);
-  await auto
-    .locator("article")
-    .first()
-    .getByRole("button", {
-      name: "Autorizar somente este teste LAB",
-      exact: true,
-    })
-    .click();
-  await ctx.setOffline(true);
-  const sockets = (
-    lab.server.https[0] as unknown as {
-      websocketServer: { clients: Set<{ terminate(): void }> };
-    }
-  ).websocketServer;
-  for (const socket of sockets.clients) socket.terminate();
-  await expect
-    .poll(() => auto.textContent(), { timeout: 15000 })
-    .toContain("Sem conexão");
-  expect(
-    await auto
-      .getByRole("button", {
-        name: "Executar este teste simulado",
-        exact: true,
-      })
-      .count(),
-  ).toBe(0);
-  await ctx.setOffline(false);
-  await page.getByTestId("link").filter({ hasText: "Conectado" }).waitFor();
-  expect(await auto.locator("article").count()).toBe(0);
-  const token = await page.evaluate(() =>
-    sessionStorage.getItem("mixai.token"),
-  );
-  await lab.http("/api/logout", { token: token!, body: {} });
-  await page.locator("mx-login").waitFor();
-  expect(await page.locator("mx-autoconfig").count()).toBe(0);
-  for (const digit of OPERATOR_PIN)
-    await page.getByRole("button", { name: digit, exact: true }).click();
-  await page.getByRole("button", { name: "Entrar", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Passagem de som", exact: true })
-    .click();
-  const events = page.getByLabel("Evento da passagem", { exact: true });
-  await expect.poll(() => events.locator("option").count()).toBe(2);
-  await events.selectOption({ index: 1 });
-  await page
-    .getByRole("button", { name: "Iniciar AutoConfig LAB", exact: true })
-    .waitFor();
-  expect(await page.locator("mx-autoconfig").textContent()).not.toContain(
-    "Voz abafada",
-  );
-  expect(write).not.toHaveBeenCalled();
-});
-it("musician has no AutoConfig approval surface and preserves existing authorization", async () => {
-  const lab = await startLab();
-  labs.push(lab);
-  const { page } = await enter(
-    browser,
-    lab.base,
-    MUSICIAN_PIN,
-    PHONE,
-    undefined,
-    false,
-  );
-  expect(await page.locator("mx-autoconfig").count()).toBe(0);
-  expect(
-    await page
-      .getByRole("button", { name: "Passagem de som", exact: true })
-      .count(),
-  ).toBe(0);
-  const token = await page.evaluate(() =>
-    sessionStorage.getItem("mixai.token"),
-  );
-  expect(
-    (await lab.command(token!, { type: "set_master", deltaDB: 1 })).json.result
-      .code,
-  ).toBe("FORBIDDEN");
+    expect(t.server.core.snapshotFor("operator")).toEqual(baseline);
+    expect((await api(music, `/api/autoconfig/${p.id}`)).status).toBe(403);
+  } finally {
+    for (const ctx of browser.contexts()) await ctx.close();
+    await t.server.close();
+  }
 });

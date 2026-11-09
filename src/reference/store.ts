@@ -9,7 +9,7 @@ export class ReferenceStore {
   constructor(readonly file: string) {}
   read(): Document {
     try {
-      if (!existsSync(this.file)) return { schemaVersion: 1, revision: 0, references: [], requests: [], soundchecks: [] };
+      if (!existsSync(this.file)) return { schemaVersion: 1, revision: 0, references: [], requests: [], soundchecks: [], autoconfig: [] };
       if (statSync(this.file).size > MAX_BYTES) throw new Error();
       return DocumentSchema.parse(JSON.parse(readFileSync(this.file, 'utf8')));
     } catch { throw new ReferenceError('STORE_UNAVAILABLE'); }

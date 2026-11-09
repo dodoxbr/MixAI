@@ -52,8 +52,9 @@ const vocabulary: Record<Symptom, string[]> = {
   embolado: ['embolado', 'embolada', 'embolados', 'emboladas', 'embolando'],
   estridente: ['estridente', 'estridentes', 'agressivo', 'agressiva'],
   abafado: ['abafado', 'abafada', 'abafados', 'abafadas', 'sem brilho'],
-  magro: ['magro', 'magra', 'sem corpo', 'sem grave', 'sem graves', 'fino', 'fina'],
-  desequilibrio: ['desequilibrio', 'desequilibrado', 'desequilibrada', 'sumindo', 'sumiu', 'encobrindo', 'encoberta', 'encoberto', 'dominando', 'baixo', 'baixa', 'alto', 'alta', 'sobressaindo'],
+  magro: ['magro', 'magra', 'sem corpo', 'sem grave', 'sem graves', 'fino', 'fina', 'falta grave', 'falta graves', 'falta de grave', 'falta de graves', 'faltando grave', 'faltando graves', 'sem peso', 'sem pegada'],
+  desequilibrio: ['desequilibrio', 'desequilibrado', 'desequilibrada', 'sumindo', 'sumiu', 'encobrindo', 'encoberta', 'encoberto', 'dominando', 'baixo', 'baixa', 'alto', 'alta', 'sobressaindo',
+    'nao aparece', 'nao aparecendo', 'nao se ouve', 'nao se escuta', 'nao da pra ouvir', 'nao se destaca', 'cobrindo', 'cobre', 'cobriu', 'coberto', 'coberta', 'afogado', 'afogada', 'escondido', 'escondida', 'perdido', 'perdida'],
   microfonia: ['microfonia', 'microfonando', 'apito', 'apitando', 'feedback'],
   sibilancia: ['sibilancia', 'sibilante', 'sibilantes', 'consoantes agressivas'],
   clip: ['clip', 'clipping', 'clipando', 'saturando', 'saturacao', 'distorcendo', 'distorcido', 'distorcida', 'estourando'],
@@ -65,10 +66,25 @@ const vocabulary: Record<Symptom, string[]> = {
 const instrumentTerms: Record<Instrument, string[]> = {
   cavaco: ['cavaco', 'cavaquinho', 'cava'], violao: ['violao', 'viola', '7 cordas'],
   surdo: ['surdo', 'surdao'], tanta: ['tanta', 'tantan', 'tan tan'],
-  pandeiro: ['pandeiro', 'pandeirista'], vozes: ['voz', 'vozes', 'vocal', 'vocais'],
+  pandeiro: ['pandeiro', 'pandeirista'], vozes: ['voz', 'vozes', 'vocal', 'vocais', 'coro', 'coral'],
 };
 const has = (text: string, phrase: string) => ` ${text} `.includes(` ${phrase} `);
 const normalized = (text: string) => words(text).join(' ');
+
+/**
+ * Frases que, sozinhas, já são o relato de um problema (sem verbo "estar"): "o Fred não aparece", "coro cobrindo a voz",
+ * "falta grave no surdo". Também liberam o "não" dentro do relato ("não aparece"), que antes descartava a frase.
+ */
+const DIRECT_REPORTS = ['nao aparece', 'nao aparecendo', 'nao se ouve', 'nao se escuta', 'nao da pra ouvir', 'nao se destaca', 'cobrindo', 'cobre', 'cobriu',
+  'falta grave', 'falta graves', 'falta de grave', 'falta de graves', 'faltando grave', 'faltando graves', 'sem peso', 'sem pegada', 'afogado', 'afogada', 'escondido', 'escondida'];
+/** Relato vago ("violão horrível"): não diz qual é o problema. Nunca vira diagnóstico específico: pede o sintoma primeiro. */
+const VAGUE = /\b(horrivel|horriveis|ruim|ruins|pessimo|pessima|pessimos|pessimas|estranho|estranha|esquisito|esquisita|feio|feia)\b|\bnao (esta|ta) (bom|legal)\b/;
+const VAGUE_SYMPTOMS: Symptom[] = ['abafado', 'estridente', 'magro', 'embolado', 'desequilibrio', 'ruido'];
+function isVagueComplaint(text: string, raw: string): boolean {
+  if (!VAGUE.test(text) || raw.includes('?')) return false;
+  if (/\b(se|hipoteticamente|sera|talvez)\b/.test(text)) return false;
+  return !/\bnao\b/.test(text) || /\bnao (esta|ta) (bom|legal)\b/.test(text);
+}
 
 export function instrumentFor(channel: number, names: ChannelMap): Instrument | undefined {
   const terms = names.inputs.terms().filter(term => term.number === channel);
@@ -85,7 +101,11 @@ export function parseConsultation(raw: string, names: ChannelMap): ConsultationI
   // 'Seco' is ambiguous: do not silently turn it into a reverb/EQ prescription.
   const dry = /\b(seco|seca)\b/.test(text);
   if (dry) { for (const s of ['magro', 'processamento'] as const) if (!symptoms.includes(s)) symptoms.push(s); }
-  if (!symptoms.length && !/\b(diagnostico|diagnosticar)\b|consulta tecnica|o que (podemos|posso) fazer|como (melhorar|resolver)/.test(text)) return undefined;
+  // Relato vago só entra na conversa guiada quando cita uma FONTE (instrumento ou canal): "o violão está horrível".
+  // Sem fonte ("tá tudo estranho"), continua sendo texto livre para o caminho de sempre.
+  const mentionsSource = instrumentSchema.options.some(i => instrumentTerms[i].some(t => has(text, t))) || findChannels(raw.replace(/\bch(\d+)\b/gi, 'ch $1'), names).length > 0;
+  const vague = !symptoms.length && mentionsSource && isVagueComplaint(text, raw);
+  if (!symptoms.length && !vague && !/\b(diagnostico|diagnosticar)\b|consulta tecnica|o que (podemos|posso) fazer|como (melhorar|resolver)/.test(text)) return undefined;
   const channels = findChannels(raw.replace(/\bch(\d+)\b/gi, 'ch $1'), names);
   const numericChannels = [...text.matchAll(/\b(?:canal|ch) ?(\d+)\b/g)].map(m => Number(m[1]));
   const invalidChannel = numericChannels.some(n => !names.inputs.configured().includes(n));
@@ -100,17 +120,18 @@ export function parseConsultation(raw: string, names: ChannelMap): ConsultationI
     const clause = normalized(sentence);
     const explicitMonitoringReport = vocabulary.monitoracao.some(t => has(clause, t));
     const negativeAudibility = ['nao me ouco', 'nao me escuto', 'nao estou me ouvindo'].some(t => has(clause, t));
-    return !sentence.trim().endsWith('?') && !/^(?:por que|porque|como|quando|onde|qual|quais|o que|sera que)\b/.test(clause) && (/\b(esta|estao|ta|tao|ficou|ficaram|soa|soando|sumiu|tenho|microfonando|clipando|distorcendo)\b/.test(clause) || explicitMonitoringReport || /\b(sem grave|sem graves|sem corpo|sem brilho)\b/.test(clause))
+    const direct = DIRECT_REPORTS.some(t => has(clause, t));
+    return !sentence.trim().endsWith('?') && !/^(?:por que|porque|como|quando|onde|qual|quais|o que|sera que)\b/.test(clause) && (/\b(esta|estao|ta|tao|ficou|ficaram|soa|soando|sumiu|tenho|microfonando|clipando|distorcendo)\b/.test(clause) || explicitMonitoringReport || /\b(sem grave|sem graves|sem corpo|sem brilho)\b/.test(clause) || direct)
       && !/\b(se|hipoteticamente|sera|talvez)\b|o que (e|significa)/.test(clause)
-      && (!/\bnao\b/.test(clause) || negativeAudibility)
+      && (!/\bnao\b/.test(clause) || negativeAudibility || direct)
       && !/nao e (verdade|o caso)/.test(clause);
   });
   return {
     symptom: symptoms.includes('microfonia') ? 'microfonia' : symptoms.length === 1 ? symptoms[0] : undefined,
-    relatedInstruments, symptomCandidates: symptoms, ...(dry ? { ambiguity: 'dry' as const } : {}),
+    relatedInstruments, symptomCandidates: vague ? VAGUE_SYMPTOMS : symptoms, ...(dry ? { ambiguity: 'dry' as const } : {}),
     channel, instrument: channel ? instrumentFor(channel, names) : relatedInstruments.length === 1 ? relatedInstruments[0] : undefined, destination,
     evidence: symptoms.flatMap(symptom => {
-      const observed = observations.filter(sentence => (symptom === 'monitoracao' || !/\bnao\b/.test(normalized(sentence))) && (vocabulary[symptom].some(term => has(normalized(sentence), term)) || dry && ['magro', 'processamento'].includes(symptom) && /\b(seco|seca)\b/.test(normalized(sentence))));
+      const observed = observations.filter(sentence => (symptom === 'monitoracao' || !/\bnao\b/.test(normalized(sentence)) || DIRECT_REPORTS.some(t => has(normalized(sentence), t))) && (vocabulary[symptom].some(term => has(normalized(sentence), term)) || dry && ['magro', 'processamento'].includes(symptom) && /\b(seco|seca)\b/.test(normalized(sentence))));
       return observed.length ? [{ id: `chat-${symptom}`, kind: 'operator_report' as const, symptom, detail: observed.join(' ').replace(/[\u0000-\u001f\u007f]/g, ' ').trim() }] : [];
     }),
   };

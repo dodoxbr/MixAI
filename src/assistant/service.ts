@@ -1,4 +1,4 @@
-import { DiagnosticContexts, conversationSchema, contextStampSchema, type DiagnosticContextView } from './diagnostic-context.js';
+import { DiagnosticContexts, conversationSchema, contextStampSchema, knowledgeQueryOf, type DiagnosticContextView } from './diagnostic-context.js';
 import { consult, isShortConsultationAnswer, consultationSchema, parseConsultation, type ConsultationReply } from './sound-engineer.js';
 import type { AiContext, AiTurn, AiUsage, ClaudeClient } from '../ai/claude.js';
 import type { NamedEntry } from '../core/config.js';
@@ -13,6 +13,9 @@ import type { ServerCore } from '../server/core.js';
 import type { ClarifyOption, ParseOutcome } from './intent.js';
 import { isExplicitMixRequest, parseRequest, type StepSizes } from './nl-parser.js';
 import { fmtDb, ProposalBuilder, type Proposal, type ProposalCard } from './proposals.js';
+
+const KNOWLEDGE_CACHE_MS = 60_000;
+const KNOWLEDGE_CACHE_SESSIONS = 256;
 
 export interface AssistantReply {
   kind: 'proposals' | 'clarify' | 'answer' | 'error' | 'diagnosis';
@@ -58,9 +61,14 @@ export class AssistantService {
   private applied = new Map<string, Proposal>();
   private history = new Map<string, AiTurn[]>();
   private aiBusy = new Set<string>();
+  /** Última consulta documental de cada sessão: só é reaproveitada se o contexto consolidado NÃO mudou (e por pouco tempo). */
+  private knowledgeCache = new Map<string, { key: string; expiresAt: number; knowledge: KnowledgeContext }>();
   readonly builder: ProposalBuilder;
   readonly diagnosticContexts: DiagnosticContexts;
   private removeRevokeListener: () => void;
+  /** Canais com microfone de modelo confirmado no cadastro da banda (instantâneo somente leitura, renovado a cada 30 s). */
+  private registeredMics = new Set<number>();
+  private micsAt = -Infinity;
 
   constructor(
     private core: ServerCore,
@@ -75,8 +83,9 @@ export class AssistantService {
     },
   ) {
     this.builder = new ProposalBuilder(core.controller, core.policy, opts.ttlMs, opts.clock, (p, cmd) => core.authorizeMusicianCommand(p, cmd));
-    this.diagnosticContexts = new DiagnosticContexts(core.controller.names, core.policy.musicianAux, { clock: opts.clock });
-    this.removeRevokeListener = core.auth.onRevoke(id => this.diagnosticContexts.revoke(id));
+    this.diagnosticContexts = new DiagnosticContexts(core.controller.names, core.policy.musicianAux, { clock: opts.clock, registeredCapture: ch => (this.registeredMics.has(ch) ? 'microphone' : undefined) });
+    void this.refreshMics();
+    this.removeRevokeListener = core.auth.onRevoke(id => { this.diagnosticContexts.revoke(id); this.knowledgeCache.delete(id); });
   }
 
   aiAvailable(): boolean {
@@ -85,6 +94,21 @@ export class AssistantService {
 
   private now() {
     return (this.opts.clock ?? Date.now)();
+  }
+
+  /** Lê o cadastro de microfones da base local; falha ou ausência de base = nada cadastrado (a pergunta de captação continua). */
+  private async refreshMics(): Promise<void> {
+    const k = this.opts.knowledge;
+    if (!k || this.now() - this.micsAt < 30_000) return;
+    this.micsAt = this.now();
+    try {
+      const set = new Set<number>();
+      for (const [key, a] of Object.entries((await k.microphones()).assignments)) {
+        const n = /^CH(\d+)$/i.exec(key);
+        if (n && a.modelId && a.evidence !== 'unconfirmed') set.add(Number(n[1]));
+      }
+      this.registeredMics = set;
+    } catch { /* sem cadastro legível: nada é presumido */ }
   }
 
   async ask(p: Principal, raw: unknown, stamp?: unknown): Promise<AssistantReply> {
@@ -105,6 +129,7 @@ export class AssistantService {
     if (p.role === 'operator') {
       const parsedStamp = contextStampSchema.optional().safeParse(stamp);
       if (!parsedStamp.success) return error('INVALID', 'Referência de esclarecimento inválida.');
+      await this.refreshMics();
       const technical = this.diagnosticContexts.handle(p.id, text, parsedStamp.data);
       if (technical) return this.withKnowledge(p, technical, text);
     } else if (consultation || stamp !== undefined) {
@@ -120,7 +145,7 @@ export class AssistantService {
         kind: 'answer',
         source: 'local',
         code: 'AI_DISABLED',
-        text: 'Não entendi pelo modo local, e o modo IA está desligado. Tente algo como "sobe o surdo no PA", "diminui 3 dB da voz Fernando nos fones", "muta o pandeiro no PA" ou "desfaz".',
+        text: 'Não entendi, e o modo IA está desligado. Para descrever um problema, tente algo como "A voz está abafada no retorno", "O surdo está sem grave", "Está microfonando quando o Fred canta" ou "O Fred não aparece quando o coro entra". Para um comando direto, tente "sobe o surdo no PA", "diminui 3 dB da voz Fernando nos fones" ou "desfaz". Nada foi ajustado.',
       };
     }
     if (this.aiBusy.has(p.id)) return error('BUSY', 'Ainda estou esperando a resposta da IA para o pedido anterior.');
@@ -156,8 +181,9 @@ export class AssistantService {
     const parsed = conversationSchema.safeParse(raw);
     if (!parsed.success) return error('INVALID', 'Conversa inválida: use texto de até 500 caracteres e a revisão opcional do esclarecimento.');
     if (isExplicitMixRequest(parsed.data.text)) return error('INVALID', 'Este endpoint aceita somente consulta; envie comandos diretos pelo chat de comandos.');
+    void this.refreshMics();
     return this.diagnosticContexts.handle(p.id, parsed.data.text, parsed.data.context)
-      ?? error('INVALID', 'Descreva uma queixa técnica ou responda a um esclarecimento pendente.');
+      ?? error('INVALID', 'Descreva o problema (por exemplo "A voz está abafada no retorno" ou "O surdo está sem grave") ou responda ao esclarecimento pendente.');
   }
 
   /**
@@ -168,19 +194,39 @@ export class AssistantService {
     const k = this.opts.knowledge;
     if (!k || p.role !== 'operator' || reply.kind !== 'diagnosis' || !this.core.auth.isActive(p)) return reply;
     const known = reply.diagnosticSession?.knownContext;
-    const knowledge = await k.enrich({
+    // Contexto CONSOLIDADO da conversa (relato original + sintoma + fonte + destino + esclarecimentos). O texto da mensagem
+    // só é usado quando a resposta não veio da conversa guiada (consulta direta, sem esclarecimentos): nunca "Fones" sozinho.
+    const query = knowledgeQueryOf(reply) ?? {
       text, symptom: known?.symptom ?? undefined, instrument: known?.instrument ?? undefined,
       channel: known?.channel ?? undefined, destination: known?.destination ?? undefined,
-    });
+    };
+    // Relato ainda vago ("violão horrível"): sem sintoma, não há o que buscar. A base e o modelo local só entram depois do esclarecimento.
+    if (!query.symptom) return reply;
+    const key = JSON.stringify([query.text, query.symptom, query.instrument, query.channel, query.destination]);
+    const hit = this.knowledgeCache.get(p.id);
+    let knowledge: KnowledgeContext;
+    if (hit && hit.key === key && hit.expiresAt > this.now()) knowledge = structuredClone(hit.knowledge);
+    else {
+      knowledge = await k.enrich(query);
+      // Resultado degradado (Ollama fora, tempo esgotado) não é guardado: a próxima volta tenta de novo.
+      const transient = knowledge.degraded || ['timeout', 'unavailable', 'error'].includes(knowledge.narrativeStatus?.status ?? '');
+      if (!transient && this.core.auth.isActive(p)) {
+        if (this.knowledgeCache.size >= KNOWLEDGE_CACHE_SESSIONS && !this.knowledgeCache.has(p.id)) this.knowledgeCache.delete(this.knowledgeCache.keys().next().value!);
+        this.knowledgeCache.set(p.id, { key, expiresAt: this.now() + KNOWLEDGE_CACHE_MS, knowledge: structuredClone(knowledge) });
+      }
+    }
     return this.core.auth.isActive(p) ? { ...reply, knowledge } : reply;
   }
 
   sweep(): void {
     this.diagnosticContexts.sweep(id => this.core.auth.isActive({ id, role: 'operator', label: 'operador' }));
+    const now = this.now();
+    for (const [id, c] of this.knowledgeCache) if (now >= c.expiresAt || !this.core.auth.isActive({ id, role: 'operator', label: 'operador' })) this.knowledgeCache.delete(id);
   }
   stop(): void {
     this.removeRevokeListener();
     this.diagnosticContexts.stop();
+    this.knowledgeCache.clear();
   }
 
   /** B3A: autorização e validação comuns a chat, HTTP e WS. Nunca cria propostas. */
