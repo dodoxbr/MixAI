@@ -1,11 +1,28 @@
 import { z } from 'zod';
 import { words, type ChannelMap } from '../core/channels.js';
 import {
-  queryInstructorGuidance, type InstructorGuidance, diagnose, diagnosticInputSchema, instrumentSchema, sources, symptomSchema, technicalModules, modulesFor,
+  queryInstructorGuidance, instructorProcedures, instructorProcedureSchema, FIELD_LIBRARY_VERSION, type InstructorGuidance, diagnose, diagnosticInputSchema, instrumentSchema, sources, symptomSchema, technicalModules, modulesFor,
   diagnosticSessionSchema, type DiagnosticSession, type DiagnosticProgress, type DiagnosticCheck, type DiagnosticQuestionField,
   type Diagnosis, type Instrument, type Reference, type Symptom,
 } from '../knowledge/sound-engineer/index.js';
 import { findChannels } from './nl-parser.js';
+
+/**
+ * Biblioteca de procedimentos do Instrutor Ui16, SOMENTE leitura, para a rota /api/instructor/procedures.
+ * Fica aqui porque este é o módulo autorizado a consumir a base determinística (teste de isolamento da base).
+ * Relê cada procedimento pelo esquema ESTRITO (só campos do contrato saem) e recusa qualquer um executável.
+ */
+let publishedLibrary: Readonly<{ schemaVersion: 1; libraryVersion: string; procedures: ReturnType<typeof instructorProcedureSchema.parse>[] }> | undefined;
+export function publishedInstructorLibrary() {
+  if (!publishedLibrary) {
+    const procedures = instructorProcedures.map((p) => instructorProcedureSchema.parse(structuredClone(p)));
+    if (procedures.some((p) => p.execution !== 'not_executable' || p.realWrites !== false || !p.requiresHumanReview)) {
+      throw new Error('Biblioteca do instrutor contém procedimento executável: recusada.');
+    }
+    publishedLibrary = Object.freeze({ schemaVersion: 1 as const, libraryVersion: FIELD_LIBRARY_VERSION, procedures });
+  }
+  return publishedLibrary;
+}
 
 /** Consulta explícita, jamais aceita comando, Intent, confirmação ou aprovação. */
 export const consultationSchema = diagnosticInputSchema.omit({ sourceLabel: true }).extend({

@@ -7,7 +7,7 @@ export interface InstructionStep {
 }
 export interface Ui16Procedure {
   id: string; title: string; purpose: string; preconditions: string[];
-  scope: 'lab_instruction'; version: string; validation: 'fixture' | 'documented';
+  scope: 'lab_instruction'; version: string; validation: 'fixture' | 'documented' | 'theory';
   interfaceLimit: string; origin: InstructionOrigin; steps: InstructionStep[];
 }
 export interface InstructionCatalog { schemaVersion: 1; procedures: Ui16Procedure[] }
@@ -23,7 +23,7 @@ export function adaptInstructionCatalog(input: unknown): InstructionCatalog {
   if (data['schemaVersion'] !== 1 || !Array.isArray(data['procedures']) || !data['procedures'].length || data['procedures'].length > 50) throw new Error('Catálogo de instruções incompatível.');
   const procedures = data['procedures'].map(value => {
     const p = object(value), origin = object(p['origin']);
-    if (!['id','title','purpose','version','interfaceLimit'].every(k => string(p[k])) || !strings(p['preconditions']) || p['scope'] !== 'lab_instruction' || !['fixture','documented'].includes(String(p['validation'])) || !['title','url','locator','version'].every(k => string(origin[k])) || !instructionUrl(String(origin['url'])) || !Array.isArray(p['steps']) || !p['steps'].length || p['steps'].length > 30) throw new Error('Procedimento incompatível.');
+    if (!['id','title','purpose','version','interfaceLimit'].every(k => string(p[k])) || !strings(p['preconditions']) || p['scope'] !== 'lab_instruction' || !['fixture','documented','theory'].includes(String(p['validation'])) || !['title','url','locator','version'].every(k => string(origin[k])) || !instructionUrl(String(origin['url'])) || !Array.isArray(p['steps']) || !p['steps'].length || p['steps'].length > 30) throw new Error('Procedimento incompatível.');
     const steps = p['steps'].map(value => {
       const s = object(value);
       if (!['id','control','action','expected','alternative','caution'].every(k => string(s[k])) || !strings(s['schematic'])) throw new Error('Etapa incompatível.');

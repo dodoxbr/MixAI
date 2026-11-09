@@ -21,9 +21,7 @@ it("operator runs, pauses and resumes event checklist after page reload; approve
   try {
     const { page } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
     const writes = vi.spyOn(t.mixer, "write");
-    await page
-      .getByText("Passagem de som — assistente LAB", { exact: true })
-      .click();
+    await page.getByRole("button", { name: "Passagem de som", exact: true }).click();
     await page
       .getByLabel("Nome do evento da passagem", { exact: true })
       .fill("Roda de ensaio LAB");
@@ -64,9 +62,7 @@ it("operator runs, pauses and resumes event checklist after page reload; approve
       .waitFor();
     await page.reload();
     await page.getByTestId("link").filter({ hasText: "Conectado" }).waitFor();
-    await page
-      .getByText("Passagem de som — assistente LAB", { exact: true })
-      .click();
+    await page.getByRole("button", { name: "Passagem de som", exact: true }).click();
     await page
       .getByLabel("Evento da passagem", { exact: true })
       .selectOption(id);

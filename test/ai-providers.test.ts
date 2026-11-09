@@ -49,7 +49,7 @@ function fakeGemini(script: { chat?: Reply | (() => Reply); embed?: Reply; healt
 
 /** Ollama falso mínimo (embeddings e chat). */
 function fakeOllama(opts: { up?: boolean; chat?: string; spy?: (body: unknown) => void } = {}) {
-  const { up = true, chat = 'Pode ser o cabo; o operador pode conferir a ligação do microfone no palco.' } = opts;
+  const { up = true, chat = 'Pode ser que o ganho do retorno esteja alto; o operador pode conferir o posicionamento do microfone em relação às caixas.' } = opts;
   const fetchFn = async (input: URL | string, init?: RequestInit) => {
     if (!up) throw new TypeError('ECONNREFUSED');
     const url = String(input);

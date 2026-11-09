@@ -2,9 +2,13 @@ import { Injectable, InjectionToken, computed, effect, inject, signal } from '@a
 import { LiveService } from '../core/live.service';
 import { SessionService } from '../core/session.service';
 import { adaptInstructionCatalog, type InstructionCatalog } from './instructor-contract';
+import { InstructorLibraryError, LIBRARY_MESSAGES, loadInstructorLibrary } from './instructor-library';
 
-/** C can provide a readonly catalog loader at this boundary, without an invented API route. */
-export const INSTRUCTOR_CATALOG = new InjectionToken<() => Promise<unknown>>('UI16_INSTRUCTOR_CATALOG', { providedIn: 'root', factory: () => async () => (await import('./instructor-fixtures')).instructorFixtures });
+/**
+ * Catalog loader boundary. The default consumes the REAL technical library through GET /api/instructor/procedures
+ * (read-only, operator and musician). Fixtures exist only for tests/development, injected explicitly via this token.
+ */
+export const INSTRUCTOR_CATALOG = new InjectionToken<() => Promise<unknown>>('UI16_INSTRUCTOR_CATALOG', { providedIn: 'root', factory: () => { const session = inject(SessionService); return () => loadInstructorLibrary(() => session.token()); } });
 @Injectable({ providedIn: 'root' })
 export class InstructorService {
   private readonly session = inject(SessionService);
@@ -36,8 +40,18 @@ export class InstructorService {
   async load() {
     if (!this.available() || this.loading()) return;
     const generation = ++this.generation; const identity = this.identity(); this.loading.set(true); this.error.set('');
-    try { const value = await this.loader(); if (generation === this.generation && identity === this.identity() && this.available()) this.catalog.set(adaptInstructionCatalog(value)); }
-    catch { if (generation === this.generation) this.error.set('Não foi possível carregar instruções compatíveis. Nenhuma operação foi executada. Tente novamente ou consulte o operador.'); }
+    let stage: 'load' | 'adapt' = 'load';
+    try {
+      const value = await this.loader();
+      stage = 'adapt';
+      if (generation === this.generation && identity === this.identity() && this.available()) this.catalog.set(adaptInstructionCatalog(value));
+    }
+    catch (e) {
+      const code = e instanceof InstructorLibraryError ? e.code : stage === 'load' ? 'unavailable' : 'incompatible';
+      if (generation === this.generation) this.error.set(LIBRARY_MESSAGES[code]);
+      // Sessão vencida/revogada: o mesmo caminho das demais telas (volta ao login), sem repetir a chamada.
+      if (code === 'session' && generation === this.generation) this.session.expire('Sua sessão terminou. Entre novamente.');
+    }
     finally { if (generation === this.generation) this.loading.set(false); }
   }
   choose(id: string) { if (!this.available() || !this.catalog()?.procedures.some(p => p.id === id)) return; this.selected.set(id); this.index.set(0); this.missing.set(false); this.complete.set(false); }

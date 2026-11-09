@@ -18,7 +18,7 @@ import { instructionUrl } from './instructor-contract';
               <button type="button" class="btn secondary" (click)="instructor.tasks()">Todas as tarefas</button>
               <h3 #heading tabindex="-1">{{ procedure.title }}</h3>
               <p>{{ procedure.purpose }}</p>
-              <p class="version">{{ procedure.validation === 'fixture' ? 'FIXTURE TEMPORÁRIA — não validada' : 'Procedimento documentado' }} · {{ procedure.version }}</p>
+              <p class="version">{{ procedure.validation === 'fixture' ? 'FIXTURE TEMPORÁRIA — não validada' : procedure.validation === 'theory' ? 'TEORIA — não validada em ensaio' : 'Procedimento documentado' }} · {{ procedure.version }}</p>
               <details><summary>Versão, limites e pré-condições</summary><p>{{ procedure.interfaceLimit }}</p><ul>@for (item of procedure.preconditions; track $index) { <li>{{ item }}</li> }</ul></details>
               @if (instructor.complete()) {
                 <section class="completion" role="status"><h4>Estudo concluído</h4><p>Você revisou o guia. Isso não comprova execução, configuração correta ou validação na mesa física.</p></section>
@@ -51,7 +51,7 @@ import { instructionUrl } from './instructor-contract';
               <h3 #heading tabindex="-1">O que você quer aprender?</h3>
               <p>Guias iniciais de navegação. Fixtures não substituem procedimentos técnicos revisados nem representam sua tela ou firmware.</p>
               <div class="task-grid">@for (procedure of instructor.catalog()!.procedures; track procedure.id) {
-                <button type="button" class="task" (click)="instructor.choose(procedure.id)"><strong>{{ procedure.title }}</strong><span>{{ procedure.purpose }}</span><small>{{ procedure.steps.length }} etapas · {{ procedure.validation === 'fixture' ? 'fixture temporária' : procedure.version }}</small></button>
+                <button type="button" class="task" (click)="instructor.choose(procedure.id)"><strong>{{ procedure.title }}</strong><span>{{ procedure.purpose }}</span><small>{{ procedure.steps.length }} etapas · {{ procedure.validation === 'fixture' ? 'fixture temporária' : procedure.validation === 'theory' ? 'teoria' : procedure.version }}</small></button>
               }</div>
             }
           }
