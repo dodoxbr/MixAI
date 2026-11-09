@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import { loadConfig } from './core/config.js';
 import { join } from 'node:path';
-import { evalLive, loadCorpus, loadRelevance, runEval, type EvalReport, type MethodReport } from './knowledge/local/eval.js';
+import { evalLive, evalLiveCases, loadCorpus, loadRelevance, runEval, type EvalReport, type MethodReport } from './knowledge/local/eval.js';
 import { openLocalKnowledge } from './knowledge/local/index.js';
 import { inboxPath } from './knowledge/local/open.js';
 import { OllamaClient } from './knowledge/local/ollama.js';
@@ -56,6 +56,55 @@ export function printEval(write: (s: string) => void, r: EvalReport): void {
   }
 }
 
+/** Resolve "v1" (congelado), "v2" ou um caminho para um arquivo de casos. */
+const casesFile = (name: string) => (name === 'v1' ? join(PROJECT_ROOT, 'knowledge', 'eval', 'relevance-ptbr.json') : name === 'v2' ? join(PROJECT_ROOT, 'knowledge', 'eval', 'relevance-ptbr-v2.json') : name);
+const TUNE_OFF = { stripNames: false, disambiguate: false, expandSymptoms: false, relativeCutoff: 0, sourcePrior: 0 };
+
+/**
+ * Avaliação da base REAL com varredura: para cada limiar reabre o serviço com a configuração ajustada, SEM tocar no corpus nem nos vetores.
+ *   --cases v1|v2|arquivo   --via search|enrich (enrich = como a conversa chama, com sintoma e instrumento)
+ *   --sweep 0.3,0.4,0.5     limiares de similaridade        --mode auto|hybrid
+ *   --tune off | chave=valor,...   ajustes de knowledge.retrieval (ex.: stripNames=false,relativeCutoff=0.85)
+ */
+async function runLiveSweep(args: string[], write: (s: string) => void): Promise<number> {
+  const k = Number(flag(args, '--k') ?? 4);
+  const cases = loadRelevance(casesFile(flag(args, '--cases') ?? 'v1'));
+  const via = flag(args, '--via') ?? 'search';
+  const base = loadConfig().config.knowledge.ollama.minScore;
+  const sweep = (flag(args, '--sweep') ?? String(base)).split(',').map(Number).filter((n) => Number.isFinite(n));
+  const tuneArg = flag(args, '--tune');
+  const tune: Record<string, boolean | number> = {};
+  // "off" desliga todos os ajustes; pode vir antes de chave=valor para ligar só alguns ("off,stripNames=true").
+  for (const kv of (tuneArg ?? '').split(',').filter(Boolean)) {
+    if (kv === 'off') { Object.assign(tune, TUNE_OFF); continue; }
+    const [key, v] = kv.split('=');
+    if (key && v !== undefined) tune[key] = v === 'true' ? true : v === 'false' ? false : Number(v);
+  }
+  const rows: string[] = [];
+  for (const minScore of sweep) {
+    const loaded = loadConfig();
+    loaded.config.knowledge.ollama.minScore = minScore;
+    loaded.config.knowledge.ollama.narrative = false; // a avaliação mede a BUSCA: nada de resumo do modelo
+    const mode = flag(args, '--mode');
+    if (mode === 'auto' || mode === 'hybrid') loaded.config.knowledge.search = mode;
+    Object.assign(loaded.config.knowledge.retrieval, tune);
+    const live = await openLocalKnowledge(loaded, { log: () => undefined });
+    if (!live) { write('knowledge.enabled está desligado.'); return 1; }
+    try {
+      const search = via === 'enrich'
+        ? async (c: { query: string; symptom?: string; instrument?: string }) => (await live.enrich({ text: c.query, symptom: c.symptom, instrument: c.instrument })).passages
+        : async (c: { query: string }) => (await live.search(c.query)).passages;
+      const m = await evalLiveCases(search, cases, k);
+      const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(4);
+      rows.push(`  limiar ${minScore.toFixed(2)} | Acerto@k ${pct(m.hitK)} | Hit@1 ${pct(m.hit1)} | Hit@3 ${pct(m.hit3)} | MRR ${m.mrr.toFixed(2)} | Prec@k ${pct(m.precisionK)} | intrusos ${pct(m.intrusion)} | trechos/pergunta ${m.avgResults.toFixed(1)} | sem resposta ${pct(m.emptyRate)} | sem acerto: ${m.misses.join(',') || '—'}`);
+      if (sweep.length === 1) write('  Acerto@k por tema: ' + Object.entries(m.byTopic).map(([t, v]) => `${t} ${v.hitK}/${v.cases}`).join(' · '));
+    } finally { await live.close(); }
+  }
+  write(`Base REAL · casos ${flag(args, '--cases') ?? 'v1'} (${cases.length}) · via ${via} · modo ${flag(args, '--mode') ?? 'config'} · k=${k} · ajustes ${tuneArg ?? 'config'}`);
+  rows.forEach((r) => write(r));
+  return 0;
+}
+
 async function runEvalCommand(args: string[], write: (s: string) => void): Promise<number> {
   const loaded = loadConfig();
   const o = loaded.config.knowledge.ollama;
@@ -63,6 +112,7 @@ async function runEvalCommand(args: string[], write: (s: string) => void): Promi
   const minScore = Number(flag(args, '--min-score') ?? o.minScore);
   const cases = loadRelevance(join(PROJECT_ROOT, 'knowledge', 'eval', 'relevance-ptbr.json'));
   let report: EvalReport | undefined;
+  if (args.includes('--live') && (flag(args, '--cases') || flag(args, '--sweep') || flag(args, '--via') || flag(args, '--tune') || flag(args, '--mode'))) return await runLiveSweep(args, write);
   if (args.includes('--live')) {
     const live = await openLocalKnowledge(loaded, { log: write });
     if (!live) { write('knowledge.enabled está desligado.'); return 1; }

@@ -7,6 +7,7 @@ import { isPublicSource, redactForExternal } from './privacy.js';
 import type { AiProvider, GenerateFailure, ProviderId } from './provider.js';
 import type { KnowledgeStore, MicrophoneState, Passage, SearchMode } from './store.js';
 import { cleanText } from './text.js';
+import { prepareQuery, refinePassages, type RetrievalTuning } from './query.js';
 
 export class KnowledgeError extends Error {
   constructor(readonly code: 'INVALID' | 'NOT_FOUND' | 'UNAVAILABLE', message: string) { super(message); }
@@ -196,6 +197,8 @@ export class LocalKnowledge {
     /** 'hybrid' funde vetor e palavras; 'auto' (padrão) usa vetor e cai para palavras. */
     search?: SearchMode;
     minScore?: number;
+    /** Ajustes da consulta e dos resultados (padrão: todos ligados exceto os que dependem do modelo; ver config). */
+    retrieval?: Partial<RetrievalTuning>;
     /** Tempo máximo (ms) esperado do resumo do modelo; o cliente já aplica o seu limite. */
     narrativeTimeoutMs?: number;
     /** Só recebe códigos de motivo e tamanhos: nunca texto de documentos, do modelo ou do operador. */
@@ -281,7 +284,14 @@ export class LocalKnowledge {
     return { mode: r.mode, ...(r.reason ? { reason: r.reason } : {}), passages: r.passages };
   }
 
-  private async retrieve(query: string, limit = this.o.maxPassages): Promise<{ mode: KnowledgeContext['mode']; reason?: string; passages: KnowledgeContext['passages'] }> {
+  private get tuning(): RetrievalTuning { return { stripNames: false, disambiguate: true, expandSymptoms: true, relativeCutoff: 0, sourcePrior: 0, ...this.o.retrieval }; }
+
+  private async retrieve(rawQuery: string, limit = this.o.maxPassages, hint: { symptom?: string; instrument?: string } = {}): Promise<{ mode: KnowledgeContext['mode']; reason?: string; passages: KnowledgeContext['passages'] }> {
+    const tuning = this.tuning;
+    const prepared = prepareQuery(rawQuery, { ...hint, names: tuning.stripNames ? await this.personNames().catch(() => []) : [] }, tuning);
+    const query = prepared.text;
+    // Busca mais candidatos do que o necessário: os filtros (sentido errado, ruído) precisam de reposição.
+    const wide = Math.max(limit * 2, limit + 6);
     const sources = new Map((await this.o.store.listSources().catch(() => [])).map((s) => [s.id, s]));
     const decorate = (list: Passage[]) => list.map((p) => ({
       ...p,
@@ -298,7 +308,7 @@ export class LocalKnowledge {
       if (!embedding) reason = 'Ollama indisponível: busca por palavras.';
     } else reason = 'Ollama não configurado: busca por palavras.';
     try {
-      const found = await this.o.store.search(query, embedding, limit, { mode: this.o.search ?? 'auto', minScore: this.o.minScore });
+      const found = refinePassages(await this.o.store.search(query, embedding, wide, { mode: this.o.search ?? 'auto', minScore: this.o.minScore }), { avoid: prepared.avoid, tuning, limit });
       // "hybrid" só existe quando houve vetor; para o operador isso continua sendo busca semântica.
       if (found.length) return { mode: found[0]!.method === 'keyword' ? 'keyword' : 'vector', ...(reason ? { reason } : {}), passages: decorate(found) };
       return { mode: 'deterministic', reason: reason ?? 'Nenhum trecho relevante na base.', passages: [] };
@@ -399,7 +409,7 @@ export class LocalKnowledge {
     try {
       const query = cleanText([input.symptom, input.instrument, input.text].filter(Boolean).join(' ')).slice(0, 300);
       // Busca mais trechos do que o necessário: parte pode sair pelo filtro de modelo de microfone.
-      const r = query.length >= 2 ? await this.retrieve(query, this.o.maxPassages + 6) : { mode: 'deterministic' as const, reason: 'Consulta curta demais.', passages: [] };
+      const r = query.length >= 2 ? await this.retrieve(cleanText(input.text), this.o.maxPassages + 6, { symptom: input.symptom, instrument: input.instrument }) : { mode: 'deterministic' as const, reason: 'Consulta curta demais.', passages: [] };
       const ctx: KnowledgeContext = { mode: r.mode, degraded: r.mode !== 'vector', ...(r.reason ? { reason: r.reason } : {}), passages: r.passages };
 
       let own: PerceptionModel | undefined;
