@@ -370,4 +370,4 @@ AUX1 continua sendo o retorno compartilhado de todos no HA800.
 
 Biblioteca técnica e Instrutor somente leitura: [Issue #65](docs/sound-engineer/ISSUE-65-LIBRARY.md), com contratos, importação reversível e avaliação lexical reproduzível.
 
-Planejador AutoConfig LAB: [contratos e ensaio offline da Issue #73](docs/autoconfig/ISSUE-73-PLANNER.md). Sem ligação ao diagnóstico A1/A2 ou execução na mesa.
+Planejador AutoConfig LAB: [contratos e ensaio offline da Issue #73](docs/autoconfig/ISSUE-73-PLANNER.md). Integração consultiva com M1 e núcleo D: [contratos e limites](docs/autoconfig/INTEGRATION-78.md). Sem execução na mesa ou números inventados.

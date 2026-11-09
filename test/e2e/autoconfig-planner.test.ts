@@ -17,6 +17,8 @@ it.each([{ label: 'Yoga', device: YOGA }, { label: 'celular', device: PHONE }])(
     const before = t.controller.state.snapshot(), write = vi.spyOn(t.mixer, 'write'), execute = vi.spyOn(t.server.core, 'execute');
     await page.getByPlaceholder('O que você deseja ajustar?').fill('Fred está abafado só no retorno, também sozinho.');
     await page.getByRole('button', { name: 'Enviar', exact: true }).click();
+    await page.locator('.technical-text').last().filter({ hasText: 'Fred' }).waitFor({ state: 'attached' });
+    await page.locator('.technical-details').last().locator('summary').click();
     await page.locator('.technical-text').last().filter({ hasText: 'Fred' }).waitFor();
     const response = await api(page, '/api/autoconfig/suggestions', { serverId: t.server.core.serverId, scope: 'AUX1' });
     expect(response.status).toBe(200); expect(response.json.advice.kind).toBe('proposal');
