@@ -212,6 +212,25 @@ const ConfigSchema = z.object({
         .prefault({}),
       /** auto = vetor, depois palavras (comportamento original); hybrid = fusão dos dois (RRF). */
       search: z.enum(['auto', 'hybrid']).default('auto'),
+      /**
+       * Ajustes de qualidade da busca documental (docs/lab/26). Cada um pode ser desligado para comparar antes/depois
+       * com "npm run knowledge -- eval --live --tune ...". Só mudam a consulta e a ordem/seleção dos trechos devolvidos.
+       */
+      retrieval: z
+        .object({
+          /** Medido: NÃO ajuda a conversa (o glossário já reduz o efeito dos nomes) e piora o Hit@1 da busca livre. Fica disponível. */
+          stripNames: z.boolean().default(false),
+          /** Medido: corta intrusos (coro × Chorus FX) sem perder acertos em nenhum conjunto. */
+          disambiguate: z.boolean().default(true),
+          /** Medido: maior ganho (conversa: Hit@1 88→100%, precisão 58→82%, intrusos 28→4%). */
+          expandSymptoms: z.boolean().default(true),
+          /** Medido: melhora a precisão mas derruba o Acerto@k do v1 (88→75%). Desligado. */
+          relativeCutoff: z.number().min(0).max(0.99).default(0),
+          /** Medido: troca trechos relevantes por trechos mais fracos das sínteses (inclui rodapé de citações). Desligado. */
+          sourcePrior: z.number().min(0).max(0.3).default(0),
+        })
+        .strict()
+        .prefault({}),
       /** Pasta (relativa a data/) com os documentos a ingerir. */
       inboxDir: z
         .string()
