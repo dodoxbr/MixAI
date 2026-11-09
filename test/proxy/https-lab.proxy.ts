@@ -276,3 +276,19 @@ it('soundcheck event routes retain operator authorization, proxy MCP rejection a
  expect((await http(`/api/soundchecks/${created.body.id}`,{token:musician})).status).toBe(403);
  expect(t!.server.core.snapshotFor('operator').revision).toBe(before);
 });
+
+it('AutoConfig contracts retain central HTTPS authorization and reject physical/write payloads',async()=>{
+ const operator=(await http('/api/login',{body:{pin:OPERATOR_PIN}})).body.token;
+ const musician=(await http('/api/login',{body:{pin:MUSICIAN_PIN}})).body.token;
+ const agent=readFileSync(join(t!.dir,'agent-lab.token'),'utf8');
+ expect((await http('/api/autoconfig')).status).toBe(401);
+ expect((await http('/api/autoconfig',{token:agent})).status).toBe(401);
+ expect((await t!.http('/api/autoconfig',{token:agent})).status).toBe(403);
+ expect((await http('/api/autoconfig',{token:musician})).status).toBe(403);
+ const info=await http('/api/autoconfig',{token:operator});expect(info.status).toBe(200);expect(info.body.capabilities.realWrite).toBe(false);
+ const snapshot=t!.server.core.snapshotFor('operator');const input={serverId:t!.server.core.serverId,id:'tls-autoconfig-test',title:'Virtual TLS',scope:'AUX1',items:[{id:'tls-level-item',operation:'level_delta',channel:1,deltaDB:1,rationale:'Teste virtual',evidence:[]}]};
+ expect((await http('/api/autoconfig',{token:operator,body:{...input,transport:'real'}})).status).toBe(400);
+ expect((await http('/api/autoconfig',{token:operator,body:input,headers:{origin:'https://foreign.invalid'}})).status).toBe(403);
+ expect((await http('/api/autoconfig',{token:operator,body:input})).status).toBe(200);
+ expect(t!.server.core.snapshotFor('operator')).toEqual(snapshot);
+});

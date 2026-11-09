@@ -40,19 +40,22 @@ export function diagnosticChecks(symptom: Symptom, instrument: Instrument | unde
     check('routing', progress.scope === 'selected_only' ? destination : procedures[symptom].checks[0]!, symptom),
   ];
 }
-/** Deterministic planning from reported context; no mixer, model, IO, measured frequency or action. */
-export function planDiagnosticConversation(diagnosis: Diagnosis, instrument: Instrument | undefined, destination: 'pa' | 'fones', progress: DiagnosticProgress): DiagnosticPlan {
+/**
+ * Deterministic planning from reported context; no mixer, model, IO, measured frequency or action.
+ * Só pergunta o que ainda não se sabe. O destino (PA ou FONES) já foi dito antes de chegar aqui, então NÃO há pergunta de "só no PA ou
+ * também nos fones" (o operador ainda pode dizê-lo por conta própria e isso é respeitado). A captação já cadastrada chega preenchida
+ * em `progress`. Esclarecimentos possíveis: relato, isolamento e captação — no máximo três — antes das verificações.
+ */
+export function planDiagnosticConversation(diagnosis: Diagnosis, instrument: Instrument | undefined, _destination: 'pa' | 'fones', progress: DiagnosticProgress): DiagnosticPlan {
   const complete = (): DiagnosticPlan => ({ question: null, choices: [], nextCheck: null, complete: true });
   if (progress.report === 'conceptual') return complete();
   if (diagnosis.confidence.level === 'insufficient') return question('report', 'Você está relatando esse problema agora ou apenas consultando o conceito?', [['current', 'Estou relatando agora'], ['conceptual', 'Só consultando']]);
-  if (!progress.scope) return question('scope', destination === 'fones' ? 'Acontece só no retorno ou também no PA?' : 'Acontece só no PA ou também nos fones?',
-    [['selected_only', destination === 'fones' ? 'Só no retorno' : 'Só no PA'], ['both', destination === 'fones' ? 'Também no PA' : 'Também nos fones'], ['unknown', 'Ainda não comparei']]);
   if (!progress.isolation) return question('isolation', 'A fonte soa assim também sozinha ou só com a banda?', [['alone', 'Também sozinha'], ['ensemble', 'Só com a banda'], ['unknown', 'Ainda não comparei']]);
   if (!progress.capture && progress.isolation !== 'ensemble') return question('capture', 'Essa fonte usa microfone ou captador/DI?', [['microphone', 'Microfone'], ['pickup_di', 'Captador/DI'], ['unknown', 'Não sei a captação']]);
   if (progress.results.some(r => r.result === 'better' || r.result === 'worse' || r.result === 'issue_found')) return complete();
   const next = diagnosticChecks(diagnosis.symptom, instrument, progress).find(c => !progress.results.some(r => r.checkId === c.id));
   if (!next) return complete();
-  const plan = question('check', 'O que você encontrou nessa verificação?', [['issue_found', 'Encontrei um problema'], ['no_issue', 'Nada evidente'], ['better', 'Melhorou'], ['same', 'Sem mudança'], ['worse', 'Piorou'], ['not_checked', 'Não verifiquei']]);
+  const plan = question('check', 'Confira o passo acima. O que você encontrou?', [['issue_found', 'Encontrei um problema'], ['no_issue', 'Nada evidente'], ['better', 'Melhorou'], ['same', 'Sem mudança'], ['worse', 'Piorou'], ['not_checked', 'Não verifiquei']]);
   return { ...plan, question: { ...plan.question!, id: `check:${next.id}` }, nextCheck: next,
     hypothesis: progress.isolation === 'ensemble' ? 'Se a fonte soa clara sozinha, o arranjo pode mascarar a articulação; é hipótese.'
       : 'Se o problema também ocorre sozinho, captação ou processamento podem contribuir; é hipótese.',

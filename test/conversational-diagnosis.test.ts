@@ -31,7 +31,7 @@ it('exemplo público valida o contrato de sessão e produz resposta compatível 
   const answer = diagnosticAnswerFor(example, example.choices[0]!.id);
   expect(answer).toEqual({ text: example.choices[0]!.label, context: { id: example.sessionId, revision: example.revision } });
 });
-it('voz abafada no retorno: vocalista → PA → fonte isolada → verificações progressivas', () => {
+it('voz abafada no retorno: vocalista → isolamento → verificações progressivas (sem repetir PA/fones)', () => {
   const { ask, store } = setup();
   const first = ask('Minha voz está abafada no retorno.'); concise(first);
   expect(first.diagnosticContext?.field).toBe('channel');
@@ -40,15 +40,14 @@ it('voz abafada no retorno: vocalista → PA → fonte isolada → verificaçõe
   expect(session(first).choices.map(c => Number(c.value))).toEqual([3, 4, 5, 6, 7]);
   expect(session(first).knownContext.channel).toBeNull();
   let r = ask('Fred', first); concise(r);
-  expect(r.diagnosticContext?.field).toBe('scope'); expect(session(r).knownContext.channel).toBe(3);
+  expect(r.diagnosticContext?.field).toBe('isolation'); expect(session(r).knownContext.channel).toBe(3);
   expect(session(r).sessionId).toBe(session(first).sessionId);
   expect(diagnosis(r).evidence).toEqual(diagnosis(first).evidence);
-  r = ask('Só no retorno', r); concise(r); expect(r.diagnosticContext?.field).toBe('isolation');
   r = ask('Só com a banda', r); concise(r); expect(r.diagnosticContext?.field).toBe('check');
   expect(r.text).toContain('Hipótese'); expect(r.text).toContain('coro');
   const seen = [session(r).nextCheck!.id];
   r = ask('Sem mudança', r); concise(r); seen.push(session(r).nextCheck!.id);
-  expect(session(r).knownContext).toMatchObject({ scope: 'selected_only', isolation: 'ensemble', channel: 3, destination: 'fones' });
+  expect(session(r).knownContext).toMatchObject({ scope: null, isolation: 'ensemble', channel: 3, destination: 'fones' });
   r = ask('Ainda está abafada', r); concise(r); seen.push(session(r).nextCheck!.id);
   expect(new Set(seen).size).toBe(3);
   r = ask('Melhorou', r); concise(r);
@@ -70,10 +69,9 @@ it('PA e fones relatados: escolher caminho inicial conserva ambos sem perguntar 
 });
 it('resposta desconhecida é registrada sem repetir a pergunta já respondida', () => {
   const { ask } = setup(); let r = ask('Fred está abafado no retorno');
-  r = ask('Ainda não comparei', r); expect(r.diagnosticContext?.field).toBe('isolation');
   r = ask('Ainda não comparei', r); expect(r.diagnosticContext?.field).toBe('capture');
   r = ask('Não sei a captação', r); expect(r.diagnosticContext?.field).toBe('check');
-  expect(session(r).knownContext).toMatchObject({ scope: 'unknown', isolation: 'unknown', capture: 'unknown' });
+  expect(session(r).knownContext).toMatchObject({ scope: null, isolation: 'unknown', capture: 'unknown' });
 });
 it('somente consulta conceitual: seleção não fabrica relato e confirmação exige resposta explícita', () => {
   const { ask } = setup(); let r = ask('diagnóstico do cavaco');
@@ -144,7 +142,7 @@ it('adaptação para B envia só escolha e revisão; não reenvia evidência ou 
 });
 it('revisão, TTL absoluto, revogação e isolamento persistem nas fases práticas', () => {
   const { ask, advance, store } = setup(); const first = ask('Fred está abafado no retorno');
-  const updated = ask('Só no retorno', first);
+  const updated = ask('Também sozinha', first);
   expect(ask('Só com a banda', first).code).toBe('DIAGNOSIS_CONTEXT_STALE');
   expect(ask('Só com a banda', updated, 'other').code).toBe('DIAGNOSIS_CONTEXT_STALE');
   advance(CONTEXT_TTL_MS); expect(ask('Só com a banda', updated).code).toBe('DIAGNOSIS_CONTEXT_STALE'); expect(store.size).toBe(0);
@@ -175,7 +173,7 @@ it.each(symptomSchema.options)('consulta estruturada %s conserva conhecimento co
 it('repetir a mesma queixa é idempotente e não duplica relato nem reinicia as perguntas', () => {
   const { ask } = setup(); const first = ask('Fred está abafado no retorno');
   expect(ask('Fred está abafado no retorno')).toEqual(first);
-  const next = ask('Só no retorno', first);
+  const next = ask('Também sozinha', first);
   const retried = ask('Fred está abafado no retorno');
   expect(retried.diagnosticContext).toEqual(next.diagnosticContext);
   expect(diagnosis(retried).evidence).toEqual(diagnosis(first).evidence);
@@ -191,7 +189,7 @@ it('CH3 sem espaço é fonte explícita e ausência de audição nos dois destin
 it('pares instrumentais oferecem fontes pertinentes e preservam relação em relatos subsequentes', () => {
   const { ask } = setup(); const first = ask('O surdo está embolando com o tantã no retorno');
   expect(session(first).choices.map(c => Number(c.value))).toEqual([8, 10]);
-  const source = ask('Surdo', first); expect(source.diagnosticContext?.field).toBe('scope');
+  const source = ask('Surdo', first); expect(source.diagnosticContext?.field).toBe('isolation');
   const next = ask('Também está magro', source);
   expect(session(next).knownContext.relatedInstruments).toEqual(['surdo', 'tanta']);
   expect(session(next).knownContext.channel).toBe(8); expect(session(next).knownContext.destination).toBe('fones');
@@ -200,8 +198,8 @@ it('reinício não resgata relato; taxa, cancelamento e capacidade são limitado
   const { ask, store } = setup({ maxPending: 1, requestsPerMinute: 3 });
   const first = ask('Fred está abafado no retorno');
   expect(ask('Leandro está abafado no retorno', undefined, 'other').code).toBe('DIAGNOSIS_CAPACITY');
-  const scope = ask('Só no retorno', first);
-  const restarted = ask('reiniciar diagnóstico', scope);
+  const answered = ask('Também sozinha', first);
+  const restarted = ask('reiniciar diagnóstico', answered);
   expect(restarted.diagnosticContext?.id).not.toBe(first.diagnosticContext?.id);
   expect(restarted.diagnosticContext?.field).toBe('symptom');
   expect(session(restarted).evidence.reports).toEqual([]);

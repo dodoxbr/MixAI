@@ -19,6 +19,11 @@ const caseSchema = z.object({
   anyOf: z.array(z.string().min(2).max(80)).min(1).max(20),
   /** Restringe às fontes do catálogo, quando a pergunta só tem resposta em um documento. */
   sources: z.array(z.string()).optional(),
+  /** Como o assistente chama a base: sintoma e instrumento já conhecidos (vocabulário fechado do motor). */
+  symptom: z.string().min(2).max(30).optional(),
+  instrument: z.string().min(2).max(30).optional(),
+  /** Trecho que contenha um destes termos é INTRUSO (ruído conhecido) para esta pergunta. */
+  avoid: z.array(z.string().min(2).max(80)).max(20).optional(),
 }).strict();
 const setSchema = z.object({ schemaVersion: z.literal(1), description: z.string(), cases: z.array(caseSchema).min(1).max(200) }).strict();
 export type RelevanceCase = z.infer<typeof caseSchema>;
@@ -188,5 +193,37 @@ export async function evalLive(search: (q: string) => Promise<Array<{ sourceId: 
     method: 'auto',
     hit1: round(rs.filter((r) => r.rank === 1).length / n), hit3: round(rs.filter((r) => r.rank >= 1 && r.rank <= 3).length / n), hitK: round(rs.filter((r) => r.rank >= 1).length / n),
     mrr: round(rs.reduce((s, r) => s + (r.rank ? 1 / r.rank : 0), 0) / n), precisionK: round(rs.reduce((s, r) => s + r.frac, 0) / n), byTopic, misses: rs.filter((r) => !r.rank).map((r) => r.c.id),
+  };
+}
+
+export interface LiveReport extends MethodReport {
+  /** Fração de perguntas em que ao menos um trecho devolvido é intruso (contém um termo de "avoid"). */
+  intrusion: number;
+  /** Média de trechos devolvidos por pergunta e fração de perguntas sem nenhum trecho. */
+  avgResults: number;
+  emptyRate: number;
+}
+const isIntruder = (c: RelevanceCase, text: string) => !!c.avoid?.some((needle) => normalize(text).includes(normalize(needle)));
+
+/**
+ * Como evalLive, mas a busca recebe o CASO inteiro (sintoma e instrumento, como na conversa) e o juiz também mede ruído:
+ * intrusos conhecidos, quantos trechos voltam por pergunta e quantas perguntas ficam sem resposta.
+ */
+export async function evalLiveCases(search: (c: RelevanceCase) => Promise<Array<{ sourceId: string; excerpt: string }>>, cases: RelevanceCase[], k = 4): Promise<LiveReport> {
+  const rs: Array<{ c: RelevanceCase; rank: number; frac: number; intruded: boolean; n: number }> = [];
+  for (const c of cases) {
+    const found = (await search(c)).slice(0, k);
+    const flags = found.map((p) => isRelevant(c, p.excerpt, p.sourceId));
+    const first = flags.indexOf(true);
+    rs.push({ c, rank: first < 0 ? 0 : first + 1, frac: flags.filter(Boolean).length / Math.max(1, found.length), intruded: found.some((p) => isIntruder(c, p.excerpt)), n: found.length });
+  }
+  const n = rs.length;
+  const byTopic: MethodReport['byTopic'] = {};
+  for (const { c, rank } of rs) { const t = (byTopic[c.topic] ??= { cases: 0, hitK: 0 }); t.cases++; if (rank) t.hitK++; }
+  return {
+    method: 'auto',
+    hit1: round(rs.filter((r) => r.rank === 1).length / n), hit3: round(rs.filter((r) => r.rank >= 1 && r.rank <= 3).length / n), hitK: round(rs.filter((r) => r.rank >= 1).length / n),
+    mrr: round(rs.reduce((s2, r) => s2 + (r.rank ? 1 / r.rank : 0), 0) / n), precisionK: round(rs.reduce((s2, r) => s2 + r.frac, 0) / n), byTopic, misses: rs.filter((r) => !r.rank).map((r) => r.c.id),
+    intrusion: round(rs.filter((r) => r.intruded).length / n), avgResults: round(rs.reduce((s2, r) => s2 + r.n, 0) / n), emptyRate: round(rs.filter((r) => r.n === 0).length / n),
   };
 }

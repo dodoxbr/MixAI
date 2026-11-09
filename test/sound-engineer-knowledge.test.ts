@@ -116,7 +116,7 @@ describe('proveniência e limites de capacidade', () => {
   });
 
   it('base continua isolada e apenas consumidores explícitos importam conhecimento em produção', () => {
-    const LOCAL_KNOWLEDGE_CONSUMERS = ['src/assistant/service.ts', 'src/server/http.ts', 'src/server/start.ts', 'src/server/knowledge-routes.ts', 'src/knowledge-cli.ts', 'src/autoconfig/kb-adapter.ts', 'src/autoconfig/provider-adapter.ts'];
+    const LOCAL_KNOWLEDGE_CONSUMERS = ['src/assistant/service.ts', 'src/server/http.ts', 'src/server/start.ts', 'src/server/knowledge-routes.ts', 'src/knowledge-cli.ts', 'src/autoconfig/planner/kb-adapter.ts', 'src/autoconfig/planner/provider-adapter.ts'];
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(item =>
       item.isDirectory() ? files(join(dir, item.name)) : [join(dir, item.name)]);
     for (const file of files('src').filter(f => f.endsWith('.ts'))) {
@@ -132,7 +132,7 @@ describe('proveniência e limites de capacidade', () => {
           // A base local (RAG, opcional) é outro módulo e só entra por estes consumidores explícitos.
           // A base determinística só entra pela consulta B3A ou pelo adaptador AutoConfig isolado.
           if (/knowledge\/local\/|knowledge-routes/.test(path)) expect(LOCAL_KNOWLEDGE_CONSUMERS, file).toContain(normalizedFile);
-          else if (normalizedFile === 'src/autoconfig/kb-adapter.ts') expect(path, file).toMatch(/knowledge\/sound-engineer\/index\.js$/);
+          else if (normalizedFile === 'src/autoconfig/planner/kb-adapter.ts') expect(path, file).toMatch(/knowledge\/sound-engineer\/index\.js$/);
           else expect(path, file).not.toMatch(/knowledge/);
         }
       }

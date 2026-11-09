@@ -1,60 +1,300 @@
-import { z } from 'zod';
-
-const id = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/);
-export const plannerSymptomSchema = z.enum(['embolado', 'estridente', 'abafado', 'magro', 'desequilibrio', 'microfonia', 'sibilancia', 'clip', 'ruido', 'monitoracao', 'ganho', 'processamento']);
-export const plannerInstrumentSchema = z.enum(['cavaco', 'violao', 'surdo', 'tanta', 'pandeiro', 'vozes']);
-export const plannerReferenceSchema = z.strictObject({ id, version: z.number().int().positive() });
-export const plannerInputSchema = z.strictObject({
-  mode: z.literal('LAB'), channel: z.number().int().min(1).max(12).optional(), instrument: plannerInstrumentSchema.optional(),
-  destination: z.enum(['pa', 'fones']).optional(), symptom: plannerSymptomSchema.optional(),
-  goal: z.enum(['intelligibility', 'body', 'separation', 'feedback_safety', 'comfortable_monitoring']).optional(),
-  report: z.strictObject({ id, kind: z.enum(['operator_report', 'musician_report']), symptom: plannerSymptomSchema, detail: z.string().max(500).optional() }).optional(),
-  comparison: z.enum(['target_only', 'both', 'unknown']).optional(), isolation: z.enum(['alone', 'ensemble', 'unknown']).optional(),
-  feedback: z.enum(['active', 'contained', 'unknown']).optional(), reference: plannerReferenceSchema.optional(),
-});
-export type PlannerInput = z.infer<typeof plannerInputSchema>;
-export const bandSourceSchema = z.strictObject({ channel: z.number().int().min(1).max(12), instrument: plannerInstrumentSchema,
-  role: z.enum(['lead', 'backing', 'instrument', 'unknown']), label: z.string().max(100), microphone: z.enum(['p3s', 'unknown']) });
-export type BandSource = z.infer<typeof bandSourceSchema>;
-export const labObservationSchema = z.strictObject({ reference: plannerReferenceSchema, channel: z.number().int().min(1).max(12),
-  destination: z.enum(['pa', 'fones']), mode: z.literal('LAB'), observedAt: z.number().finite().nonnegative(),
-  revision: z.number().int().nonnegative(), levelDB: z.number().finite().min(-120).max(20).nullable(), mute: z.boolean().nullable() });
-export type LabObservation = z.infer<typeof labObservationSchema>;
-const text = z.string().min(1).max(800);
-export const plannerCandidateSchema = z.strictObject({ id, procedureId: z.string().min(1).max(80), procedureVersion: z.string().min(1).max(30),
-  purpose: text, instruction: text, preconditions: z.array(text).min(1).max(8), verification: text, stop: text,
-  references: z.array(z.strictObject({ title: text, url: z.url().refine(s => s.startsWith('https://')), section: text, version: text,
-    consultedOn: z.iso.date(), validationStatus: z.literal('theory') })).min(1).max(10) });
-export type PlannerCandidate = z.infer<typeof plannerCandidateSchema>;
-export const plannerQuestionFieldSchema = z.enum(['channel', 'destination', 'symptom', 'goal', 'report', 'comparison', 'isolation', 'feedback']);
-const attemptSchema = z.strictObject({ provider: id, status: z.enum(['used', 'unavailable', 'timeout', 'error', 'empty', 'auth', 'quota', 'refused', 'recitation', 'truncated', 'invalid_output', 'not_consented']) });
-const base = { schemaVersion: z.literal(1), mode: z.literal('LAB'), inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  authorization: z.literal('not_granted'), execution: z.literal('not_executable'), realWrites: z.literal(false), measurements: z.literal('unavailable'),
-  provider: z.strictObject({ used: id, attempts: z.array(attemptSchema).max(2) }), safety: z.array(text).min(1).max(8) };
-export const plannerQuestionSchema = z.strictObject({ ...base, kind: z.literal('question'),
-  question: z.strictObject({ field: plannerQuestionFieldSchema, text, choices: z.array(z.strictObject({ label: text, value: z.union([z.string().max(100), z.number().int().min(1).max(12)]) })).max(12) }) });
-export const plannerProposalSchema = z.strictObject({ ...base, kind: z.literal('proposal'), proposal: z.strictObject({
-  id: z.string().uuid(), scope: z.literal('single_source_lab_inspection'), channel: z.number().int().min(1).max(12),
-  instrument: plannerInstrumentSchema, role: bandSourceSchema.shape.role, destination: z.enum(['pa', 'fones']),
-  knowledgeVersion: z.string().min(1),
-  evidence: z.array(z.strictObject({ id, kind: z.enum(['operator_report', 'musician_report']), symptom: plannerSymptomSchema, verification: z.literal('reported_not_measured') })).length(1),
-  observation: labObservationSchema.nullable(),
-  suggestions: z.tuple([z.strictObject({ candidate: plannerCandidateSchema, kind: z.literal('inspection'), risk: z.enum(['medium', 'high']),
-    justification: text, limitations: z.array(text).min(1).max(8), targetValue: z.null(), requiresHumanReview: z.literal(true),
-    rollback: z.strictObject({ automatic: z.literal(false), previousStateAvailable: z.boolean(), instruction: text }) })]),
-}) });
-export const plannerRefusalSchema = z.strictObject({ ...base, kind: z.literal('refusal'), reason: z.enum(['disabled', 'invalid_input', 'unsupported_source', 'safety_stop', 'stale_observation', 'stale_policy', 'provider_refused', 'invalid_model_output', 'knowledge_unavailable']), message: text });
-export const plannerResultSchema = z.discriminatedUnion('kind', [plannerQuestionSchema, plannerProposalSchema, plannerRefusalSchema]);
-export type PlannerResult = z.infer<typeof plannerResultSchema>;
-export type PlannerQuestion = z.infer<typeof plannerQuestionSchema>;
-/** Model output selects a server-owned candidate only. No prose, values, tools or authorization. */
-export const modelSelectionSchema = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('proposal'), candidate: z.string().regex(/^s[1-3]$/), evidence: z.tuple([z.literal('e1')]) }),
-  z.strictObject({ kind: z.literal('abstain'), reason: z.enum(['unsafe', 'insufficient_evidence']) }),
+import { z } from "zod";
+import { Envelope, Id, Observation, Scope, Text } from "../reference/values.js";
+export const AutoState = z.enum([
+  "draft",
+  "needs_info",
+  "proposed",
+  "approved_for_lab",
+  "simulated",
+  "reviewed",
+  "saved",
+  "rejected",
+  "expired",
+  "failed",
 ]);
-export interface PlannerProvider { readonly id: string; readonly external: boolean; generate(system: string, user: string): Promise<{ text?: string; failure?: 'unavailable' | 'timeout' | 'error' | 'empty' | 'auth' | 'quota' | 'refused' | 'recitation' | 'truncated' }> }
-export interface PlannerPolicy { enabled: boolean; active: boolean; selected: string; externalConsent: boolean; revision: number }
-export interface PlannerKnowledgePort { sources(): BandSource[]; candidates(input: PlannerInput): PlannerCandidate[] }
-export interface PlannerObservationPort { read(reference: NonNullable<PlannerInput['reference']>): Promise<LabObservation | undefined> }
-/** D owns authentication, current revision, human review and any future LAB application. */
-export interface AutoConfigPlannerPort { plan(input: unknown): Promise<PlannerResult> }
+export const Suggestion = z
+  .object({
+    id: Id,
+    operation: z.literal("level_delta"),
+    channel: z.number().int().min(1).max(64).optional(),
+    deltaDB: z
+      .number()
+      .finite()
+      .min(-3)
+      .max(3)
+      .refine((n) => n !== 0)
+      .optional(),
+    rationale: Text,
+    evidence: z
+      .array(
+        z
+          .object({ kind: z.enum(["human_report", "theory"]), text: Text })
+          .strict(),
+      )
+      .max(10),
+  })
+  .strict();
+const suggestions = z
+  .array(Suggestion)
+  .min(1)
+  .max(8)
+  .superRefine((items, c) => {
+    if (new Set(items.map((i) => i.id)).size !== items.length)
+      c.addIssue({ code: "custom", message: "IDs repetidos." });
+    const channels = items
+      .filter((i) => i.channel !== undefined)
+      .map((i) => i.channel);
+    if (new Set(channels).size !== channels.length)
+      c.addIssue({
+        code: "custom",
+        message: "Um teste por canal em cada plano.",
+      });
+  });
+export const AutoQuestion = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: z.enum(["channel", "deltaDB", "observation", "connectivity", "limits"]),
+    message: Text,
+    required: z.literal(true),
+    source: z.literal("server_validation"),
+  })
+  .strict();
+export const AutoConfigProposal = z
+  .object({ schemaVersion: z.literal(1), items: suggestions })
+  .strict();
+/** C produces suggestions only; the operator submits them through the authenticated draft API. */
+export interface AutoConfigSuggestionSource {
+  propose(input: {
+    eventId?: string;
+    scope: "PA" | "AUX1";
+    report?: string;
+  }): Promise<z.infer<typeof AutoConfigProposal>>;
+}
+const Approval = z
+  .object({
+    id: Id,
+    operatorSessionId: Id,
+    scope: z.literal("simulation_only"),
+    digest: z.string().length(64),
+    at: z.iso.datetime(),
+    consumedAt: z.iso.datetime().optional(),
+  })
+  .strict();
+export const SimulationResult = z
+  .object({
+    id: Id,
+    origin: z.enum(["lab_simulation", "mock_simulation"]),
+    before: z.number(),
+    target: z.number(),
+    after: z.number().optional(),
+    outcome: z.enum(["passed", "mismatch", "timeout", "failed"]),
+    verification: z.literal("virtual_values_only"),
+    audioAnalysis: z.literal("not_performed"),
+    undo: z
+      .object({ at: z.iso.datetime(), operatorSessionId: Id })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export const AutoItem = z
+  .object({
+    spec: Suggestion,
+    state: AutoState,
+    questions: z.array(AutoQuestion).max(10),
+    observation: Observation.optional(),
+    target: z.number().finite().min(-100).max(10).optional(),
+    digest: z.string().length(64).optional(),
+    approval: Approval.optional(),
+    result: SimulationResult.optional(),
+    review: z
+      .object({
+        accepted: z.boolean(),
+        assessment: Text,
+        operatorSessionId: Id,
+        at: z.iso.datetime(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+const Context = z
+  .object({
+    mode: z.enum(["lab", "mock"]),
+    serverId: Id,
+    revision: z.number().int().nonnegative(),
+    eventVersion: z.number().int().positive().optional(),
+    origin: z.enum(["lab_simulation", "mock_simulation"]),
+    realObservation: z.literal("unavailable"),
+    acousticMeasurement: z.literal("unavailable"),
+  })
+  .strict();
+export const AutoPlan = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: Id,
+    title: Text,
+    eventId: Id.optional(),
+    parentReferenceId: Id.optional(),
+    scope: Scope,
+    version: z.number().int().positive(),
+    serverId: Id,
+    createdAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime(),
+    state: AutoState,
+    items: z.array(AutoItem).min(1).max(8),
+    context: Context.optional(),
+    running: z
+      .object({ id: Id, itemId: Id, deadline: z.iso.datetime() })
+      .strict()
+      .optional(),
+    referenceId: Id.optional(),
+    receipts: z
+      .array(
+        z
+          .object({
+            id: Id,
+            actor: Id,
+            digest: z.string().length(64),
+            version: z.number().int().positive(),
+          })
+          .strict(),
+      )
+      .max(100),
+    history: z
+      .array(
+        z
+          .object({
+            version: z.number().int().positive(),
+            at: z.iso.datetime(),
+            actor: z.string().max(64),
+            action: Text,
+            note: Text.optional(),
+            itemId: Id.optional(),
+            items: z.array(AutoItem).max(8),
+          })
+          .strict(),
+      )
+      .max(100),
+  })
+  .strict();
+export const AutoConfigView = AutoPlan.extend({
+  interrupted: z.boolean(),
+  stale: z.boolean(),
+  simulationOnly: z.literal(true),
+  availability: z
+    .object({
+      context: z.enum(["not_prepared", "known"]),
+      realObservation: z.literal("unavailable"),
+      acousticMeasurement: z.literal("unavailable"),
+      reference: z.enum(["absent", "saved"]),
+    })
+    .strict(),
+  virtualState: z.record(
+    z.string(),
+    z
+      .object({
+        value: z.number().nullable(),
+        status: z.enum(["known", "unknown"]),
+        origin: z.literal("isolated_simulation"),
+        appliedToMixer: z.literal(false),
+      })
+      .strict(),
+  ),
+  counts: z.record(z.string(), z.number().int().nonnegative()),
+  replayed: z.boolean().optional(),
+  receiptVersion: z.number().int().positive().optional(),
+});
+export type AutoConfigReadModel = z.infer<typeof AutoConfigView>;
+export type AutoConfigPlan = z.infer<typeof AutoPlan>;
+export type AutoConfigItem = z.infer<typeof AutoItem>;
+export const CreateAutoConfig = Envelope.extend({
+  id: Id,
+  title: Text,
+  eventId: Id.optional(),
+  parentReferenceId: Id.optional(),
+  scope: Scope,
+  items: suggestions,
+}).strict();
+const actionBase = {
+  serverId: Id,
+  requestId: Id,
+  expectedVersion: z.number().int().positive(),
+};
+export const AutoAction = z.discriminatedUnion("action", [
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("prepare"),
+      confirmed: z.literal(true),
+    })
+    .strict(),
+  z
+    .object({ ...actionBase, action: z.literal("revise"), items: suggestions })
+    .strict(),
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("approve"),
+      itemId: Id,
+      digest: z.string().length(64),
+      confirmed: z.literal(true),
+      scope: z.literal("simulation_only"),
+      expectedStateRevision: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("simulate"),
+      itemId: Id,
+      approvalId: Id,
+      expectedStateRevision: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("review"),
+      itemId: Id,
+      accepted: z.boolean(),
+      assessment: Text,
+    })
+    .strict(),
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("undo"),
+      itemId: Id,
+      resultId: Id,
+      confirmed: z.literal(true),
+      expectedStateRevision: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({ ...actionBase, action: z.literal("cancel"), reason: Text })
+    .strict(),
+  z
+    .object({
+      ...actionBase,
+      action: z.literal("save"),
+      confirmed: z.literal(true),
+      expectedStateRevision: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+/** A virtual calculator, never a transport/mixer. No command, apply, recall or write callback. */
+export interface AutoConfigSimulator {
+  simulate(input: {
+    planId: string;
+    itemId: string;
+    mode: "lab" | "mock";
+    channel: number;
+    destination: "PA" | "AUX1";
+    before: number;
+    target: number;
+    signal: AbortSignal;
+  }): Promise<{ after: number }>;
+}
+export const virtualSimulator: AutoConfigSimulator = {
+  simulate: async (input) => ({ after: input.target }),
+};

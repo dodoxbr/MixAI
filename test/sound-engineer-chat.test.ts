@@ -48,7 +48,7 @@ describe('B3A: consulta autorizada, offline e sem escrita', () => {
     expect(r.kind).toBe('diagnosis');
     expect(r.diagnosis).toMatchObject({ audioAnalysis: 'not_performed', confidence: { level: 'low' } });
     expect(r.diagnosis.hypotheses.length).toBeGreaterThan(1);
-    expect(r.diagnosticSession.pendingQuestion.field).toBe('scope');
+    expect(r.diagnosticSession.pendingQuestion.field).toBe('isolation');
     expect(r.technicalDetails.modules.length).toBeGreaterThan(0);
     expect(r.text.split(/\s+/).length).toBeLessThanOrEqual(120);
     expect(r.text).toContain('Não ouvi o som');

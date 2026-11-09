@@ -24,7 +24,7 @@ describe('Sound Engineer no chat — consulta offline', () => {
     await page.locator('.diagnostic-options').getByRole('button', { name: 'PA', exact: true }).click();
     const answer = page.locator('.technical-text').last();
     await expect.poll(() => answer.textContent()).toContain('Destino: PA');
-    expect(await answer.textContent()).toContain('Acontece só no PA ou também nos fones?');
+    expect(await answer.textContent()).toContain('A fonte soa assim também sozinha ou só com a banda?');
     expect((await answer.textContent())!.split(/\s+/).length).toBeLessThanOrEqual(120);
     expect(await answer.textContent()).not.toContain('Hipóteses alternativas');
     expect(await answer.textContent()).toContain('Não ouvi o som');

@@ -23,8 +23,8 @@ it('proposta AutoConfig é só dado: não cria fila, builder, execute ou writes;
   expect(execute).not.toHaveBeenCalled(); expect(build).not.toHaveBeenCalled(); expect(real).not.toHaveBeenCalled(); expect((t.mixer as MockMixer).writes).toEqual([]); expect(t.controller.state.snapshot()).toEqual(before);
 });
 it('fronteira não importa mixer, serviço de diagnóstico, servidor, ferramentas ou mecanismos de execução', () => {
-  for (const file of readdirSync('src/autoconfig').filter(n => n.endsWith('.ts'))) {
-    const source = readFileSync(join('src/autoconfig', file), 'utf8');
+  for (const file of readdirSync('src/autoconfig/planner').filter(n => n.endsWith('.ts'))) {
+    const source = readFileSync(join('src/autoconfig/planner', file), 'utf8');
     const imports = [...source.matchAll(/(?:from\s+|import\s*\()(['"])([^'"]+)\1/g)].map(m => m[2]!);
     expect(imports.some(i => /mixer|assistant|server|child_process|node:fs|local\/service/.test(i)), file).toBe(false);
     expect(source, file).not.toMatch(/\.(execute|write|apply)\(/);

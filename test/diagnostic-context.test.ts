@@ -25,10 +25,9 @@ describe('contexto determinístico efêmero', () => {
     expect(diagnosis(ready).evidence).toEqual(diagnosis(pending).evidence);
     expect(diagnosis(ready).evidence[0].detail).toBe('Meu cavaco está estridente.');
     expect(ready.text).toContain('Cavaco (canal 1). Destino: PA');
-    expect(ready.diagnosticContext?.field).toBe('scope');
+    expect(ready.diagnosticContext?.field).toBe('isolation');
     expect(store.size).toBe(1);
-    const scope = ask('Só no PA', stamp(ready));
-    const isolated = ask('Só com a banda', stamp(scope));
+    const isolated = ask('Só com a banda', stamp(ready));
     const done = ask('Melhorou', stamp(isolated));
     expect(done.diagnosticContext).toBeNull();
     expect(store.size).toBe(0);

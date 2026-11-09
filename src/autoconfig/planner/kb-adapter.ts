@@ -1,8 +1,8 @@
-import { queryInstructorGuidance, voiceRole } from '../knowledge/sound-engineer/index.js';
-import type { DiagnosticConsultation } from '../knowledge/sound-engineer/index.js';
-import { diagnosticConsultationSchema } from '../knowledge/sound-engineer/index.js';
-import type { ChannelMap } from '../core/channels.js';
-import type { MicPack } from '../knowledge/local/pack.js';
+import { queryInstructorGuidance, voiceRole } from '../../knowledge/sound-engineer/index.js';
+import type { DiagnosticConsultation } from '../../knowledge/sound-engineer/index.js';
+import { diagnosticConsultationSchema } from '../../knowledge/sound-engineer/index.js';
+import type { ChannelMap } from '../../core/channels.js';
+import type { MicPack } from '../../knowledge/local/pack.js';
 import { bandSourceSchema, plannerCandidateSchema, plannerInputSchema, type PlannerInput, type PlannerKnowledgePort } from './contracts.js';
 
 /** Only bridge to the existing knowledge. No diagnosis/parser/service A1/A2 is changed. */

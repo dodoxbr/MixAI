@@ -74,7 +74,7 @@ export class SoundcheckService {
     return {
       event: this.view(event),
       references: doc.references
-        .filter((r) => r.eventId === id)
+        .filter((r) => r.eventId === id && !r.simulation && r.source.mode === "lab")
         .map((r) => ({
           id: r.id,
           version: r.version,
@@ -206,7 +206,7 @@ export class SoundcheckService {
       event.status = "completed";
     } else if (input.action === "link_reference") {
       const ref = doc.references.find(
-        (r) => r.id === input.referenceId && r.eventId === event.id,
+        (r) => r.id === input.referenceId && r.eventId === event.id && !r.simulation && r.source.mode === "lab",
       );
       if (!ref) throw new ReferenceError("INVALID");
       event.reference = { id: ref.id, version: ref.version };

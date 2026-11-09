@@ -28,7 +28,7 @@ it('HTTP e WS compartilham etapas curtas com a UI existente; zero builder/execut
   expect(r.diagnosticOptions.map((c: any) => c.label)).toEqual(['Voz Fred', 'Voz Lucius', 'Voz Leandro', 'Voz Fernando', 'Voz Laviquinho']);
   const c = await wsClient(t.base, token); clients.push(c); await c.next(m => m.type === 'snapshot');
   let seq = 0;
-  for (const text of ['Fred', 'Só no retorno', 'Só com a banda', 'Sem mudança', 'Melhorou']) {
+  for (const text of ['Fred', 'Só com a banda', 'Sem mudança', 'Melhorou']) {
     const requestId = `conversation-${++seq}`;
     c.send({ type: 'assistant_conversation', requestId, input: { text, context: stamp(r) } });
     r = (await c.next(m => m.type === 'assistant_reply' && m.requestId === requestId)).reply;

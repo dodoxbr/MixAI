@@ -1,9 +1,9 @@
-import type { LoadedConfig } from '../core/config.js';
-import type { ChannelMap } from '../core/channels.js';
-import type { MicPack } from '../knowledge/local/pack.js';
-import { GeminiClient } from '../knowledge/local/gemini.js';
-import { OllamaClient } from '../knowledge/local/ollama.js';
-import type { AiProvider } from '../knowledge/local/provider.js';
+import type { LoadedConfig } from '../../core/config.js';
+import type { ChannelMap } from '../../core/channels.js';
+import type { MicPack } from '../../knowledge/local/pack.js';
+import { GeminiClient } from '../../knowledge/local/gemini.js';
+import { OllamaClient } from '../../knowledge/local/ollama.js';
+import type { AiProvider } from '../../knowledge/local/provider.js';
 import type { PlannerObservationPort, PlannerPolicy, PlannerProvider } from './contracts.js';
 import { bandKnowledgeAdapter } from './kb-adapter.js';
 import { TechnicalPlanner } from './planner.js';
