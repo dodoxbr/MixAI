@@ -161,3 +161,7 @@ aprovação ou referência virtual para REAL; até então utilizar a UI oficial 
 Testes sem hardware não validam acústica, firmware, latência ou ergonomia Yoga/Android.
 Os testes usam LAB/MOCK e calculadores controlados. A integração UI B e diagnósticos C
 é futura pelos contratos publicados; o núcleo API já funciona sem depender desses merges.
+
+## Integração consultiva C / PR #78
+
+O port opcional `AutoConfigSuggestionSource` agora tem adaptador consultivo e rota LAB de conselho; contratos e máquina de estados acima permanecem autoritativos e inalterados. Ver [INTEGRATION-78.md](INTEGRATION-78.md). Sugestões chegam sem `deltaDB`; só o operador decide e informa qualquer número por `create`/`revise`. Nenhuma consulta cria ou aprova plano automaticamente.

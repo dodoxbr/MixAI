@@ -1,3 +1,4 @@
+import { AutoConfigAdvisor } from '../autoconfig/suggestion-source.js';
 import { AutoConfigService } from '../autoconfig/service.js';
 import type { AutoConfigSimulator } from '../autoconfig/contracts.js';
 import { MusicianAccess } from './musician-access.js';
@@ -46,7 +47,7 @@ export interface RunningServer {
  */
 export async function startServer(
   loaded: LoadedConfig,
-  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; autoConfigSimulator?: AutoConfigSimulator; referencePorts?: ReferencePorts; knowledge?: LocalKnowledge } = {},
+  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; autoConfigSimulator?: AutoConfigSimulator; autoConfigPlannerFetch?: typeof fetch; autoConfigPlannerGeminiFetch?: typeof fetch; referencePorts?: ReferencePorts; knowledge?: LocalKnowledge } = {},
 ): Promise<RunningServer> {
   const { config } = loaded;
   const mode = config.mixer.mode;
@@ -62,6 +63,8 @@ export async function startServer(
   let recordsLock: OwnerLock | undefined;
   let app: App | undefined;
   let autoConfig: AutoConfigService | undefined;
+  let autoConfigAdvisor: AutoConfigAdvisor | undefined;
+  let removeAdvisorRevoke: (() => void) | undefined;
   const https: FastifyInstance[] = [];
   const tokenFile = agentTokenFile(dataDir, mode);
   try {
@@ -129,6 +132,18 @@ export async function startServer(
 
     const records = new ReferenceStore(join(dataDir, 'mix-reference-requests.json'));
     autoConfig = (mode === 'lab' || mode === 'mock') && app.mixer.mode === mode ? new AutoConfigService(records, { mode: () => app!.mixer.mode, serverId: core.serverId, active: p => auth.isActive(p), snapshot: () => core.snapshotFor('operator'), channels: () => names.inputs.list(), supports: key => app!.controller.registry.has(key as never), device: deviceProfileOf(app.mixer.capabilities()), scenes: sceneStore }, opts.autoConfigSimulator, opts.clock) : undefined;
+    if (mode === 'lab' && app.mixer.mode === 'lab') {
+      autoConfigAdvisor = new AutoConfigAdvisor(loaded, names, {
+        serverId: core.serverId, mode: () => app!.mixer.mode, active: p => auth.isActive(p),
+        connected: () => core.snapshotFor('operator').available,
+        stateRevision: () => core.snapshotFor('operator').revision,
+        m1: p => core.assistant?.planningContext(p),
+        eventVersion: id => records.read().soundchecks.find(e => e.id === id)?.version,
+        selectedProvider: () => knowledge?.providers().chat.selected ?? config.knowledge.chatProvider,
+        audit: (p, result) => app!.log.add({ action: 'autoconfig_advice', ok: result.outcome === 'returned', message: 'Consulta consultiva AutoConfig; sem rascunho ou autorização automática.', details: { ...result, role: p.role, actor: p.id } }),
+      }, undefined, { clock: opts.clock, fetch: opts.autoConfigPlannerFetch, geminiFetch: opts.autoConfigPlannerGeminiFetch });
+      removeAdvisorRevoke = auth.onRevoke(id => autoConfigAdvisor?.revoke(id));
+    }
     const references = mode === 'lab' && app.mixer.mode === 'lab' ? new ReferenceService(records, {
       mode, serverId: core.serverId, snapshot: () => core.snapshotFor('operator'),
       channels: () => names.inputs.list(), device: deviceProfileOf(app.mixer.capabilities()), scenes: sceneStore,
@@ -137,7 +152,7 @@ export async function startServer(
 
     let boundPort = port;
     for (const host of hosts) {
-      const http = await buildHttp(core, { autoConfig, references, knowledge, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const http = await buildHttp(core, { autoConfig, autoConfigAdvisor, references, knowledge, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(http);
       await http.listen({ host, port: boundPort });
       const addr = http.server.address();
@@ -145,7 +160,7 @@ export async function startServer(
     }
     if (proxy) {
       if (proxy.port === boundPort) throw new Error('HTTPS LAB: porta do proxy deve diferir da porta HTTP local.');
-      const ingress = await buildHttp(core, { labProxyOrigin: proxy.origin, autoConfig, references, knowledge, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const ingress = await buildHttp(core, { labProxyOrigin: proxy.origin, autoConfig, autoConfigAdvisor, references, knowledge, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(ingress);
       await ingress.listen({ host: '127.0.0.1', port: proxy.port });
       opts.log?.(`HTTPS LAB: entrada do proxy em 127.0.0.1:${proxy.port}; origem HTTPS privada esperada: ${proxy.origin}`);
@@ -165,7 +180,7 @@ export async function startServer(
       async close() {
         if (closed) return;
         closed = true;
-        autoConfig?.stop();
+        autoConfig?.stop(); autoConfigAdvisor?.stop(); removeAdvisorRevoke?.();
         core.stop();
         await knowledge?.close().catch(() => undefined);
         for (const h of https) await h.close().catch(() => undefined);
@@ -176,7 +191,7 @@ export async function startServer(
       },
     };
   } catch (err) {
-    autoConfig?.stop();
+    autoConfig?.stop(); autoConfigAdvisor?.stop(); removeAdvisorRevoke?.();
     for (const h of https) await h.close().catch(() => undefined);
     await app?.mixer.disconnect().catch(() => undefined);
     recordsLock?.release();

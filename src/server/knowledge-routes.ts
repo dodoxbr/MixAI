@@ -15,6 +15,7 @@ const idParam = z.string().regex(/^d[a-z0-9]{3,40}$/);
  */
 export async function knowledgeRoutes(app: FastifyInstance, opts: {
   service: LocalKnowledge; origin?: string;
+  onProviderSelection?: (p: Principal, selected: string, confirmed: boolean) => void;
   principal(req: FastifyRequest, reply: FastifyReply): Principal | undefined;
   active(p: Principal): boolean;
 }) {
@@ -60,7 +61,9 @@ export async function knowledgeRoutes(app: FastifyInstance, opts: {
   app.get('/api/knowledge/providers', () => opts.service.providers());
   app.post('/api/knowledge/providers', { bodyLimit: 1024 }, async (req) => {
     const b = providerBody.parse(req.body);
-    return opts.service.setChatProvider(b.chat, b.confirmExternal === true);
+    const result = await opts.service.setChatProvider(b.chat, b.confirmExternal === true);
+    opts.onProviderSelection?.(actors.get(req)!, result.chat.selected, b.confirmExternal === true);
+    return result;
   });
   app.get('/api/knowledge/sources', async () => ({ sources: await opts.service.sources() }));
   app.get('/api/knowledge/documents', async () => ({ documents: await opts.service.documents() }));
