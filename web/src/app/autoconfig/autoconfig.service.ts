@@ -3,10 +3,13 @@ import { LiveService } from '../core/live.service';
 import { SessionService } from '../core/session.service';
 import { newId } from '../core/protocol';
 import {
+  AdvisoryResponse,
   AutoConfigView,
   Workspace,
   ReferenceReceipt,
+  advicePresentation,
   presentation,
+  type AutoConfigAdvice,
   type AutoConfigReadModel,
   type AutoContext,
   type AutoAnswers,
@@ -33,7 +36,12 @@ export class AutoConfigService {
   readonly context = signal<AutoContext | null>(null);
   readonly model = signal<AutoConfigReadModel | null>(null);
   readonly availablePlans = signal<AutoConfigReadModel[]>([]);
-  readonly stage = signal<'idle' | 'questions' | 'plan' | 'cancelled'>('idle');
+  readonly stage = signal<'idle' | 'advice' | 'questions' | 'plan' | 'cancelled'>('idle');
+  /** Last planner answer (C). Advice only: it never authorizes, never carries a number. */
+  readonly advice = signal<AutoConfigAdvice | null>(null);
+  readonly adviceView = computed(() => (this.advice() ? advicePresentation(this.advice()!) : null));
+  /** Human decision after an inspection: nothing, inspection only, or an operator-defined virtual step. */
+  readonly decision = signal<'pending' | 'inspection_only' | 'virtual_step'>('pending');
   readonly question = signal(0);
   readonly answers = signal<AutoAnswers>({ goal: '', channel: 0, destination: 'PA', report: '' });
   readonly plan = computed(() => (this.model() ? presentation(this.model()!) : null));
@@ -149,6 +157,8 @@ export class AutoConfigService {
     this.stage.set('idle');
     this.question.set(0);
     this.answers.set({ goal: '', channel: 0, destination: 'PA', report: '' });
+    this.advice.set(null);
+    this.decision.set('pending');
     if (identity) this.context.set(null);
   }
   bind(context: AutoContext | null) {
@@ -162,6 +172,10 @@ export class AutoConfigService {
     this.controller = undefined;
     const pending = this.busy();
     this.busy.set(false);
+    // Planner advice is never answered across a disconnection: the server keeps the pending
+    // question, so a new explicit consultation returns it again with fresh guards.
+    this.advice.set(null);
+    this.decision.set('pending');
     if (this.model() || pending) {
       this.needsRefresh.set(true);
       this.requiresPreparation.set(true);
@@ -182,7 +196,11 @@ export class AutoConfigService {
       throw new AutoHttpError('CONFLICT');
     return p;
   }
-  private async run(operation: (current: () => boolean) => Promise<void>, read = false) {
+  private async run(
+    operation: (current: () => boolean) => Promise<void>,
+    read = false,
+    opts: { timeoutMs?: number; messages?: Record<string, string>; onError?: () => void } = {},
+  ) {
     if (
       !this.eligible() ||
       !this.connected() ||
@@ -211,16 +229,21 @@ export class AutoConfigService {
           'Tempo esgotado. Resultado indeterminado; consulte o servidor. Nenhuma repetição automática.',
         );
         this.needsRefresh.set(true);
+        opts.onError?.();
       }
-    }, 10000);
+    }, opts.timeoutMs ?? 10000);
     try {
       await operation(current);
     } catch (e) {
       if (current()) {
         const code = e instanceof AutoHttpError ? e.code : 'INVALID';
+        const detail = e instanceof AutoHttpError ? e.detail : undefined;
         this.needsRefresh.set(true);
         this.requiresPreparation.set(true);
+        opts.onError?.();
         this.error.set(
+          (detail && opts.messages?.[detail]) ??
+          opts.messages?.[code] ??
           (
             {
               UNAUTHORIZED: 'Sessão encerrada. Entre novamente.',
@@ -244,8 +267,134 @@ export class AutoConfigService {
       }
     }
   }
+  private static readonly ADVICE_MESSAGES: Record<string, string> = {
+    STALE_STATE:
+      'O contexto mudou (diagnóstico, estado LAB, provedor ou sessão) enquanto o planejador respondia. A resposta foi descartada; consulte de novo.',
+    CONFLICT:
+      'O planejador não pode responder agora: há outra consulta em andamento, o diagnóstico registrou piora ou o destino diverge do diagnóstico. Revise e consulte de novo.',
+    SERVER_CHANGED: 'O servidor reiniciou ou mudou. Consulte de novo.',
+    CAPACITY: 'Muitas consultas abertas no servidor. Tente de novo em alguns minutos.',
+    MODE_MISMATCH: 'O planejador só funciona em LAB.',
+    DEPENDENCY_UNAVAILABLE: 'Planejador indisponível. Nenhuma repetição automática.',
+    NOT_FOUND: 'Planejador não disponível neste servidor (somente LAB).',
+  };
+  /** One planner call. Non-mutating on the server: no plan, approval or number is created. */
+  private async advise(body: object) {
+    const c = this.context();
+    if (!c) return;
+    await this.run(
+      async (current) => {
+        const raw = await this.request('/api/autoconfig/suggestions', {
+          serverId: this.live.hello()!.serverId,
+          eventId: c.eventId,
+          ...body,
+        });
+        if (!current()) return;
+        const advice = AdvisoryResponse.parse(raw);
+        if (advice.serverId !== this.live.hello()?.serverId) throw new AutoHttpError('CONFLICT');
+        this.advice.set(advice);
+        this.decision.set('pending');
+      },
+      true,
+      {
+        // The planner may try two providers (selected + local fallback) before answering.
+        timeoutMs: 25000,
+        messages: AutoConfigService.ADVICE_MESSAGES,
+        onError: () => {
+          this.advice.set(null);
+          this.decision.set('pending');
+          if (!this.model()) {
+            this.needsRefresh.set(false);
+            this.requiresPreparation.set(false);
+          }
+        },
+      },
+    );
+  }
+  /** Starts the planner flow. M1 context is reused by the server; no scope is assumed here. */
+  consult() {
+    if (!this.canAct() || this.busy()) return;
+    this.model.set(null);
+    this.references.set([]);
+    this.advice.set(null);
+    this.decision.set('pending');
+    this.stage.set('advice');
+    return this.advise({});
+  }
+  /** Sends only the chosen value and the question fingerprint (context reference, not a credential). */
+  answerAdvice(value: string | number) {
+    const a = this.advice();
+    if (
+      !this.canAct() ||
+      this.busy() ||
+      this.stage() !== 'advice' ||
+      a?.advice.kind !== 'question' ||
+      !a.advice.question.choices.some((c) => c.value === value)
+    )
+      return;
+    return this.advise({ answer: { inputFingerprint: a.advice.inputFingerprint, value } });
+  }
+  /** Human decision. Choosing an inspection never turns it into a level change. */
+  chooseDecision(decision: 'pending' | 'inspection_only' | 'virtual_step') {
+    if (this.stage() !== 'advice' || this.advice()?.advice.kind !== 'proposal' || this.busy())
+      return;
+    this.decision.set(decision);
+  }
+  /**
+   * Creates a D draft ONLY after the operator chose to simulate and typed the step. The planner's
+   * skeleton contributes channel, scope and classified evidence; the number is the operator's.
+   */
+  async createFromAdvice(delta: number) {
+    const c = this.context(),
+      a = this.advice(),
+      view = this.adviceView(),
+      skeleton = a?.proposal?.items[0];
+    if (
+      this.stage() !== 'advice' ||
+      this.decision() !== 'virtual_step' ||
+      !c ||
+      !skeleton ||
+      view?.kind !== 'proposal' ||
+      !Number.isFinite(delta) ||
+      delta === 0 ||
+      Math.abs(delta) > 3
+    )
+      return;
+    await this.run(async (current) => {
+      const raw = await this.request('/api/autoconfig', {
+        serverId: this.live.hello()!.serverId,
+        id: newId('auto_'),
+        title: `Inspeção CH${view.channel} · ${view.destination === 'AUX1' ? 'FONES (AUX1)' : 'PA'} · passo do operador`,
+        eventId: c.eventId,
+        scope: view.destination,
+        items: [
+          {
+            id: newId('auto_'),
+            operation: 'level_delta',
+            channel: skeleton.channel,
+            deltaDB: delta,
+            rationale:
+              'Passo virtual decidido e digitado pelo operador após a inspeção sugerida. A IA não sugeriu valor nem afirmou que mudar o nível resolve.',
+            evidence: skeleton.evidence,
+          },
+        ],
+      });
+      if (current()) {
+        this.model.set(this.validate(raw));
+        this.answers.set({
+          goal: view.purpose.slice(0, 300),
+          channel: view.channel,
+          destination: view.destination,
+          report: skeleton.evidence.find((e) => e.kind === 'human_report')?.text ?? '',
+        });
+        this.stage.set('plan');
+      }
+    });
+  }
   start() {
     if (!this.canAct()) return;
+    this.advice.set(null);
+    this.decision.set('pending');
     this.model.set(null);
     this.references.set([]);
     this.stage.set('questions');
@@ -337,6 +486,8 @@ export class AutoConfigService {
             reference.simulation.mode !== this.live.hello()?.mode)
         )
           throw new AutoHttpError('CONFLICT');
+        // Advice belongs to the plan created from it; another plan must not inherit it.
+        if (plan.id !== this.model()?.id) this.advice.set(null);
         this.model.set(plan);
         this.requiresPreparation.set(!['saved', 'rejected', 'expired'].includes(plan.state));
         this.references.set(reference ? [reference] : []);

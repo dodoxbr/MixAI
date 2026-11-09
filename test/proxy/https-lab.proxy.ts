@@ -294,6 +294,9 @@ it('AutoConfig contracts retain central HTTPS authorization and reject physical/
  expect((await http('/api/autoconfig/suggestions',{token:musician,body:{serverId:t!.server.core.serverId,scope:'AUX1'}})).status).toBe(403);
  const advisory=await http('/api/autoconfig/suggestions',{token:operator,body:{serverId:t!.server.core.serverId,scope:'AUX1'}});
  expect(advisory.status).toBe(200);expect(advisory.body.createsDraft).toBe(false);expect(advisory.body.proposal).toBeNull();expect(advisory.body.advice.kind).toBe('question');
+ const scopeless=await http('/api/autoconfig/suggestions',{token:operator,body:{serverId:t!.server.core.serverId}});
+ expect(scopeless.status).toBe(200);expect(scopeless.body.advice.kind).toBe('question');expect(scopeless.body.model.used).toBe(scopeless.body.advice.provider.used);expect(scopeless.body.createsDraft).toBe(false);
+ expect((await http('/api/autoconfig/suggestions',{token:musician,body:{serverId:t!.server.core.serverId}})).status).toBe(403);
  expect((await http('/api/autoconfig/suggestions',{token:operator,body:{serverId:t!.server.core.serverId,scope:'AUX1',deltaDB:1}})).status).toBe(400);
  expect(t!.server.core.snapshotFor('operator')).toEqual(snapshot);
 });

@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { AutoConfigProposal, type AutoConfigSuggestionSource } from './contracts.js';
-import { Envelope, Id, Scope, Text } from '../reference/values.js';
 import { ReferenceError } from '../reference/schema.js';
 import type { Principal } from '../server/auth.js';
 import type { LoadedConfig } from '../core/config.js';
@@ -10,15 +9,11 @@ import { m1RequiresStop, plannerInputFromSession } from './planner/kb-adapter.js
 import { answerPlannerQuestion, plannerFingerprint } from './planner/engine.js';
 import { createConfiguredPlanner } from './planner/provider-adapter.js';
 import { plannerResultSchema, type AutoConfigPlannerPort, type PlannerInput, type PlannerResult } from './planner/contracts.js';
+const scopeOf = (d: PlannerInput['destination']) => d === 'pa' ? 'PA' as const : d === 'fones' ? 'AUX1' as const : undefined;
+const destinationOf = (s: 'PA' | 'AUX1' | undefined) => s === 'PA' ? 'pa' as const : s === 'AUX1' ? 'fones' as const : undefined;
 
-export const AdvisoryRequest = Envelope.extend({ scope: Scope, eventId: Id.optional(), report: Text.optional(),
-  answer: z.strictObject({ inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/), value: z.union([z.string().max(100), z.number().int().min(1).max(12)]) }).optional(),
-}).strict();
-export const AdvisoryResponse = z.strictObject({ serverId: Id, advice: plannerResultSchema,
-  proposal: AutoConfigProposal.nullable(), numericInput: z.literal('operator_required'), createsDraft: z.literal(false) }).superRefine((v, ctx) => {
-  if (v.proposal?.items.some(i => i.deltaDB !== undefined)) ctx.addIssue({ code: 'custom', message: 'Somente o operador informa alterações numéricas.' });
-});
-export type AutoConfigAdvice = z.infer<typeof AdvisoryResponse>;
+import { AdvisoryRequest, AdvisoryResponse, advisoryKnownField, type AutoConfigAdvice } from './advisory-contracts.js';
+export { AdvisoryRequest, AdvisoryResponse, type AutoConfigAdvice } from './advisory-contracts.js';
 /** Non-mutating endpoint/transport port. All authoritative D action contracts are unchanged. */
 export interface AutoConfigAdvisoryPort { suggest(p: Principal, raw: unknown): Promise<AutoConfigAdvice> }
 class AdviceOnly extends Error { constructor(readonly advice: PlannerResult) { super('ADVICE_ONLY'); } }
@@ -66,7 +61,7 @@ export class PlannerConsent {
   allowed(p: Principal, selected: string) { return selected === 'gemini' && this.grants.has(p.id); }
   clear() { this.grants.clear(); this.revision++; }
 }
-interface Pending { input: PlannerInput; advice: PlannerResult; m1: string; scope: 'PA' | 'AUX1'; eventId?: string; expiresAt: number }
+interface Pending { input: PlannerInput; advice: PlannerResult; m1: string; scope?: 'PA' | 'AUX1'; eventId?: string; expiresAt: number }
 export class AutoConfigAdvisor implements AutoConfigAdvisoryPort {
   private pending = new Map<string, Pending>();
   private busy = new Set<string>();
@@ -95,8 +90,9 @@ export class AutoConfigAdvisor implements AutoConfigAdvisoryPort {
     if (m1 && m1RequiresStop(m1.session)) throw new ReferenceError('CONFLICT');
     const m1key = m1 ? String(m1.revision) : 'absent';
     const existing = this.pending.get(p.id);
-    let input = m1 ? plannerInputFromSession(m1.session, request.scope) : { mode: 'LAB' as const, destination: request.scope === 'PA' ? 'pa' as const : 'fones' as const };
-    if (input.destination !== (request.scope === 'PA' ? 'pa' : 'fones')) throw new ReferenceError('CONFLICT');
+    // Without an explicit scope the M1 destination is reused; if nobody knows it, the planner asks.
+    let input: PlannerInput = m1 ? plannerInputFromSession(m1.session, request.scope) : { mode: 'LAB' as const, ...(request.scope ? { destination: destinationOf(request.scope) } : {}) };
+    if (request.scope && input.destination !== destinationOf(request.scope)) throw new ReferenceError('CONFLICT');
     const same = existing && existing.m1 === m1key && existing.scope === request.scope && existing.eventId === request.eventId;
     if (request.answer) {
       if (!same || existing.advice.kind !== 'question' || request.answer.inputFingerprint !== existing.advice.inputFingerprint) throw new ReferenceError('STALE_STATE');
@@ -114,19 +110,26 @@ export class AutoConfigAdvisor implements AutoConfigAdvisoryPort {
       policy: () => ({ enabled: !this.stopped, active: this.read.active(p) && this.read.mode() === 'lab' && this.read.connected(), selected: selected(),
         externalConsent: this.consent.allowed(p, selected()), revision: revision() }),
     });
-    const source = new ConsultativeSuggestionSource(planner, input, request.scope);
+    // Placeholder scope only matters once the planner has a destination (it asks for it first).
+    const scope = scopeOf(input.destination) ?? 'PA', selectedAtStart = selected();
+    const source = new ConsultativeSuggestionSource(planner, input, scope);
     this.busy.add(p.id);
     try {
       let proposal: z.infer<typeof AutoConfigProposal> | null = null, advice: PlannerResult;
       try {
-        proposal = await source.propose({ eventId: request.eventId, scope: request.scope }); advice = source.result!;
+        proposal = await source.propose({ eventId: request.eventId, scope }); advice = source.result!;
       } catch (error) {
         if (!(error instanceof AdviceOnly)) throw error;
         advice = error.advice;
       }
       this.guard(p);
       if (revision() !== initialRevision || (request.eventId && this.read.eventVersion(request.eventId) !== eventVersion)) throw new ReferenceError('STALE_STATE');
-      const response = AdvisoryResponse.parse({ serverId: this.read.serverId, advice, proposal, numericInput: 'operator_required', createsDraft: false });
+      const used = advice.provider.used, k = this.loaded.config.knowledge;
+      const model = { selected: selectedAtStart, used, external: used === 'gemini',
+        name: used === 'ollama' ? k.ollama.chatModel : used === 'gemini' ? k.gemini.chatModel : null };
+      const known = advisoryKnownField.options.filter(f => input[f] !== undefined);
+      const response = AdvisoryResponse.parse({ serverId: this.read.serverId, advice, proposal, numericInput: 'operator_required', createsDraft: false,
+        model, context: { fromDiagnosis: !!m1, known } });
       if (advice.kind === 'question') this.pending.set(p.id, { input, advice, m1: m1key, scope: request.scope, eventId: request.eventId, expiresAt: existing?.expiresAt ?? this.now() + 300_000 });
       else this.pending.delete(p.id);
       this.read.audit(p, { kind: advice.kind, provider: advice.provider.used, outcome: 'returned' });

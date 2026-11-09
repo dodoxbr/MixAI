@@ -1,5 +1,8 @@
 # AutoConfig — interface do operador (#74 / PR #77)
 
+> **Atualização:** o planejador C agora está conectado à tela; ver [END-TO-END.md](END-TO-END.md). O assistente de
+> quatro etapas descrito aqui segue como caminho manual ("Definir teste manualmente (sem planejador)").
+
 Atualizada com `origin/main` cd66766, incluindo o núcleo D do PR #80. Sem escrita no mixer, incluindo o mixer LAB. A interface consome somente `/api/autoconfig`; não chama comandos, LLM ou transporte Soundcraft.
 
 ## Uso
