@@ -362,3 +362,5 @@ dois PINs existentes. Veja [músicos e canais vinculados](docs/musicians/session
 AUX1 continua sendo o retorno compartilhado de todos no HA800.
 
 Biblioteca técnica e Instrutor somente leitura: [Issue #65](docs/sound-engineer/ISSUE-65-LIBRARY.md), com contratos, importação reversível e avaliação lexical reproduzível.
+
+Planejador AutoConfig LAB: [contratos e ensaio offline da Issue #73](docs/autoconfig/ISSUE-73-PLANNER.md). Sem ligação ao diagnóstico A1/A2 ou execução na mesa.

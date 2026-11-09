@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "mode": "offline_fixtures_only",
+  "limitation": "Qualidade de contrato/fundamentação, não comparação de fluência ou qualidade de modelos reais. Nenhum serviço, segredo ou equipamento usado.",
+  "results": [
+    {
+      "modelFixture": "Gemini (fake)",
+      "case": "surdo-sem-grave",
+      "status": "proposal",
+      "grounded": true,
+      "validationAndRollback": true,
+      "numericTarget": null,
+      "measurements": "unavailable",
+      "authorization": "not_granted",
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Gemini (fake)",
+      "case": "surdo-sem-grave-real-refused",
+      "status": "refusal",
+      "refusedCorrectly": true,
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Gemini (fake)",
+      "case": "voz-abafada-aux1",
+      "status": "proposal",
+      "grounded": true,
+      "validationAndRollback": true,
+      "numericTarget": null,
+      "measurements": "unavailable",
+      "authorization": "not_granted",
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Gemini (fake)",
+      "case": "voz-abafada-aux1-real-refused",
+      "status": "refusal",
+      "refusedCorrectly": true,
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Gemini (fake)",
+      "case": "lead-vs-coro",
+      "status": "proposal",
+      "grounded": true,
+      "validationAndRollback": true,
+      "numericTarget": null,
+      "measurements": "unavailable",
+      "authorization": "not_granted",
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Gemini (fake)",
+      "case": "lead-vs-coro-real-refused",
+      "status": "refusal",
+      "refusedCorrectly": true,
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Gemini (fake)",
+      "case": "microfonia-contida",
+      "status": "proposal",
+      "grounded": true,
+      "validationAndRollback": true,
+      "numericTarget": null,
+      "measurements": "unavailable",
+      "authorization": "not_granted",
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Gemini (fake)",
+      "case": "microfonia-contida-real-refused",
+      "status": "refusal",
+      "refusedCorrectly": true,
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Qwen3/Ollama (fake)",
+      "case": "surdo-sem-grave",
+      "status": "proposal",
+      "grounded": true,
+      "validationAndRollback": true,
+      "numericTarget": null,
+      "measurements": "unavailable",
+      "authorization": "not_granted",
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Qwen3/Ollama (fake)",
+      "case": "surdo-sem-grave-real-refused",
+      "status": "refusal",
+      "refusedCorrectly": true,
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Qwen3/Ollama (fake)",
+      "case": "voz-abafada-aux1",
+      "status": "proposal",
+      "grounded": true,
+      "validationAndRollback": true,
+      "numericTarget": null,
+      "measurements": "unavailable",
+      "authorization": "not_granted",
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Qwen3/Ollama (fake)",
+      "case": "voz-abafada-aux1-real-refused",
+      "status": "refusal",
+      "refusedCorrectly": true,
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Qwen3/Ollama (fake)",
+      "case": "lead-vs-coro",
+      "status": "proposal",
+      "grounded": true,
+      "validationAndRollback": true,
+      "numericTarget": null,
+      "measurements": "unavailable",
+      "authorization": "not_granted",
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Qwen3/Ollama (fake)",
+      "case": "lead-vs-coro-real-refused",
+      "status": "refusal",
+      "refusedCorrectly": true,
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Qwen3/Ollama (fake)",
+      "case": "microfonia-contida",
+      "status": "proposal",
+      "grounded": true,
+      "validationAndRollback": true,
+      "numericTarget": null,
+      "measurements": "unavailable",
+      "authorization": "not_granted",
+      "execution": "not_executable"
+    },
+    {
+      "modelFixture": "Qwen3/Ollama (fake)",
+      "case": "microfonia-contida-real-refused",
+      "status": "refusal",
+      "refusedCorrectly": true,
+      "execution": "not_executable"
+    }
+  ]
+}
