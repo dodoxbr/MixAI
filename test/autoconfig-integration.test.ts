@@ -92,6 +92,30 @@ it('permissões, origem, envelope, payloads forjados, modo e apito/piora não li
   await t.http('/api/logout', { token: op, body: {} }); expect((await suggest()).status).toBe(401);
   const mock = await boot({ mode: 'mock' }); expect((await mock.suggest()).status).toBe(404);
 });
+it('sem scope: reaproveita o destino do M1, informa campos conhecidos e o modelo, sem valores privados', async () => {
+  const { t, op } = await boot();
+  const ask = (body: object = {}, token = op) => t.http('/api/autoconfig/suggestions', { token, body: { serverId: t.server.core.serverId, ...body } });
+  await m1(t, op, 'Fred está abafado no retorno');
+  const first = await ask(); expect(first.status).toBe(200);
+  expect(first.json.advice.question.field).toBe('comparison'); // destination came from M1, not asked again
+  expect(first.json.context).toEqual({ fromDiagnosis: true, known: expect.arrayContaining(['channel', 'destination', 'symptom']) });
+  expect(first.json.context.known).not.toContain('comparison');
+  expect(first.json.model).toEqual({ selected: 'ollama', used: 'deterministic', name: null, external: false });
+  expect(JSON.stringify(first.json.context)).not.toMatch(/Fred|abafado|3/);
+  const next = await ask({ answer: { inputFingerprint: first.json.advice.inputFingerprint, value: 'target_only' } });
+  expect(next.json.advice.question.field).toBe('isolation'); expect(next.json.context.known).toContain('comparison');
+  const done = await ask({ answer: { inputFingerprint: next.json.advice.inputFingerprint, value: 'ensemble' } });
+  expect(done.json.advice.proposal).toMatchObject({ channel: 3, destination: 'fones' }); expect(done.json.proposal.items[0].deltaDB).toBeUndefined();
+  // Explicit scope that contradicts M1 still conflicts instead of overwriting.
+  await m1(t, op, 'Fred está abafado no retorno'); expect((await ask({ scope: 'PA' })).status).toBe(409);
+  // Without M1 the planner asks channel, then destination (one question each), never assuming PA.
+  const other = await t.login(OPERATOR_PIN);
+  const channel = await ask({}, other); expect(channel.json.advice.question.field).toBe('channel'); expect(channel.json.context).toEqual({ fromDiagnosis: false, known: [] });
+  const destination = await ask({ answer: { inputFingerprint: channel.json.advice.inputFingerprint, value: 3 } }, other);
+  expect(destination.json.advice.question.field).toBe('destination'); expect(destination.json.context.known).toEqual(['channel']);
+  const symptom = await ask({ answer: { inputFingerprint: destination.json.advice.inputFingerprint, value: 'fones' } }, other);
+  expect(symptom.json.advice.question.field).toBe('symptom');
+});
 it('fonte implementa AutoConfigSuggestionSource sem criar delta ou reinterpretar a inspeção como ajuste', async () => {
   const { t } = await boot(); const input = autoConfigCases[0]!.input;
   const source: AutoConfigSuggestionSource = new ConsultativeSuggestionSource(new TechnicalPlanner({ knowledge: bandKnowledgeAdapter(t.controller.names), policy: () => ({ enabled: true, active: true, selected: 'ollama', externalConsent: false, revision: 1 }) }), input, 'PA');
@@ -99,7 +123,7 @@ it('fonte implementa AutoConfigSuggestionSource sem criar delta ou reinterpretar
 });
 
 const selectedJSON = JSON.stringify({ kind: 'proposal', candidate: 's1', evidence: ['e1'] });
-async function modeled(extra: { defer?: boolean; quota?: boolean } = {}) {
+async function modeled(extra: { defer?: boolean; quota?: boolean; refuse?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'mixai-advisor-model-')), requests: Array<{ url: string; body: any }> = [];
   let release!: () => void, started!: () => void;
   const waiting = new Promise<void>(r => { started = r; });
@@ -110,6 +134,7 @@ async function modeled(extra: { defer?: boolean; quota?: boolean } = {}) {
     if (address.includes(':generateContent')) {
       started(); if (extra.defer) await new Promise<void>(r => { release = r; });
       if (extra.quota) return new Response('{}', { status: 429 });
+      if (extra.refuse) return new Response(JSON.stringify({ promptFeedback: { blockReason: 'SAFETY' }, candidates: [] }));
       return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: selectedJSON }] } }] }));
     }
     return new Response('{}'); // explicit provider health checks, fake HTTP only
@@ -142,6 +167,26 @@ it('quota Gemini usa Qwen sem alterar o port D nem inserir número', async () =>
   const s = await modeled({ quota: true }); await s.select('gemini', true);
   const r = await s.suggest(); expect(r.status).toBe(200); expect(r.json.advice.provider.used).toBe('ollama');
   expect(r.json.advice.provider.attempts.map((a: any) => a.status)).toEqual(['quota', 'used']); expect(r.json.proposal.items[0].deltaDB).toBeUndefined();
+  expect(r.json.model).toEqual({ selected: 'gemini', used: 'ollama', name: 'qwen3:8b', external: false });
+});
+it('modelo identificado: Gemini externo com consentimento da sessão; sem consentimento nada é enviado e o local responde', async () => {
+  const s = await modeled();
+  expect((await s.select('gemini', true)).status).toBe(200);
+  const used = await s.suggest(); expect(used.json.model).toEqual({ selected: 'gemini', used: 'gemini', name: expect.any(String), external: true });
+  const other = await s.t.login(OPERATOR_PIN); await m1(s.t, other); const before = s.requests.filter(r => r.url.includes(':generateContent')).length;
+  const local = await s.suggest({}, other);
+  expect(local.json.model).toMatchObject({ selected: 'gemini', used: 'ollama', external: false });
+  expect(local.json.advice.provider.attempts[0]).toEqual({ provider: 'gemini', status: 'not_consented' });
+  expect(s.requests.filter(r => r.url.includes(':generateContent')).length).toBe(before);
+});
+it('recusa de segurança do Gemini não aciona o Ollama e não gera esqueleto', async () => {
+  const s = await modeled({ refuse: true }); await s.select('gemini', true);
+  const chats = () => s.requests.filter(r => r.url.endsWith('/api/chat')).length, before = chats();
+  const r = await s.suggest(); expect(r.status).toBe(200);
+  expect(r.json.advice).toMatchObject({ kind: 'refusal', reason: 'provider_refused' }); expect(r.json.proposal).toBeNull();
+  expect(r.json.advice.provider.attempts).toEqual([{ provider: 'gemini', status: 'refused' }]);
+  expect(r.json.model).toMatchObject({ selected: 'gemini', used: 'deterministic', name: null });
+  expect(chats()).toBe(before);
 });
 it.each(['logout', 'm1', 'consent', 'connection'] as const)('resposta tardia após %s é descartada; nenhuma aprovação, número ou simulação aparece', async change => {
   const s = await modeled({ defer: true }); await s.select('gemini', true);

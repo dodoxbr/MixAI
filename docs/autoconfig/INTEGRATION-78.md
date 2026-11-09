@@ -1,5 +1,8 @@
 # PR #78 — integração consultiva com núcleo D e verificação da interface B
 
+> **Atualização:** a lacuna C → B → D descrita abaixo foi fechada em
+> [END-TO-END.md](END-TO-END.md) (branch `feature/autoconfig-end-to-end`). O texto a seguir é o registro histórico do PR #78.
+
 A branch `feature/autoconfig-ai-planner` foi sincronizada com `origin/main` em
 `cd66766` (PR #80 integrado). A sincronização é um merge **para a branch de trabalho**;
 não é merge do PR #78 na main. Conflitos add/add em `contracts.ts` e `fixtures.ts`

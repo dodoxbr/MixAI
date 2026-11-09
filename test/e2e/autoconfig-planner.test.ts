@@ -10,7 +10,7 @@ async function api(page: Page, path: string, body: object) {
     return { status: res.status, json: await res.json() };
   }, { path, body });
 }
-it.each([{ label: 'Yoga', device: YOGA }, { label: 'celular', device: PHONE }])('$label: M1 pela interface e conselho por API direta, sem presumir integração da tela B com C', async ({ device }) => {
+it.each([{ label: 'Yoga', device: YOGA }, { label: 'celular', device: PHONE }])('$label: M1 pela interface e conselho por API direta (contrato da rota; a tela é coberta em autoconfig-end-to-end)', async ({ device }) => {
   const t = await startLab({ channels: physicalBandChannels() });
   try {
     const { ctx, page } = await enter(browser, t.base, OPERATOR_PIN, device);
@@ -31,7 +31,7 @@ it.each([{ label: 'Yoga', device: YOGA }, { label: 'celular', device: PHONE }])(
   } finally { await t.server.close(); }
 });
 
-it('PR #77: UI B autoriza no núcleo D, mas ainda não consome perguntas nem inspeções do planejador C', async () => {
+it('caminho manual (sem planejador): UI B autoriza no núcleo D sem consultar C nem herdar a inspeção', async () => {
   const t = await startLab({ channels: physicalBandChannels() });
   try {
     const { ctx, page } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
@@ -71,7 +71,7 @@ it('PR #77: UI B autoriza no núcleo D, mas ainda não consome perguntas nem ins
     await page.getByLabel('Operador da passagem', { exact: true }).fill('Operador LAB');
     await page.getByRole('button', { name: 'Iniciar passagem LAB', exact: true }).click();
     const auto = page.locator('mx-autoconfig');
-    await auto.getByRole('button', { name: 'Iniciar AutoConfig LAB', exact: true }).click();
+    await auto.getByRole('button', { name: 'Definir teste manualmente (sem planejador)', exact: true }).click();
     // B still asks its own wizard questions, even though M1 and C already know the context.
     await auto.getByRole('button', { name: 'Melhorar clareza', exact: true }).click();
     await auto.getByLabel('Canal do AutoConfig', { exact: true }).selectOption('3');

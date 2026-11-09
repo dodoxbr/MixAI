@@ -3,10 +3,15 @@ import { SessionService } from '../core/session.service';
 import { LiveService } from '../core/live.service';
 import type { AutoAdapter } from './autoconfig-contract';
 export class AutoHttpError extends Error {
-  constructor(readonly code: string) {
+  /** `detail` is the server's sanitized code (e.g. STALE_STATE); never free text. */
+  constructor(
+    readonly code: string,
+    readonly detail?: string,
+  ) {
     super('AutoConfig request failed');
   }
 }
+const PATH = /^\/api\/autoconfig(?:\/suggestions|\/[A-Za-z0-9_-]{6,64}(?:\/actions)?)?$/;
 export const AUTO_ADAPTER = new InjectionToken<AutoAdapter>('AUTOCONFIG_HTTP', {
   providedIn: 'root',
   factory: () => {
@@ -24,8 +29,7 @@ export const AUTO_ADAPTER = new InjectionToken<AutoAdapter>('AUTOCONFIG_HTTP', {
           live.connection() !== 'online'
         )
           throw new AutoHttpError('UNAUTHORIZED');
-        if (!/^\/api\/autoconfig(?:\/[A-Za-z0-9_-]{6,64}(?:\/actions)?)?$/.test(path))
-          throw new AutoHttpError('INVALID');
+        if (!PATH.test(path)) throw new AutoHttpError('INVALID');
         const response = await fetch(path, {
           method: body ? 'POST' : 'GET',
           body: body ? JSON.stringify(body) : undefined,
@@ -40,6 +44,8 @@ export const AUTO_ADAPTER = new InjectionToken<AutoAdapter>('AUTOCONFIG_HTTP', {
           },
         });
         const data = await response.json();
+        const detail =
+          typeof data?.code === 'string' && /^[A-Z_]{2,40}$/.test(data.code) ? data.code : undefined;
         if (!response.ok)
           throw new AutoHttpError(
             response.status === 401
@@ -48,9 +54,8 @@ export const AUTO_ADAPTER = new InjectionToken<AutoAdapter>('AUTOCONFIG_HTTP', {
                 ? 'FORBIDDEN'
                 : response.status === 409
                   ? 'CONFLICT'
-                  : typeof data?.code === 'string'
-                    ? data.code
-                    : 'INVALID',
+                  : (detail ?? 'INVALID'),
+            detail,
           );
         return data;
       },

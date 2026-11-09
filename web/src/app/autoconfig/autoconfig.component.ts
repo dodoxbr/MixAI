@@ -135,14 +135,67 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
         padding: 10px 12px;
         background: var(--panel-2);
       }
-      .suggestion {
+      .suggestion,
+      .ai {
         border-left-color: #c59ce5;
       }
-      .result {
+      .result,
+      .sim {
         border-left-color: #d7ac52;
       }
       .human {
         border-left-color: #82c5a1;
+      }
+      .verified {
+        border-left-color: #7da8ee;
+      }
+      .legend {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .tag {
+        border: 1px solid var(--line);
+        border-left-width: 4px;
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 0.9em;
+      }
+      .tag-line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+        align-items: baseline;
+      }
+      .model {
+        font-weight: 700;
+      }
+      .lead {
+        font-size: 1.1em;
+        font-weight: 600;
+      }
+      .diff > .verified,
+      .diff > .sim {
+        border-left-width: 4px;
+      }
+      fieldset.decision {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px 16px 16px;
+        display: grid;
+        gap: 12px;
+        min-width: 0;
+      }
+      legend {
+        font-weight: 700;
+        padding: 0 6px;
+      }
+      button[aria-pressed='true'] {
+        border-color: var(--brass-hi);
+        outline: 2px solid var(--brass);
       }
       .diff {
         display: grid;
@@ -223,9 +276,15 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
         </p>
         <p class="source">
           <strong>Núcleo virtual do servidor.</strong> Aprovações, testes e referências são
-          validados e registrados pelo servidor. O planejador C ainda não está conectado; você
-          define o passo virtual, sem sugestão acústica automática.
+          validados e registrados pelo servidor. O planejador sugere uma inspeção; ele nunca
+          sugere número, autoriza ou aplica nada. Só você decide se cabe um passo virtual.
         </p>
+        <ul class="legend" aria-label="Tipos de informação">
+          <li class="tag ai">Recomendação da IA — inspeção sugerida, não ajuste</li>
+          <li class="tag human">Relato ou decisão humana — percepção, não medição</li>
+          <li class="tag sim">Simulação — valor virtual, não é melhoria acústica</li>
+          <li class="tag verified">Observação verificada — estado LAB lido pelo servidor</li>
+        </ul>
         <div class="actions">
           <button
             type="button"
@@ -306,16 +365,235 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
         }
         @switch (ui.stage()) {
           @case ('idle') {
-            <p>Escolha um objetivo, revise as diferenças e autorize cada teste separadamente.</p>
-            <button type="button" class="primary" [disabled]="!ui.canAct()" (click)="ui.start()">
-              Iniciar AutoConfig LAB
-            </button>
+            <p>
+              O planejador reaproveita o que você já contou no diagnóstico e pergunta só o que
+              falta. Depois você decide se quer simular algum passo e autoriza cada teste.
+            </p>
+            <div class="actions">
+              <button
+                type="button"
+                class="primary"
+                [disabled]="!ui.canAct() || ui.busy()"
+                (click)="ui.consult()"
+              >
+                Consultar planejador técnico
+              </button>
+              <button type="button" [disabled]="!ui.canAct()" (click)="ui.start()">
+                Definir teste manualmente (sem planejador)
+              </button>
+            </div>
           }
           @case ('cancelled') {
             <p role="status">Configuração cancelada. Nenhuma operação foi enviada à mesa.</p>
-            <button type="button" [disabled]="!ui.canAct()" (click)="ui.start()">
-              Iniciar nova configuração LAB
-            </button>
+            <div class="actions">
+              <button
+                type="button"
+                [disabled]="!ui.canAct() || ui.busy()"
+                (click)="ui.consult()"
+              >
+                Consultar planejador técnico
+              </button>
+              <button type="button" [disabled]="!ui.canAct()" (click)="ui.start()">
+                Iniciar nova configuração LAB
+              </button>
+            </div>
+          }
+          @case ('advice') {
+            <section class="question" aria-labelledby="auto-advice">
+              <h3 id="auto-advice" tabindex="-1">Planejador técnico</h3>
+              @if (ui.adviceView(); as a) {
+                <p class="tag-line">
+                  <span class="model" role="status">Modelo: {{ a.model }}</span>
+                  <span class="muted">Seleção atual: {{ a.selected }}</span>
+                </p>
+                @for (n of a.notes; track $index) {
+                  <p class="muted">{{ n }}</p>
+                }
+                @if (a.known.length) {
+                  <p class="muted">
+                    {{ a.fromDiagnosis ? 'Já informado no diagnóstico' : 'Já informado' }} (não
+                    será perguntado de novo): {{ a.known.join(', ') }}.
+                  </p>
+                }
+                @switch (a.kind) {
+                  @case ('question') {
+                    @if (a.kind === 'question') {
+                      <p class="lead">{{ a.question.text }}</p>
+                      <div class="actions">
+                        @for (c of a.question.choices; track c.value) {
+                          <button
+                            type="button"
+                            [disabled]="!ui.canAct() || ui.busy()"
+                            (click)="ui.answerAdvice(c.value)"
+                          >
+                            {{ c.label }}
+                          </button>
+                        }
+                      </div>
+                    }
+                  }
+                  @case ('refusal') {
+                    @if (a.kind === 'refusal') {
+                      <div class="alert" role="alert">
+                        <strong>{{ a.reason }}</strong>
+                        <p>{{ a.message }}</p>
+                      </div>
+                      <p>Nenhum plano, número ou autorização foi criado.</p>
+                      <div class="actions">
+                        <button
+                          type="button"
+                          [disabled]="!ui.canAct() || ui.busy()"
+                          (click)="ui.consult()"
+                        >
+                          Consultar planejador novamente
+                        </button>
+                        @if (!a.safetyStop) {
+                          <button type="button" [disabled]="!ui.canAct()" (click)="ui.start()">
+                            Definir teste manualmente (sem planejador)
+                          </button>
+                        }
+                      </div>
+                    }
+                  }
+                  @case ('proposal') {
+                    @if (a.kind === 'proposal') {
+                      <article class="item" aria-label="Inspeção sugerida">
+                        <p class="source ai">
+                          <strong>Recomendação da IA — inspeção sugerida, não ajuste:</strong>
+                          {{ a.purpose }}
+                        </p>
+                        <p>
+                          CH{{ a.channel }} · {{ channelLabel(a.channel) }} ·
+                          {{ a.destination === 'AUX1' ? 'FONES · AUX1 compartilhado' : 'PA' }} ·
+                          risco {{ a.risk }}
+                        </p>
+                        <p><strong>O que verificar:</strong> {{ a.instruction }}</p>
+                        <p><strong>Justificativa:</strong> {{ a.justification }}</p>
+                        @for (e of a.evidence; track $index) {
+                          <p class="source human"><strong>Relato humano:</strong> {{ e }}</p>
+                        }
+                        <details>
+                          <summary>Pré-condições, verificação, fontes e limitações</summary>
+                          <strong>Pré-condições</strong>
+                          <ul>
+                            @for (p of a.preconditions; track $index) {
+                              <li>{{ p }}</li>
+                            }
+                          </ul>
+                          <p><strong>Como verificar:</strong> {{ a.verification }}</p>
+                          <p><strong>Quando parar:</strong> {{ a.stop }}</p>
+                          <p><strong>Retorno:</strong> {{ a.rollback }}</p>
+                          <strong>Limitações</strong>
+                          <ul>
+                            @for (l of a.limitations; track $index) {
+                              <li>{{ l }}</li>
+                            }
+                          </ul>
+                          <strong>Fontes (teoria, procedimento {{ a.procedure }})</strong>
+                          <ul>
+                            @for (r of a.references; track $index) {
+                              <li>
+                                <a [href]="r.url" target="_blank" rel="noopener noreferrer">{{
+                                  r.title
+                                }}</a>
+                                — {{ r.detail }}
+                              </li>
+                            }
+                          </ul>
+                          <strong>Segurança</strong>
+                          <ul>
+                            @for (s of a.safety; track $index) {
+                              <li>{{ s }}</li>
+                            }
+                          </ul>
+                        </details>
+                      </article>
+                      <fieldset class="decision">
+                        <legend>Sua decisão</legend>
+                        <p class="muted">
+                          A inspeção não vira alteração de nível. Simular um passo é opcional e o
+                          valor é seu.
+                        </p>
+                        <div class="actions">
+                          <button
+                            type="button"
+                            [attr.aria-pressed]="ui.decision() === 'inspection_only'"
+                            [disabled]="ui.busy()"
+                            (click)="ui.chooseDecision('inspection_only')"
+                          >
+                            Só fazer a inspeção
+                          </button>
+                          <button
+                            type="button"
+                            [attr.aria-pressed]="ui.decision() === 'virtual_step'"
+                            [disabled]="!ui.canAct() || ui.busy() || !a.skeleton"
+                            (click)="ui.chooseDecision('virtual_step')"
+                          >
+                            Quero simular um passo de nível
+                          </button>
+                        </div>
+                        @if (ui.decision() === 'inspection_only') {
+                          <p role="status">
+                            Combinado: só a inspeção. Nada foi criado no servidor nem enviado à
+                            mesa.
+                          </p>
+                        }
+                        @if (ui.decision() === 'virtual_step') {
+                          <label
+                            >Passo virtual decidido por você (dB, entre −3 e +3; sem zero)<input
+                              aria-label="Passo virtual do operador em dB"
+                              type="number"
+                              min="-3"
+                              max="3"
+                              step="0.5"
+                              placeholder="Digite o valor"
+                              [(ngModel)]="adviceDelta"
+                              [disabled]="!ui.canAct() || ui.busy()"
+                          /></label>
+                          <p class="muted">
+                            Sem valor sugerido. O servidor cria um rascunho; cada teste ainda
+                            precisa da sua autorização individual.
+                          </p>
+                          <button
+                            type="button"
+                            class="primary"
+                            [disabled]="
+                              !ui.canAct() ||
+                              ui.busy() ||
+                              adviceDelta === null ||
+                              !adviceDelta ||
+                              adviceDelta > 3 ||
+                              adviceDelta < -3
+                            "
+                            (click)="ui.createFromAdvice(+adviceDelta!)"
+                          >
+                            Criar rascunho de simulação no servidor
+                          </button>
+                        }
+                      </fieldset>
+                      <button
+                        type="button"
+                        [disabled]="!ui.canAct() || ui.busy()"
+                        (click)="ui.consult()"
+                      >
+                        Consultar planejador novamente
+                      </button>
+                    }
+                  }
+                }
+              } @else if (!ui.busy()) {
+                <p>Sem resposta do planejador.</p>
+                <button
+                  type="button"
+                  [disabled]="!ui.canAct() || ui.busy()"
+                  (click)="ui.consult()"
+                >
+                  Consultar planejador novamente
+                </button>
+              } @else {
+                <p role="status">Consultando o planejador… nenhuma ação física.</p>
+              }
+            </section>
           }
           @case ('questions') {
             <section class="question" aria-labelledby="auto-question">
@@ -415,8 +693,16 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
           }
           @case ('plan') {
             <h3 id="auto-plan" tabindex="-1">Revise cada teste</h3>
-            <p class="source"><strong>Relato humano:</strong> {{ ui.answers().report }}</p>
-            <p class="source">
+            @if (ui.adviceView(); as a) {
+              @if (a.kind === 'proposal') {
+                <p class="source ai">
+                  <strong>Origem: inspeção sugerida pela IA</strong> ({{ a.model }}): {{ a.purpose }}
+                  O passo virtual abaixo foi decidido por você; a IA não sugeriu valor.
+                </p>
+              }
+            }
+            <p class="source human"><strong>Relato humano:</strong> {{ ui.answers().report }}</p>
+            <p class="source verified">
               <strong>Observação disponível:</strong> revisão de estado LAB
               {{ ui.stateRevision() ?? 'indisponível' }}. Não é medição acústica nem leitura REAL.
               Objetivo relatado: {{ ui.answers().goal }}.
@@ -474,17 +760,17 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
                   {{ item.destination === 'AUX1' ? 'FONES · AUX1 compartilhado' : 'PA' }} · somente
                   passo virtual
                 </p>
-                <p class="source suggestion">
-                  <strong>Sugestão definida pelo operador:</strong>
+                <p class="source human">
+                  <strong>Decisão do operador:</strong>
                   {{ item.rationale }}
                 </p>
                 <div class="diff">
-                  <div>
-                    <strong>Antes (cenário)</strong>
+                  <div class="verified">
+                    <strong>Antes (observação verificada, LAB virtual)</strong>
                     <p>{{ item.before }}</p>
                   </div>
-                  <div>
-                    <strong>Diferença proposta</strong>
+                  <div class="sim">
+                    <strong>Diferença proposta (simulação)</strong>
                     <p>{{ item.after }}</p>
                   </div>
                 </div>
@@ -511,7 +797,7 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
                     </p>
                   }
                 </details>
-                <p class="human source" role="status">
+                <p class="verified source" role="status">
                   Estado confirmado pelo servidor: {{ labels[ui.status()[item.id]!] }}
                 </p>
                 @if (ui.status()[item.id] === 'proposed') {
@@ -545,8 +831,11 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
                   </button>
                 }
                 @if (ui.results()[item.id]; as result) {
-                  <div class="source result">
+                  <div class="source sim">
                     <strong>Resultado SIMULADO — acústica não validada</strong>
+                    <p class="muted">
+                      Valor virtual conferido pelo servidor. Não comprova melhoria no som.
+                    </p>
                     <p>{{ result.before }} → {{ result.after }}</p>
                     <p>{{ result.verification }}</p>
                   </div>
@@ -585,7 +874,7 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
             </button>
           }
         }
-        @if (ui.stage() === 'questions' || ui.stage() === 'plan') {
+        @if (ui.stage() === 'questions' || ui.stage() === 'plan' || ui.stage() === 'advice') {
           <button
             type="button"
             [disabled]="
@@ -656,6 +945,8 @@ export class AutoConfigComponent {
   };
   questionChannels: Record<string, string> = {};
   questionDeltas: Record<string, number> = {};
+  /** Empty on purpose: no default step, the operator types it. */
+  adviceDelta: number | null = null;
   delta = 0;
   channel = '';
   report = '';
@@ -675,17 +966,26 @@ export class AutoConfigComponent {
       ) {
         this.questionChannels = {};
         this.questionDeltas = {};
+        this.adviceDelta = null;
         this.delta = 0;
         this.channel = '';
         this.report = '';
         this.confirmCancel = false;
       }
     });
+    effect(() => {
+      // A new planner answer (or none) never inherits a step typed for an earlier inspection.
+      this.ui.advice();
+      untracked(() => (this.adviceDelta = null));
+    });
     afterRenderEffect(() => {
       const stage = this.ui.stage();
       this.ui.question();
-      if (stage === 'questions' || stage === 'plan')
-        this.host.nativeElement.querySelector<HTMLElement>('#auto-question, #auto-plan')?.focus();
+      this.ui.advice();
+      if (stage === 'questions' || stage === 'plan' || stage === 'advice')
+        this.host.nativeElement
+          .querySelector<HTMLElement>('#auto-question, #auto-plan, #auto-advice')
+          ?.focus();
     });
   }
   download(reference: AutoReference) {
@@ -700,8 +1000,9 @@ export class AutoConfigComponent {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   channelName() {
-    return (
-      this.ui.live.channels().find((c) => c.number === this.ui.answers().channel)?.name ?? 'Canal'
-    );
+    return this.channelLabel(this.ui.answers().channel);
+  }
+  channelLabel(channel: number) {
+    return this.ui.live.channels().find((c) => c.number === channel)?.name ?? 'Canal';
   }
 }

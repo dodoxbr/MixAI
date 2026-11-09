@@ -36,14 +36,14 @@ async function open(page: Page) {
     .getByRole("button", { name: "Iniciar passagem LAB", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Iniciar AutoConfig LAB", exact: true })
+    .getByRole("button", { name: "Definir teste manualmente (sem planejador)", exact: true })
     .waitFor();
 }
 async function prepare(page: Page, multiple = false, another = false) {
   const auto = page.locator("mx-autoconfig");
   await auto
     .getByRole("button", {
-      name: another ? "Iniciar novo plano LAB" : "Iniciar AutoConfig LAB",
+      name: another ? "Iniciar novo plano LAB" : "Definir teste manualmente (sem planejador)",
       exact: true,
     })
     .click();
@@ -379,7 +379,7 @@ it("offline disables approvals, reconnect requires new review, logout clears tem
   await expect.poll(() => events.locator("option").count()).toBe(2);
   await events.selectOption({ index: 1 });
   await page
-    .getByRole("button", { name: "Iniciar AutoConfig LAB", exact: true })
+    .getByRole("button", { name: "Definir teste manualmente (sem planejador)", exact: true })
     .waitFor();
   expect(await page.locator("mx-autoconfig").textContent()).not.toContain(
     "Voz abafada",
