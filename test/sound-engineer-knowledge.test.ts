@@ -132,7 +132,7 @@ describe('proveniência e limites de capacidade', () => {
           // A base local (RAG, opcional) é outro módulo e só entra por estes consumidores explícitos.
           // A base determinística só entra pela consulta B3A ou pelo adaptador AutoConfig isolado.
           if (/knowledge\/local\/|knowledge-routes/.test(path)) expect(LOCAL_KNOWLEDGE_CONSUMERS, file).toContain(normalizedFile);
-          else if (normalizedFile === 'src/autoconfig/planner/kb-adapter.ts') expect(path, file).toMatch(/knowledge\/sound-engineer\/index\.js$/);
+          else if (['src/autoconfig/planner/kb-adapter.ts', 'src/autoconfig/recommendation/kb-adapter.ts'].includes(normalizedFile)) expect(path, file).toMatch(/knowledge\/sound-engineer\/index\.js$/);
           else expect(path, file).not.toMatch(/knowledge/);
         }
       }

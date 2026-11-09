@@ -4,6 +4,7 @@ export { sources } from './sources.js';
 export { capabilities } from './capabilities.js';
 export { fundamentals } from './fundamentals.js';
 export { procedures } from './procedures.js';
+export { eqGuides, type EqGuide } from './eq-guides.js';
 export { instruments } from './instruments.js';
 export { diagnose } from './diagnose.js';
 export { examples } from './examples.js';
