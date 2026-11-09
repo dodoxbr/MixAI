@@ -1,52 +1,47 @@
-# AutoConfig — interface do operador (#74)
+# AutoConfig — interface do operador (#74 / PR #77)
 
-Base: `origin/main` f399939, incluindo PR #71. Exclusivamente LAB. A entrega B implementa a experiência do operador, não o planejador C (#73), o núcleo D (#72), autorização no servidor ou uma integração com hardware.
+Atualizada com `origin/main` cd66766, incluindo o núcleo D do PR #80. Sem escrita no mixer, incluindo o mixer LAB. A interface consome somente `/api/autoconfig`; não chama comandos, LLM ou transporte Soundcraft.
 
-## Acesso e fluxo
+## Uso
 
-Use o PIN de operador existente → **Passagem de som** → crie/selecione um evento em andamento → **Iniciar AutoConfig LAB**. O painel fica logo após o resumo do evento, no fluxo normal da página; não cobre faders nem chat. A aba **Mesa** permanece disponível em um toque, inclusive na navegação inferior do celular. Eventos pausados/concluídos não exibem a ferramenta. Músicos não recebem nova tela ou permissão; seus canais e pedidos existentes permanecem no fluxo atual.
+PIN de operador existente → **Passagem de som** → evento em andamento → **Iniciar AutoConfig LAB**. Navegação Mesa em um toque, painel no fluxo normal, sem sobrepor chat ou faders. Músicos não recebem acesso ou novas permissões. A entrada na passagem permanece LAB; o adaptador e o núcleo aceitam LAB/MOCK, nunca REAL. Não se habilitaram rotas de passagem em MOCK, que não existem na main.
 
-O operador responde uma pergunta por vez: objetivo, canal, PA ou FONES (AUX1 compartilhado), relato. Pode voltar antes de gerar o plano. O painel mostra cadastro/revisão LAB e incertezas, sem transformar cadastro, relato ou revisão em medição acústica.
+Uma pergunta por vez: objetivo, canal, PA/FONES (AUX1 compartilhado), relato e passo virtual explícito. O passo começa em zero (não enviável) e deve ser definido pelo operador, dentro de ±3 dB, não nulo. **O planejador C ainda não está conectado**: nenhum número é uma recomendação automática da IA. O primeiro clique cria apenas um rascunho no servidor. **Preparar contexto no servidor** captura observação LAB/MOCK e descarta aprovações anteriores. Dados ausentes geram perguntas do próprio núcleo, exibidas sem presumir valores. Os campos de resposta de canal/passo enviam `revise` ao servidor, seguidos de preparação humana explícita; conexão/observação precisam ser resolvidas e preparadas novamente.
 
-Cada item mostra diferença antes/depois, justificativa, evidência, risco, pré-condições, limitações, critério de validação, retorno e referências expansíveis. **Autorizar somente este teste LAB** permite apenas o item escolhido; **Executar este teste simulado** consome a autorização. Nenhum lote. Depois, o operador confirma ou rejeita/descarta o cenário. Somente itens confirmados podem compor uma referência, após decidir todos os itens. Não há autoaprovação pela IA.
+Cada item apresenta observação virtual antes/depois, diferença, relato/teoria, justificativa, limitações, validação e retorno. SIMULAÇÃO LAB permanece no cabeçalho aderente. Cadastro/revisão LAB não comprovam conexões físicas. Áudio, espectro, SPL e acústica não são medidos.
 
-**SIMULAÇÃO LAB** aparece no cabeçalho aderente do painel e nas referências. Os rótulos e bordas diferenciam relato, estado disponível, sugestão fictícia/IA, decisão humana e resultado simulado. O resultado acústico é sempre não validado: nenhum áudio, espectro, SPL ou frequência foi coletado.
+1. **Solicitar autorização deste teste LAB** envia `approve`; a tela continua não autorizada até o servidor confirmar. Não existe aprovação otimista, aprovação por texto de IA ou aprovar todos.
+2. **Executar este teste simulado** envia o `approvalId` recebido do servidor, vinculado à sessão que aprovou, ao item/digest/contexto e à versão. O servidor verifica o valor virtual; nada é aplicado ao mixer.
+3. Confirmar ou rejeitar o resultado envia `review`. **Desfazer somente cenário virtual** envia `undo` com `resultId`; nenhuma compensação física. Itens ainda não simulados podem ser descartados pelo cancelamento do plano, não por revisão fictícia.
+4. **Salvar referência virtual no servidor** só é permitido depois da revisão exigida pelo núcleo. O servidor salva referência imutável `UNVERIFIED`, com `simulation.notApplied:true`. A referência permanece após logout/reinício, conforme limites de D.
+5. **Iniciar novo plano LAB** permite outra configuração e nova versão de referência; não sobrescreve a anterior. **Consultar servidor** e o seletor carregam planos do evento e referências anteriores. A consulta é humana, não polling/retry de mutações. Carregar um plano ativo exige preparação explícita antes de reusar ações.
 
-Cancelamento tem confirmação própria. Histórico local registra decisões; dados privados/credenciais não são colocados em logs. Controles com alvo de 48 px, foco visível, rótulos, status/alertas acessíveis e foco no título da pergunta/plano. Layout de uma coluna no celular e diferenças lado a lado em telas maiores. Os testes usam Chromium com toque emulado; não certificam leitor de tela ou Yoga físico.
+Download JSON contém somente um recibo validado da referência (ID, versão, status e origem simulada), sem credenciais, atores ou cena aplicável. Não é backup/snapshot Soundcraft, import ou restauração. As referências observadas da passagem continuam separadas das referências virtuais AutoConfig.
 
-## Adaptadores provisórios e dependências
+## Contratos e autorização
 
-Na base desta branch, contratos AutoConfig de C/D ainda não existem. `AUTO_ADAPTER` é o ponto de injeção, sem rota HTTP inventada. Seu padrão carrega uma **fixture de UX** sob demanda. Ela não chama provedor externo, não calcula EQ/ganho ou recomenda uma receita técnica. Compara dois cenários textuais fictícios para testar autorização e revisão. O painel avisa explicitamente que C/D não estão conectados; não apresenta a fixture como motor técnico real.
+- `autoconfig-http.ts`: adaptador padrão autenticado por Bearer da sessão existente. GET `/api/autoconfig`, POST `/api/autoconfig`, GET `/api/autoconfig/:id`, POST `/api/autoconfig/:id/actions`. Caminho restrito, mesma origem, `no-store`, sem cookies/redirecionamento ou reenvio automático. Corpo JSON e AbortSignal. Nenhuma nova credencial.
+- `autoconfig-contract.ts`: reutiliza **AutoConfigView e tipos canônicos de `src/autoconfig/contracts.ts`**, sem segundo esquema de aprovação. Valida respostas estritamente; o adaptador de apresentação só deriva rótulos de dados do servidor, sem criar approvalId/digest/observações/resultados. Workspace e recibo têm validação adicional. Plano recebido é conferido contra evento/servidor/modo; resposta de ação também precisa corresponder ao ID solicitado. Recibo precisa estar associado à referência/plano/modo corretos.
+- Cada mutação usa `serverId`, nonce novo por clique (`requestId`) e `expectedVersion` atual. Aprovação envia digest e escopo `simulation_only`; simulação envia aprovação; undo envia resultado. `expectedStateRevision` vem do estado atual LAB/MOCK. Tudo é novamente validado por D: o frontend **não é fronteira de autorização**.
+- Estado dos itens, histórico, contadores e referência são exclusivamente lidos de respostas do servidor. O navegador não escreve estado aprovado/simulado/revisado por conta própria. Um segundo operador não pode consumir a aprovação de outra sessão: D responde 403.
+- Não foi alterado nenhum módulo de D ou C. Fixtures de apresentação foram removidas da produção; dados sintéticos existem apenas nas suítes. Não há fallback local se API/contrato/provedor estiver indisponível.
 
-Fronteira temporária em `autoconfig-contract.ts`:
+## Sessão, erros e concorrência
 
-- `AutoInput`: versão 1, escopo `lab_simulation`, evento/versão, objetivo, canal, destino, relato e revisão LAB ou `null`. Sem PIN, token, áudio ou rede.
-- `AutoAdapter.plan(input)`: `Promise<unknown>`; adaptar resposta C/D para `AutoPlan`, com evidência/justificativa/risco/limites/referências por item. O planejador nunca retorna autorização.
-- `AutoAdapter.simulate({plan,itemId,operatorApproved:true})`: resultado vinculado a plano/item e antes/depois, com `acousticValidated:false`. Esse booleano documenta o clique local; **não é credencial nem autorização de servidor**. D deve conferir principal autenticado, owner, revisão, versão, idempotência e escopo no backend. Não conectar diretamente o planejador ao simulador ou a `LiveService.command`.
-- O adaptador reconstrói somente dados de apresentação, valida versão/escopo, limites de tamanho, IDs únicos, canal/destino, referências HTTPS e associação de resultado. Payloads de aprovação/comando externos não são propagados. Dados de texto são escapados pelo Angular.
+Troca de token/perfil, modo, servidor ou evento invalida respostas tardias, limpa dados da sessão e aborta leitura HTTP em andamento. A reconexão pode remontar a passagem; selecionar evento e consultar plano é explícito. Os dados persistidos do servidor só aparecem após leitura autorizada; isso é diferente de preservar campos locais privados do formulário.
 
-Ao publicar contratos finais, mapear os DTOs no adaptador, incluindo erros/409/expiração. Perguntas adicionais de C, IDs/idempotência/versões de D e salvamento persistente exigem essa integração; não presumimos seus formatos ou endpoints. Os testes atuais validam o comportamento da UI e dos stubs, não essas APIs futuras.
+Offline bloqueia ações. Timeout de 10 segundos aborta o HTTP e deixa resultado **indeterminado**: não afirma cancelamento/rollback remoto. 401 expira a sessão pelo mecanismo existente; 403/409/armazenamento/API indisponível mostram mensagens sanitizadas. Qualquer erro exige consulta ao servidor antes de continuar. Ler plano ativo coloca as ações em quarentena até nova preparação (descarta aprovações/resultados ativos no servidor). Nenhum teste é repetido automaticamente. Mudança de revisão também exige consulta/preparação.
 
-### Referências provisórias
+Cliques simultâneos ficam serializados na UI; versão/digest/recibos/idempotência/owner/TTL/revogação são autoritativos em D. Cancelamento de plano só se confirma após resposta do backend. Não salvar automaticamente, carregar cenas ou promover referência para REAL. Expiração/reinício/resultado divergente são mostrados pelos estados e perguntas retornados pelo servidor.
 
-**Salvar referência temporária da sessão** gera cópia versionada somente na memória da sessão desta aba, com itens e resultados aceitos. **Baixar referência simulada vN** exporta um JSON local explícito, sem credenciais. Não há import, restauração, aplicação, armazenamento servidor ou snapshot nativo Soundcraft. Repetir salvar cria nova versão. Alterar evento/versão, logout, expiração ou troca de modo/servidor elimina dados em memória; o arquivo baixado explicitamente permanece sob controle do operador.
+## UX e testes
 
-O fluxo de referências da passagem existente continua separado e funcional, sem incluir os cenários fictícios. Persistência autoritativa e referências revisáveis do AutoConfig pertencem a D (#72); esta entrega não grava a fixture no banco de referências existente nem afirma durabilidade sem esse núcleo.
+Mantidos layout responsivo, alvos de 48 px, foco/teclado, perguntas progressivas, diferenças, detalhes expansíveis, histórico, mensagens de processamento, erros e navegação Mesa. Ajuste na passagem: esperar conexão online antes de consultar eventos, evitando corrida de montagem após reconexão.
 
-## Falhas e isolamento
+O conflito add/add do E2E foi resolvido preservando integralmente `test/e2e/autoconfig.test.ts` do núcleo D e separando a suíte de interface em `autoconfig-ui.test.ts`. Expectativas de autorização, isolamento, ausência de escrita, toque/layout/teclado foram mantidas e adaptadas ao protocolo assíncrono: espera de confirmação real; referências imutáveis persistentes em vez de duplicação de cópias locais. Duas versões agora exigem dois planos/revisões reais no servidor.
 
-Identidade inclui token da sessão (apenas em memória), perfil, modo e instância do servidor. Trocas descartam planos, resultados e referências; respostas tardias são ignoradas. Progresso pode permanecer ao navegar Mesa/Passagem na mesma sessão e selecionar o mesmo evento/versão.
+Unidade/HTTP da interface: sem aprovação otimista, IDs/versões/digests, serialização, 401/403/409/timeout, respostas tardias, contexto alterado, REAL recusado antes do fetch, MOCK permitido, leitura/recibo associado, save/review/undo/cancel no servidor e texto HTML escapado. E2E: Yoga, Pixel retrato, 780×360; dois itens com consentimentos independentes, rejeição, duas referências versionadas, download, desconexão real de WebSocket, troca de sessão, segundo operador recusado e persistência após logout.
 
-Offline bloqueia ações e invalida autorizações/resultados pendentes. Reconexão não repete teste nem recupera aprovação: é preciso rever novo plano. Mudança da revisão LAB invalida o plano, inclusive durante planejamento. Timeout de 10 segundos ou contrato incompatível gera mensagem sanitizada; não expõe erro bruto. Falha de simulação consome aprovação, exigindo novo clique. Cancelamento e troca de evento também invalidam operações em andamento. Dois cliques simultâneos não despacham dois testes.
+Comandos: `npm run typecheck`, `npm run build`, `npm test`, `npm run test:web`, `npm run build:web`, `npm run test:e2e`, `npm run smoke:yoga -- --built`, `npm run test:https-lab` (Caddy). Resultados/CI ficam no relatório do PR. Não se afrouxaram expectativas nem limites de build.
 
-O adaptador atual é local e sem efeitos. Quando D for conectado, cancelamento/timeout da UI não pode significar rollback remoto comprovado: usar o estado autoritativo de D antes de qualquer nova tentativa. Não implementar replay automático nem promover esta fixture a REAL.
-
-## Segurança e validação
-
-Sem alterações em PINs, autenticação, permissões, backend, transporte, comandos, rede ou persistência dos outros agentes. Sem uso de `ActionsService`, `LiveService.command`, mixer.write, aplicação/cena/recall físico ou `serve:real`. MOCK/REAL não exibem esta entrega. F0/E6 permanecem bloqueados conforme #43/#44.
-
-Verificações: `npm run typecheck`, `npm run build`, `npm run test:web`, `npm run build:web`, `npm test`, `npm run test:e2e`, `npm run smoke:yoga -- --built`, `npm run test:https-lab` (Caddy). Resultados/CI e eventuais skips ficam no relatório do PR.
-
-Testes novos cobrem perguntas/teclado, autorização item a item, confirmação/rejeição, versões/exportação, concorrência de cliques, erro/timeout, payloads incompatíveis, conteúdo HTML, ausência de escrita, modo/perfil, sessão expirada, servidor/evento/estado alterados e resposta tardia. E2E em Yoga, Pixel retrato e 780×360, logout e desconexão real de WebSocket. Um seletor antigo do E2E da passagem passou a usar seu cabeçalho de evento explícito; a expectativa foi mantida, pois o novo painel também tem títulos.
-
-Main medida em worktree isolada: bundle inicial 416,92 kB; entrega 425,70 kB (+8,78 kB bruto), AutoConfig lazy ~26 kB, fixture lazy ~1,69 kB. O aviso do orçamento de 400 kB já existe na main; budgets/dependências não foram alterados. Sem ensaio físico, validação acústica ou comparação de provedores nesta tarefa de UI.
+O esquema canônico Zod aumenta o chunk lazy do AutoConfig (896,06 kB bruto, 97,54 kB estimados de transferência); carregado apenas ao abrir passagem com evento. Bundle inicial 428,09 kB mantém o warning preexistente de 400 kB; budgets preservados. Sem teste físico de Yoga/celular, rede da mesa, firmware ou acústica. A integração técnica do planejador C continua separada; o fluxo usa proposta explicitamente definida pelo operador.

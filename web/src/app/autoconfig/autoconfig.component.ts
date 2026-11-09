@@ -221,11 +221,61 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
           Não ouvimos nem medimos áudio. Nenhuma operação na Soundcraft. AUX1 é a mix compartilhada
           do HA800.
         </p>
-        @if (ui.fixture()) {
-          <p class="source" data-testid="auto-fixture">
-            <strong>Demonstração local de interface.</strong> Planejador C e núcleo D ainda não
-            conectados. Cenários fictícios, sem recomendação técnica ou persistência no servidor.
+        <p class="source">
+          <strong>Núcleo virtual do servidor.</strong> Aprovações, testes e referências são
+          validados e registrados pelo servidor. O planejador C ainda não está conectado; você
+          define o passo virtual, sem sugestão acústica automática.
+        </p>
+        <div class="actions">
+          <button
+            type="button"
+            [disabled]="!ui.eligible() || !ui.connected() || ui.busy()"
+            (click)="ui.refresh()"
+          >
+            Consultar servidor
+          </button>
+          <label
+            >Planos salvos no servidor<select
+              aria-label="Plano AutoConfig do servidor"
+              [disabled]="ui.busy() || !ui.connected()"
+              (change)="ui.refresh($any($event.target).value)"
+            >
+              <option value="">Selecione um plano</option>
+              @for (p of ui.availablePlans(); track p.id) {
+                <option [value]="p.id">{{ p.title }} · v{{ p.version }} · {{ p.state }}</option>
+              }
+            </select></label
+          >
+        </div>
+        @if (ui.model(); as model) {
+          @if (['saved', 'rejected', 'expired'].includes(model.state)) {
+            <button type="button" [disabled]="!ui.canAct() || ui.busy()" (click)="ui.start()">
+              Iniciar novo plano LAB
+            </button>
+          }
+          <p role="status">
+            Plano v{{ model.version }} · {{ model.state }} · expira {{ model.expiresAt }}
           </p>
+          @if (model.stale || model.interrupted || ui.needsRefresh() || ui.requiresPreparation()) {
+            <p class="alert">
+              Contexto desatualizado ou resposta pendente. Consulte o servidor; nenhuma operação
+              será repetida.
+            </p>
+          }
+          <button
+            type="button"
+            [disabled]="
+              !ui.canAct() || ui.busy() || ['saved', 'rejected', 'expired'].includes(model.state)
+            "
+            (click)="ui.reprepare()"
+          >
+            Preparar contexto no servidor (descarta aprovações)
+          </button>
+          @for (item of model.items; track item.spec.id) {
+            @for (q of item.questions; track q.id) {
+              <p class="alert">Pergunta do servidor: {{ q.message }}</p>
+            }
+          }
         }
         <div class="context" aria-label="Contexto AutoConfig">
           <span>Evento: {{ event()!.eventName }} · v{{ event()!.eventVersion }}</span>
@@ -244,8 +294,8 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
             físicas.
           </p>
           <p>
-            Áudio, espectro, SPL, frequências e resultado acústico: não coletados. Cenários de
-            demonstração não reproduzem os parâmetros atuais.
+            Áudio, espectro, SPL, frequências e resultado acústico: não coletados. Valores virtuais
+            não comprovam o estado físico ou o som.
           </p>
         </details>
         @if (ui.error()) {
@@ -327,11 +377,28 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
                       placeholder="Ex.: a voz parece abafada no retorno"
                     ></textarea>
                   </label>
+                  <label
+                    >Passo virtual definido por você (dB, entre −3 e +3; sem zero)<input
+                      aria-label="Passo virtual em dB"
+                      type="number"
+                      min="-3"
+                      max="3"
+                      step="0.5"
+                      [(ngModel)]="delta"
+                      [disabled]="!ui.canAct() || ui.busy()"
+                  /></label>
                   <button
                     type="button"
                     class="primary"
-                    [disabled]="!ui.canAct() || ui.busy() || !report.trim()"
-                    (click)="ui.prepare(report)"
+                    [disabled]="
+                      !ui.canAct() ||
+                      ui.busy() ||
+                      !report.trim() ||
+                      !delta ||
+                      delta > 3 ||
+                      delta < -3
+                    "
+                    (click)="ui.prepare(report, delta)"
                   >
                     Visualizar plano LAB
                   </button>
@@ -357,13 +424,58 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
             @for (item of ui.plan()!.items; track item.id) {
               <article class="item" [attr.aria-label]="item.title">
                 <h3>{{ item.title }}</h3>
+                @if (ui.model()!.items[$index].questions.length) {
+                  <label
+                    >Canal confirmado<select
+                      [attr.aria-label]="'Canal da resposta ' + item.id"
+                      [ngModel]="questionChannels[item.id] ?? ''"
+                      (ngModelChange)="questionChannels[item.id] = $event"
+                      [disabled]="!ui.canAct() || ui.busy()"
+                    >
+                      <option value="">Escolha o canal</option>
+                      @for (c of ui.live.channels(); track c.number) {
+                        <option [value]="c.number">CH{{ c.number }} · {{ c.name }}</option>
+                      }
+                    </select></label
+                  >
+                  <label
+                    >Passo virtual confirmado (dB)<input
+                      type="number"
+                      min="-3"
+                      max="3"
+                      step="0.5"
+                      [attr.aria-label]="'Passo da resposta ' + item.id"
+                      [ngModel]="questionDeltas[item.id] ?? 0"
+                      (ngModelChange)="questionDeltas[item.id] = $event"
+                      [disabled]="!ui.canAct() || ui.busy()"
+                  /></label>
+                  <button
+                    type="button"
+                    [disabled]="
+                      !ui.canAct() ||
+                      ui.busy() ||
+                      !questionChannels[item.id] ||
+                      !questionDeltas[item.id]
+                    "
+                    (click)="
+                      ui.revise(item.id, +questionChannels[item.id]!, questionDeltas[item.id]!)
+                    "
+                  >
+                    Enviar respostas ao servidor
+                  </button>
+                  <p>
+                    Após revisar canal/passo, prepare novamente. Observação e conectividade
+                    continuam sendo verificadas pelo servidor.
+                  </p>
+                }
+
                 <p>
                   CH{{ item.channel }} ·
-                  {{ item.destination === 'AUX1' ? 'FONES · AUX1 compartilhado' : 'PA' }} · Risco
-                  {{ item.risk === 'low' ? 'baixo' : 'moderado' }}
+                  {{ item.destination === 'AUX1' ? 'FONES · AUX1 compartilhado' : 'PA' }} · somente
+                  passo virtual
                 </p>
                 <p class="source suggestion">
-                  <strong>Sugestão {{ ui.fixture() ? 'fictícia (UX)' : 'da IA' }}:</strong>
+                  <strong>Sugestão definida pelo operador:</strong>
                   {{ item.rationale }}
                 </p>
                 <div class="diff">
@@ -400,27 +512,36 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
                   }
                 </details>
                 <p class="human source" role="status">
-                  Decisão humana: {{ labels[ui.status()[item.id]!] }}
+                  Estado confirmado pelo servidor: {{ labels[ui.status()[item.id]!] }}
                 </p>
                 @if (ui.status()[item.id] === 'proposed') {
                   <button
                     type="button"
                     class="primary"
-                    [disabled]="!ui.canAct() || ui.busy()"
+                    [disabled]="!ui.canAct() || ui.busy() || !ui.mutable()"
                     (click)="ui.approve(item.id)"
                   >
-                    Autorizar somente este teste LAB
+                    Solicitar autorização deste teste LAB
                   </button>
                 }
                 @if (ui.status()[item.id] === 'approved') {
-                  <p>Autorização concedida apenas para este item. Nenhum teste em lote.</p>
+                  <p>Autorização confirmada pelo servidor para este item. Nenhum teste em lote.</p>
                   <button
                     type="button"
                     class="primary"
-                    [disabled]="!ui.canAct() || ui.busy()"
+                    [disabled]="!ui.canAct() || ui.busy() || !ui.mutable()"
                     (click)="ui.simulate(item.id)"
                   >
                     Executar este teste simulado
+                  </button>
+                }
+                @if (ui.status()[item.id] === 'accepted' || ui.status()[item.id] === 'simulated') {
+                  <button
+                    type="button"
+                    [disabled]="!ui.canAct() || ui.busy() || !ui.mutable()"
+                    (click)="ui.undo(item.id)"
+                  >
+                    Desfazer somente cenário virtual
                   </button>
                 }
                 @if (ui.results()[item.id]; as result) {
@@ -432,17 +553,17 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
                   @if (ui.status()[item.id] === 'simulated') {
                     <button
                       type="button"
-                      [disabled]="!ui.canAct() || ui.busy()"
+                      [disabled]="!ui.canAct() || ui.busy() || !ui.mutable()"
                       (click)="ui.decide(item.id, true)"
                     >
                       Confirmar resultado simulado
                     </button>
                   }
                 }
-                @if (ui.status()[item.id] !== 'rejected') {
+                @if (ui.status()[item.id] === 'simulated') {
                   <button
                     type="button"
-                    [disabled]="!ui.canAct() || ui.busy()"
+                    [disabled]="!ui.canAct() || ui.busy() || !ui.mutable()"
                     (click)="ui.decide(item.id, false)"
                   >
                     Rejeitar e descartar cenário
@@ -460,12 +581,22 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
               [disabled]="!ui.canAct() || ui.busy() || !ui.canSave()"
               (click)="ui.save()"
             >
-              Salvar referência temporária da sessão
+              Salvar referência virtual no servidor
             </button>
           }
         }
         @if (ui.stage() === 'questions' || ui.stage() === 'plan') {
-          <button type="button" (click)="confirmCancel = true">Cancelar AutoConfig</button>
+          <button
+            type="button"
+            [disabled]="
+              !ui.canAct() ||
+              ui.busy() ||
+              (ui.model() && ['saved', 'rejected', 'expired'].includes(ui.model()!.state))
+            "
+            (click)="confirmCancel = true"
+          >
+            Cancelar AutoConfig
+          </button>
         }
         @if (confirmCancel) {
           <div class="alert" role="group" aria-label="Confirmar cancelamento">
@@ -479,19 +610,19 @@ import type { AutoContext, AutoReference } from './autoconfig-contract';
         }
         @if (ui.references().length) {
           <details open>
-            <summary>Referências temporárias ({{ ui.references().length }})</summary>
+            <summary>Referências persistidas ({{ ui.references().length }})</summary>
             @for (r of ui.references(); track r.version) {
               <p role="status">
-                Referência v{{ r.version }} · {{ r.items.length }} item(ns) · SIMULAÇÃO LAB · só
-                memória da sessão, não salva no servidor.
+                Referência v{{ r.version }} · ID {{ r.id }} · SIMULAÇÃO LAB · persistida no servidor
+                · UNVERIFIED · não aplicada.
               </p>
               <button type="button" (click)="download(r)">
                 Baixar referência simulada v{{ r.version }}
               </button>
             }
             <p>
-              Para referências da passagem, o fluxo existente continua disponível acima. Ele não
-              contém estes cenários fictícios.
+              Estes recibos são de referências virtuais não aplicadas. Não são snapshots físicos e
+              não podem ser restaurados por este painel.
             </p>
           </details>
         }
@@ -520,7 +651,12 @@ export class AutoConfigComponent {
     simulated: 'Aguardando revisão humana',
     accepted: 'Confirmado como cenário simulado',
     rejected: 'Rejeitado / descartado',
+    blocked: 'Servidor exige contexto ou nova preparação',
+    saved: 'Referência salva pelo servidor',
   };
+  questionChannels: Record<string, string> = {};
+  questionDeltas: Record<string, number> = {};
+  delta = 0;
   channel = '';
   report = '';
   confirmCancel = false;
@@ -537,6 +673,9 @@ export class AutoConfigComponent {
         this.ui.stage() === 'idle' ||
         (this.ui.stage() === 'questions' && this.ui.question() === 0 && !this.ui.answers().goal)
       ) {
+        this.questionChannels = {};
+        this.questionDeltas = {};
+        this.delta = 0;
         this.channel = '';
         this.report = '';
         this.confirmCancel = false;

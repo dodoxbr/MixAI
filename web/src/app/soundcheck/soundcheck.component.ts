@@ -398,7 +398,7 @@ export class SoundcheckComponent {
     });
     // A tela é independente: carrega os eventos ao abrir (antes isso dependia de abrir um <details>).
     effect(() => {
-      if (this.eligible() && this.session.token()) untracked(() => void this.refresh());
+      if (this.eligible() && this.session.token() && this.live.connection() === 'online') untracked(() => void this.refresh());
     });
   }
   private clearForm() {

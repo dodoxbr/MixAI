@@ -1,34 +1,101 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { AutoConfigService, AUTO_ADAPTER } from './autoconfig.service';
 import { AutoConfigComponent } from './autoconfig.component';
-import { AUTO_ADAPTER, AutoConfigService } from './autoconfig.service';
-import { adaptPlan, adaptResult, type AutoAdapter, type AutoInput } from './autoconfig-contract';
-import { fixtureAdapter } from './autoconfig-fixture';
+import { AutoConfigView, type AutoAdapter } from './autoconfig-contract';
+import { AutoHttpError } from './autoconfig-http';
 import { SessionService } from '../core/session.service';
 import { LiveService } from '../core/live.service';
 const context = { eventId: 'event-a', eventName: 'Ensaio', eventVersion: 1 };
-const input: AutoInput = {
-  ...context,
-  schemaVersion: 1,
-  scope: 'lab_simulation',
-  goal: 'Clareza',
-  channel: 3,
-  destination: 'AUX1',
-  report: 'Abafado',
-  stateRevision: 7,
-};
-function boot(adapter: AutoAdapter = fixtureAdapter) {
-  const token = signal<string | null>('a'),
+// Canonical D fixtures exist exclusively in tests. Production reads the authenticated API.
+function plan(state = 'proposed', version = 2): any {
+  const p = {
+    schemaVersion: 1,
+    id: 'plan-000001',
+    title: 'Revisar retorno',
+    eventId: 'event-a',
+    scope: 'AUX1',
+    version,
+    serverId: 'server-a',
+    createdAt: '2026-11-09T00:00:00Z',
+    expiresAt: '2035-11-09T00:10:00Z',
+    state,
+    items: [
+      {
+        spec: {
+          id: 'test-000001',
+          operation: 'level_delta',
+          channel: 3,
+          deltaDB: 1,
+          rationale: 'Teste virtual humano',
+          evidence: [{ kind: 'human_report', text: 'Relato humano' }],
+        },
+        state,
+        questions: [],
+        observation: { status: 'known', value: -10, revision: 7 },
+        target: -9,
+        digest: 'a'.repeat(64),
+      },
+    ],
+    context: {
+      mode: 'lab',
+      serverId: 'server-a',
+      revision: 7,
+      origin: 'lab_simulation',
+      realObservation: 'unavailable',
+      acousticMeasurement: 'unavailable',
+    },
+    receipts: [],
+    history: [],
+    interrupted: false,
+    stale: false,
+    simulationOnly: true,
+    availability: {
+      context: 'known',
+      realObservation: 'unavailable',
+      acousticMeasurement: 'unavailable',
+      reference: 'absent',
+    },
+    virtualState: {},
+    counts: {},
+  };
+  if (['approved_for_lab', 'simulated', 'reviewed'].includes(state))
+    Object.assign(p.items[0]!, {
+      approval: {
+        id: 'approval-00001',
+        operatorSessionId: 'operator-001',
+        scope: 'simulation_only',
+        digest: 'a'.repeat(64),
+        at: '2026-11-09T00:00:00Z',
+      },
+    });
+  if (['simulated', 'reviewed'].includes(state))
+    Object.assign(p.items[0]!, {
+      result: {
+        id: 'result-000001',
+        origin: 'lab_simulation',
+        before: -10,
+        target: -9,
+        after: -9,
+        outcome: 'passed',
+        verification: 'virtual_values_only',
+        audioAnalysis: 'not_performed',
+      },
+    });
+  return AutoConfigView.parse(p);
+}
+function boot(request = vi.fn<AutoAdapter['request']>().mockResolvedValue(plan())) {
+  const token = signal<string | null>('session-a'),
     role = signal('operator'),
     hello = signal<any>({ role: 'operator', mode: 'lab', serverId: 'server-a' }),
     connection = signal('online'),
     state = signal<any>({ revision: 7 });
   const command = vi.fn(),
-    approve = vi.fn();
+    expire = vi.fn(() => token.set(null));
   TestBed.configureTestingModule({
     providers: [
-      { provide: AUTO_ADAPTER, useValue: adapter },
-      { provide: SessionService, useValue: { token, role } },
+      { provide: AUTO_ADAPTER, useValue: { request } },
+      { provide: SessionService, useValue: { token, role, expire } },
       {
         provide: LiveService,
         useValue: {
@@ -36,7 +103,6 @@ function boot(adapter: AutoAdapter = fixtureAdapter) {
           connection,
           state,
           command,
-          approve,
           channels: signal([{ number: 3, name: 'Voz' }]),
         },
       },
@@ -46,21 +112,18 @@ function boot(adapter: AutoAdapter = fixtureAdapter) {
   fixture.componentRef.setInput('event', context);
   fixture.detectChanges();
   const ui = TestBed.inject(AutoConfigService);
-  return { fixture, ui, token, role, hello, connection, state, command, approve };
+  return { fixture, ui, token, role, hello, connection, state, command, expire, request };
 }
-async function prepare(ui: AutoConfigService) {
+async function create(ui: AutoConfigService) {
   ui.start();
-  ui.answer('Melhorar clareza');
+  ui.answer('Clareza');
   ui.answer('3');
   ui.answer('AUX1');
-  await ui.prepare('Abafado no retorno');
+  await ui.prepare('Voz baixa', 1);
 }
-it('asks one question at a time, validates channel and permits going back without executing', async () => {
-  const { ui, fixture, command, approve } = boot();
+it('creates only an unapproved server draft, asks individual questions and never prepares or approves automatically', async () => {
+  const { ui, request, command } = boot();
   ui.start();
-  fixture.detectChanges();
-  expect(fixture.nativeElement.textContent).toContain('Qual é o objetivo?');
-  expect(fixture.nativeElement.querySelector('textarea')).toBeNull();
   ui.answer('Clareza');
   ui.answer('999');
   expect(ui.question()).toBe(1);
@@ -71,221 +134,313 @@ it('asks one question at a time, validates channel and permits going back withou
   ui.back();
   expect(ui.question()).toBe(2);
   ui.answer('AUX1');
-  await ui.prepare('Abafado');
-  fixture.detectChanges();
-  expect(ui.plan()?.items).toHaveLength(2);
-  expect(ui.status()).toEqual({ balance: 'proposed', clarity: 'proposed' });
-  expect(fixture.nativeElement.textContent).toContain('SIMULAÇÃO LAB');
-  expect(fixture.nativeElement.textContent).toContain('Não ouvimos nem medimos áudio');
-  expect(command).not.toHaveBeenCalled();
-  expect(approve).not.toHaveBeenCalled();
-});
-it('requires individual human approval, prevents double dispatch and saves reviewed versions only in session', async () => {
-  const simulate = vi.fn(fixtureAdapter.simulate);
-  const { ui, fixture, command } = boot({ ...fixtureAdapter, simulate });
-  await prepare(ui);
-  await ui.simulate('balance');
-  expect(simulate).not.toHaveBeenCalled();
-  ui.decide('balance', true);
-  expect(ui.status()['balance']).toBe('proposed');
-  ui.save();
-  expect(ui.references()).toHaveLength(0);
-  ui.approve('balance');
-  await Promise.all([ui.simulate('balance'), ui.simulate('balance')]);
-  expect(simulate).toHaveBeenCalledTimes(1);
-  expect(ui.status()['clarity']).toBe('proposed');
-  ui.decide('balance', true);
-  ui.save();
-  expect(ui.references()).toHaveLength(0);
-  ui.decide('clarity', false);
-  ui.save();
-  ui.save();
-  expect(ui.references().map((r) => r.version)).toEqual([1, 2]);
-  expect(ui.references()[0]?.items).toHaveLength(1);
-  expect(ui.references()[0]?.temporary).toBe(true);
-  ui.decide('balance', false);
-  expect(ui.canSave()).toBe(false);
-  fixture.detectChanges();
+  await ui.prepare('Voz baixa', 0);
+  expect(request).not.toHaveBeenCalled();
+  await ui.prepare('Voz baixa', 1);
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(request.mock.calls[0]?.[0]).toBe('/api/autoconfig');
+  expect(request.mock.calls[0]?.[1]).toMatchObject({
+    scope: 'AUX1',
+    items: [{ operation: 'level_delta', deltaDB: 1, channel: 3 }],
+  });
+  expect(request.mock.calls[0]?.[1]).not.toHaveProperty('approved');
   expect(command).not.toHaveBeenCalled();
 });
-it.each(['token', 'role', 'mode', 'server', 'event', 'offline', 'revision', 'cancel'] as const)(
-  'discards late simulation and approvals after %s change',
+it('click requests approval on the server; there is no optimistic authorization and rejected authorization cannot simulate', async () => {
+  let resolve!: (v: unknown) => void;
+  const request = vi
+    .fn<AutoAdapter['request']>()
+    .mockResolvedValueOnce(plan())
+    .mockImplementationOnce(() => new Promise((r) => (resolve = r)))
+    .mockRejectedValueOnce(new AutoHttpError('FORBIDDEN'));
+  const { ui } = boot(request);
+  await create(ui);
+  const pending = ui.approve('test-000001');
+  expect(ui.status()['test-000001']).toBe('proposed');
+  await ui.simulate('test-000001');
+  expect(request).toHaveBeenCalledTimes(2);
+  resolve(plan('approved_for_lab', 3));
+  await pending;
+  expect(ui.status()['test-000001']).toBe('approved');
+  expect(request.mock.calls[1]?.[1]).toMatchObject({
+    action: 'approve',
+    expectedVersion: 2,
+    digest: 'a'.repeat(64),
+    scope: 'simulation_only',
+    expectedStateRevision: 7,
+    confirmed: true,
+  });
+  await ui.simulate('test-000001');
+  expect(ui.results()).toEqual({});
+  expect(ui.needsRefresh()).toBe(true);
+  expect(ui.error()).toContain('recusou');
+});
+it('uses server approvalId/version, never double-dispatches and accepts only server simulation results', async () => {
+  let resolve!: (v: unknown) => void;
+  const request = vi
+    .fn<AutoAdapter['request']>()
+    .mockResolvedValueOnce(plan())
+    .mockResolvedValueOnce(plan('approved_for_lab', 3))
+    .mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+  const { ui, command } = boot(request);
+  await create(ui);
+  await ui.approve('test-000001');
+  const pending = ui.simulate('test-000001');
+  await ui.simulate('test-000001');
+  expect(request).toHaveBeenCalledTimes(3);
+  expect(ui.status()['test-000001']).toBe('approved');
+  expect(request.mock.calls[2]?.[1]).toMatchObject({
+    action: 'simulate',
+    approvalId: 'approval-00001',
+    expectedVersion: 3,
+  });
+  resolve(plan('simulated', 5));
+  await pending;
+  expect(ui.results()['test-000001']).toMatchObject({ before: -10, after: -9 });
+  expect(ui.status()['test-000001']).toBe('simulated');
+  expect(command).not.toHaveBeenCalled();
+});
+it.each(['token', 'role', 'mode', 'server', 'event', 'offline'] as const)(
+  'drops late server responses and private data after %s changes',
   async (change) => {
     let resolve!: (v: unknown) => void;
-    const simulate = vi.fn(() => new Promise<unknown>((r) => (resolve = r)));
-    const { ui, fixture, token, role, hello, connection, state } = boot({
-      ...fixtureAdapter,
-      simulate,
-    });
-    await prepare(ui);
-    const plan = ui.plan()!;
-    ui.approve('balance');
-    const pending = ui.simulate('balance');
-    if (change === 'token') token.set('b');
-    if (change === 'role') role.set('musician');
-    if (change === 'mode') hello.update((h) => ({ ...h, mode: 'real' }));
-    if (change === 'server') hello.update((h) => ({ ...h, serverId: 'b' }));
-    if (change === 'event') fixture.componentRef.setInput('event', { ...context, eventId: 'b' });
-    if (change === 'offline') connection.set('offline');
-    if (change === 'revision') state.set({ revision: 8 });
-    if (change === 'cancel') ui.cancel();
-    fixture.detectChanges();
-    resolve(await fixtureAdapter.simulate({ plan, itemId: 'balance', operatorApproved: true }));
+    const request = vi
+      .fn<AutoAdapter['request']>()
+      .mockResolvedValueOnce(plan())
+      .mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+    const b = boot(request);
+    await create(b.ui);
+    const pending = b.ui.approve('test-000001');
+    if (change === 'token') b.token.set('other');
+    if (change === 'role') b.role.set('musician');
+    if (change === 'mode') b.hello.update((h) => ({ ...h, mode: 'real' }));
+    if (change === 'server') b.hello.update((h) => ({ ...h, serverId: 'other-server' }));
+    if (change === 'event')
+      b.fixture.componentRef.setInput('event', { ...context, eventId: 'event-b' });
+    if (change === 'offline') b.connection.set('offline');
+    b.fixture.detectChanges();
+    resolve(plan('approved_for_lab', 3));
     await pending;
-    fixture.detectChanges();
-    expect(ui.results()).toEqual({});
-    expect(ui.status()).toEqual({});
-    expect(ui.references()).toEqual([]);
-    expect(ui.busy()).toBe(false);
+    expect(b.ui.status()['test-000001']).not.toBe('approved');
+    expect(b.ui.references()).toEqual([]);
+    expect(b.ui.busy()).toBe(false);
   },
 );
-it('handles error without exposing raw details or retrying approval; explicit retry requires a fresh click', async () => {
-  const simulate = vi
-    .fn<AutoAdapter['simulate']>()
-    .mockRejectedValueOnce(Error('secret path'))
-    .mockImplementation(fixtureAdapter.simulate);
-  const { ui, fixture } = boot({ ...fixtureAdapter, simulate });
-  await prepare(ui);
-  ui.approve('balance');
-  await ui.simulate('balance');
+it('409 never replays actions; explicit server read is required to resume', async () => {
+  const request = vi
+    .fn<AutoAdapter['request']>()
+    .mockResolvedValueOnce(plan())
+    .mockRejectedValueOnce(new AutoHttpError('CONFLICT'));
+  const { ui } = boot(request);
+  await create(ui);
+  await ui.approve('test-000001');
+  await ui.approve('test-000001');
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(ui.needsRefresh()).toBe(true);
+  expect(ui.error()).toContain('Conflito');
+});
+it('401 expires the existing session and raw errors are never rendered', async () => {
+  const request = vi
+    .fn<AutoAdapter['request']>()
+    .mockRejectedValueOnce(new AutoHttpError('UNAUTHORIZED'));
+  const { ui, expire, fixture } = boot(request);
+  await create(ui);
+  expect(expire).toHaveBeenCalledOnce();
   fixture.detectChanges();
-  expect(ui.error()).toContain('nova autorização');
-  expect(fixture.nativeElement.textContent).not.toContain('secret path');
-  await ui.simulate('balance');
-  expect(simulate).toHaveBeenCalledTimes(1);
-  ui.approve('balance');
-  await ui.simulate('balance');
-  expect(ui.results()['balance']).toBeTruthy();
+  expect(fixture.nativeElement.textContent).not.toContain('Bearer');
 });
-it('rejects malformed plans and does not trust model approvals or measured-audio claims in results', async () => {
-  const raw: any = await fixtureAdapter.plan(input);
-  raw.approved = true;
-  raw.command = { type: 'set_level' };
-  raw.items[0].approved = true;
-  const plan = adaptPlan(raw, input);
-  expect(JSON.stringify(plan)).not.toContain('approved');
-  expect(JSON.stringify(plan)).not.toContain('set_level');
-  for (const mutate of [
-    (p: any) => (p.scope = 'real'),
-    (p: any) => (p.schemaVersion = 2),
-    (p: any) => (p.items[0].channel = 4),
-    (p: any) => (p.items[0].references[0].url = 'javascript:alert(1)'),
-    (p: any) => (p.items[1].id = p.items[0].id),
-  ]) {
-    const invalid = structuredClone(raw);
-    mutate(invalid);
-    expect(() => adaptPlan(invalid, input)).toThrow();
-  }
-  const result: any = await fixtureAdapter.simulate({
-    plan,
-    itemId: 'balance',
-    operatorApproved: true,
-  });
-  result.acousticValidated = true;
-  expect(() => adaptResult(result, plan, plan.items[0]!)).toThrow();
-  result.acousticValidated = false;
-  result.itemId = 'clarity';
-  expect(() => adaptResult(result, plan, plan.items[0]!)).toThrow();
-});
-it('escapes untrusted content, renders accessible labels and never makes a mixer call', async () => {
-  const { fixture, ui, command } = boot({
-    ...fixtureAdapter,
-    async plan(i) {
-      const p: any = await fixtureAdapter.plan(i);
-      p.items[0].title = '<img src=x onerror=alert(1)>';
-      return p;
-    },
-  });
-  await prepare(ui);
+it('validates strict D models, rejects acoustic claims, renders text without HTML and shows unavailable values', async () => {
+  const p = plan();
+  p.items[0].spec.rationale = '<img src=x onerror=alert(1)>';
+  const { ui, fixture } = boot(vi.fn().mockResolvedValue(p));
+  await create(ui);
   fixture.detectChanges();
   expect(fixture.nativeElement.querySelector('img')).toBeNull();
   expect(fixture.nativeElement.textContent).toContain('<img');
-  expect(
-    fixture.nativeElement.querySelector('section[aria-labelledby="autoconfig-title"]'),
-  ).toBeTruthy();
-  expect(command).not.toHaveBeenCalled();
+  const invalid = plan();
+  invalid.simulationOnly = false;
+  expect(() => AutoConfigView.parse(invalid)).toThrow();
+  const result = plan('simulated');
+  result.items[0].result.audioAnalysis = 'performed';
+  expect(() => AutoConfigView.parse(result)).toThrow();
 });
-it.each(['real', 'mock'])('is unavailable in %s without changing authentication', (mode) => {
-  const { ui, hello, fixture, command } = boot();
-  hello.update((h) => ({ ...h, mode }));
-  fixture.detectChanges();
-  ui.start();
-  expect(ui.eligible()).toBe(false);
-  expect(ui.stage()).toBe('idle');
-  expect(fixture.nativeElement.textContent).not.toContain('Iniciar AutoConfig');
-  expect(command).not.toHaveBeenCalled();
-});
-it('invalidates planning on state change and sanitizes planner errors with explicit retry', async () => {
-  let resolve!: (v: unknown) => void;
-  const { ui, state, fixture } = boot({
-    ...fixtureAdapter,
-    plan: () => new Promise((r) => (resolve = r)),
-  });
-  ui.start();
-  ui.answer('Clareza');
-  ui.answer('3');
-  ui.answer('PA');
-  const pending = ui.prepare('Relato');
+it('state changes block mutation until a fresh read and explicit server preparation', async () => {
+  const { ui, state, fixture, request } = boot();
+  await create(ui);
   state.set({ revision: 8 });
   fixture.detectChanges();
-  resolve(await fixtureAdapter.plan({ ...input, destination: 'PA' }));
-  await pending;
-  expect(ui.plan()).toBeNull();
-  expect(ui.busy()).toBe(false);
+  await ui.approve('test-000001');
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(ui.needsRefresh()).toBe(true);
 });
-it('planner failure stays recoverable and never leaks private error text', async () => {
-  const plan = vi
-    .fn<AutoAdapter['plan']>()
-    .mockRejectedValueOnce(Error('private-provider-message'))
-    .mockImplementation(fixtureAdapter.plan);
-  const { ui, fixture } = boot({ ...fixtureAdapter, plan });
-  await prepare(ui);
-  fixture.detectChanges();
-  expect(ui.error()).toContain('Plano indisponível');
-  expect(fixture.nativeElement.textContent).not.toContain('private-provider-message');
-  expect(ui.busy()).toBe(false);
-  await ui.prepare('Relato revisado');
-  expect(ui.plan()?.items).toHaveLength(2);
-  expect(Object.values(ui.status())).toEqual(['proposed', 'proposed']);
-});
-it('times out a hung simulator without replay and clears approvals after session expiry', async () => {
-  const simulate = vi.fn(() => new Promise<unknown>(() => {}));
-  const { ui, token, fixture } = boot({ ...fixtureAdapter, simulate });
-  await prepare(ui);
-  ui.approve('balance');
+it('timeout aborts and never retries, including a late success', async () => {
+  let resolve!: (v: unknown) => void;
+  const request = vi
+    .fn<AutoAdapter['request']>()
+    .mockImplementation(() => new Promise((r) => (resolve = r)));
+  const { ui } = boot(request);
   vi.useFakeTimers();
   try {
-    const pending = ui.simulate('balance');
+    const pending = create(ui);
     await vi.advanceTimersByTimeAsync(10001);
-    await pending;
     expect(ui.busy()).toBe(false);
-    expect(ui.error()).toContain('nova autorização');
-    await ui.simulate('balance');
-    expect(simulate).toHaveBeenCalledTimes(1);
+    expect(ui.needsRefresh()).toBe(true);
+    resolve(plan());
+    await pending;
+    expect(ui.model()).toBeNull();
+    expect(request).toHaveBeenCalledTimes(1);
   } finally {
     vi.useRealTimers();
   }
-  token.set(null);
-  fixture.detectChanges();
-  expect(ui.stage()).toBe('idle');
-  expect(ui.context()).toBeNull();
-  expect(ui.references()).toEqual([]);
-  expect(ui.plan()).toBeNull();
 });
-it.each([0, 1, 2])(
-  'offline preserves unanswered question %s rather than skipping to the report',
-  (question) => {
-    const { ui, connection, fixture } = boot();
-    ui.start();
-    if (question > 0) ui.answer('Clareza');
-    if (question > 1) ui.answer('3');
-    connection.set('offline');
-    fixture.detectChanges();
-    expect(ui.question()).toBe(question);
-    expect(ui.canAct()).toBe(false);
-    connection.set('online');
-    fixture.detectChanges();
-    expect(ui.question()).toBe(question);
-    expect(ui.plan()).toBeNull();
-  },
-);
+it('REAL is hidden and cannot request any API', async () => {
+  const { ui, hello, fixture, request } = boot();
+  hello.update((h) => ({ ...h, mode: 'real' }));
+  fixture.detectChanges();
+  await create(ui);
+  expect(request).not.toHaveBeenCalled();
+  expect(ui.eligible()).toBe(false);
+});
+it('review/save use server versions and display only a persisted, associated reference receipt', async () => {
+  const saved = { ...plan('saved', 7), referenceId: 'reference-00001' };
+  const workspace = {
+    schemaVersion: 1,
+    serverId: 'server-a',
+    mode: 'lab',
+    capabilities: { execution: 'virtual_only', realWrite: false },
+    channels: [],
+    plans: [saved],
+  };
+  const reference = {
+    id: 'reference-00001',
+    version: 1,
+    validationStatus: 'UNVERIFIED',
+    simulation: { planId: 'plan-000001', mode: 'lab', notApplied: true },
+  };
+  const request = vi
+    .fn<AutoAdapter['request']>()
+    .mockResolvedValueOnce(plan())
+    .mockResolvedValueOnce(plan('approved_for_lab', 3))
+    .mockResolvedValueOnce(plan('simulated', 5))
+    .mockResolvedValueOnce(plan('reviewed', 6))
+    .mockResolvedValueOnce(saved)
+    .mockResolvedValueOnce(workspace)
+    .mockResolvedValueOnce({ plan: saved, reference });
+  const { ui } = boot(request);
+  await create(ui);
+  await ui.approve('test-000001');
+  await ui.simulate('test-000001');
+  await ui.decide('test-000001', true);
+  expect(ui.canSave()).toBe(true);
+  await ui.save();
+  expect(ui.references()).toEqual([reference]);
+  expect(ui.model()?.state).toBe('saved');
+  expect(request.mock.calls[3]?.[1]).toMatchObject({
+    action: 'review',
+    accepted: true,
+    expectedVersion: 5,
+  });
+  expect(request.mock.calls[4]?.[1]).toMatchObject({
+    action: 'save',
+    expectedVersion: 6,
+    confirmed: true,
+    expectedStateRevision: 7,
+  });
+  const ids = request.mock.calls.slice(1, 5).map((c) => (c[1] as { requestId: string }).requestId);
+  expect(new Set(ids).size).toBe(4);
+});
+it('an explicit GET cannot reactivate a server approval; preparation is required', async () => {
+  const approved = plan('approved_for_lab', 3),
+    workspace = {
+      schemaVersion: 1,
+      serverId: 'server-a',
+      mode: 'lab',
+      capabilities: { execution: 'virtual_only', realWrite: false },
+      channels: [],
+      plans: [approved],
+    };
+  const request = vi
+    .fn<AutoAdapter['request']>()
+    .mockResolvedValueOnce(plan())
+    .mockResolvedValueOnce(workspace)
+    .mockResolvedValueOnce({ plan: approved, reference: null })
+    .mockResolvedValueOnce(plan('proposed', 4));
+  const { ui } = boot(request);
+  await create(ui);
+  await ui.refresh();
+  expect(ui.requiresPreparation()).toBe(true);
+  await ui.simulate('test-000001');
+  expect(request).toHaveBeenCalledTimes(3);
+  await ui.reprepare();
+  expect(ui.requiresPreparation()).toBe(false);
+  expect(ui.status()['test-000001']).toBe('proposed');
+});
+it('undo and cancel request the backend, without local review or virtual-value mutation', async () => {
+  const rejected = plan('rejected', 6);
+  const request = vi
+    .fn<AutoAdapter['request']>()
+    .mockResolvedValueOnce(plan())
+    .mockResolvedValueOnce(plan('approved_for_lab', 3))
+    .mockResolvedValueOnce(plan('simulated', 5))
+    .mockResolvedValueOnce(rejected)
+    .mockResolvedValueOnce(plan('proposed', 2))
+    .mockResolvedValueOnce(plan('rejected', 3));
+  const { ui, command } = boot(request);
+  await create(ui);
+  await ui.approve('test-000001');
+  await ui.simulate('test-000001');
+  await ui.undo('test-000001');
+  expect(request.mock.calls[3]?.[1]).toMatchObject({
+    action: 'undo',
+    resultId: 'result-000001',
+    confirmed: true,
+    expectedVersion: 5,
+  });
+  await create(ui);
+  await ui.cancel();
+  expect(request.mock.calls[5]?.[1]).toMatchObject({ action: 'cancel', expectedVersion: 2 });
+  expect(ui.stage()).toBe('cancelled');
+  expect(command).not.toHaveBeenCalled();
+});
+it('answers missing server fields via revise without synthesizing observations or approval', async () => {
+  const missing = plan('needs_info');
+  delete missing.items[0]!.spec.channel;
+  delete missing.items[0]!.spec.deltaDB;
+  missing.items[0]!.questions = [
+    {
+      schemaVersion: 1,
+      id: 'channel',
+      message: 'Confirme o canal.',
+      required: true,
+      source: 'server_validation',
+    },
+  ];
+  const request = vi
+    .fn<AutoAdapter['request']>()
+    .mockResolvedValueOnce(missing)
+    .mockResolvedValueOnce(plan('draft', 3));
+  const { ui } = boot(request);
+  await create(ui);
+  await ui.revise('test-000001', 999, 1);
+  expect(request).toHaveBeenCalledTimes(1);
+  await ui.revise('test-000001', 3, 1);
+  expect(request.mock.calls[1]?.[1]).toMatchObject({
+    action: 'revise',
+    expectedVersion: 2,
+    items: [{ channel: 3, deltaDB: 1, operation: 'level_delta' }],
+  });
+  expect(ui.status()['test-000001']).toBe('blocked');
+});
+it('uses the existing nonce generator on HTTP LAN where randomUUID is unavailable', async () => {
+  const { ui, request } = boot();
+  const getRandomValues = crypto.getRandomValues.bind(crypto);
+  vi.stubGlobal('crypto', { getRandomValues });
+  try {
+    await create(ui);
+    expect(request.mock.calls[0]?.[1]).toMatchObject({
+      id: expect.stringMatching(/^[A-Za-z0-9_-]{6,64}$/),
+    });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

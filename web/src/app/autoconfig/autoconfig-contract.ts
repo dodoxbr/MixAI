@@ -1,4 +1,5 @@
-/** Temporary UI boundary for #72/#73. Presentation data, never mixer commands or authorization. */
+import { AutoConfigView, type AutoConfigReadModel } from '../../../../src/autoconfig/contracts';
+import { z } from 'zod';
 export interface AutoContext {
   eventId: string;
   eventName: string;
@@ -10,145 +11,64 @@ export interface AutoAnswers {
   destination: 'PA' | 'AUX1';
   report: string;
 }
-export interface AutoInput extends AutoContext, AutoAnswers {
-  schemaVersion: 1;
-  scope: 'lab_simulation';
-  stateRevision: number | null;
-}
-export interface AutoItem {
-  id: string;
-  channel: number;
-  destination: 'PA' | 'AUX1';
-  title: string;
-  before: string;
-  after: string;
-  rationale: string;
-  evidence: string;
-  risk: 'low' | 'moderate';
-  preconditions: string[];
-  limitations: string[];
-  validation: string;
-  rollback: string;
-  references: { title: string; url: string }[];
-}
-export interface AutoPlan {
-  schemaVersion: 1;
-  scope: 'lab_simulation';
-  id: string;
-  fixture: boolean;
-  items: AutoItem[];
-}
-export interface AutoResult {
-  schemaVersion: 1;
-  scope: 'lab_simulation';
-  planId: string;
-  itemId: string;
-  before: string;
-  after: string;
-  verification: string;
-  acousticValidated: false;
-}
-export interface AutoReference {
-  schemaVersion: 1;
-  scope: 'lab_simulation';
-  eventId: string;
-  version: number;
-  temporary: true;
-  items: { item: AutoItem; result: AutoResult }[];
-}
+export const Workspace = z.object({
+  schemaVersion: z.literal(1),
+  serverId: z.string(),
+  mode: z.enum(['lab', 'mock']),
+  capabilities: z.object({ execution: z.literal('virtual_only'), realWrite: z.literal(false) }),
+  channels: z.array(z.object({ number: z.number().int(), name: z.string() })),
+  plans: z.array(AutoConfigView).max(50),
+});
+// A receipt for the saved server reference, not a loadable scene or local reference store.
+export const ReferenceReceipt = z.object({
+  id: z.string(),
+  version: z.number().int().positive(),
+  validationStatus: z.literal('UNVERIFIED'),
+  simulation: z.object({
+    planId: z.string(),
+    mode: z.enum(['lab', 'mock']),
+    notApplied: z.literal(true),
+  }),
+});
+export type AutoReference = z.infer<typeof ReferenceReceipt>;
 export interface AutoAdapter {
-  readonly kind: 'fixture' | 'integrated';
-  plan(input: AutoInput): Promise<unknown>;
-  simulate(input: { plan: AutoPlan; itemId: string; operatorApproved: true }): Promise<unknown>;
+  request(path: string, body: object | undefined, signal: AbortSignal): Promise<unknown>;
 }
-function text(v: unknown): string {
-  if (typeof v !== 'string' || !v.trim() || v.length > 2000) throw Error('contract');
-  return v;
-}
-function list(v: unknown): string[] {
-  if (!Array.isArray(v) || !v.length || v.length > 12) throw Error('contract');
-  return v.map(text);
-}
-function record(v: unknown): Record<string, unknown> {
-  if (!v || typeof v !== 'object' || Array.isArray(v)) throw Error('contract');
-  return v as Record<string, unknown>;
-}
-export function adaptPlan(value: unknown, input: AutoInput): AutoPlan {
-  const p = record(value);
-  if (
-    p['schemaVersion'] !== 1 ||
-    p['scope'] !== 'lab_simulation' ||
-    typeof p['fixture'] !== 'boolean' ||
-    !Array.isArray(p['items']) ||
-    !p['items'].length ||
-    p['items'].length > 12
-  )
-    throw Error('contract');
-  const ids = new Set<string>();
-  const items = p['items'].map((value) => {
-    const i = record(value);
-    const id = text(i['id']);
-    if (
-      ids.has(id) ||
-      i['channel'] !== input.channel ||
-      i['destination'] !== input.destination ||
-      !['low', 'moderate'].includes(i['risk'] as string)
-    )
-      throw Error('contract');
-    ids.add(id);
-    if (!Array.isArray(i['references']) || !i['references'].length || i['references'].length > 12)
-      throw Error('contract');
-    const references = i['references'].map((value) => {
-      const r = record(value);
-      const url = text(r['url']);
-      if (new URL(url).protocol !== 'https:') throw Error('contract');
-      return { title: text(r['title']), url };
-    });
-    return {
-      id,
-      channel: input.channel,
-      destination: input.destination,
-      title: text(i['title']),
-      before: text(i['before']),
-      after: text(i['after']),
-      rationale: text(i['rationale']),
-      evidence: text(i['evidence']),
-      risk: i['risk'] as AutoItem['risk'],
-      preconditions: list(i['preconditions']),
-      limitations: list(i['limitations']),
-      validation: text(i['validation']),
-      rollback: text(i['rollback']),
-      references,
-    };
-  });
+export { AutoConfigView };
+export type { AutoConfigReadModel };
+export function presentation(plan: AutoConfigReadModel) {
   return {
-    schemaVersion: 1,
-    scope: 'lab_simulation',
-    id: text(p['id']),
-    fixture: p['fixture'],
-    items,
-  };
-}
-export function adaptResult(value: unknown, plan: AutoPlan, item: AutoItem): AutoResult {
-  const r = record(value);
-  if (
-    r['schemaVersion'] !== 1 ||
-    r['scope'] !== 'lab_simulation' ||
-    r['planId'] !== plan.id ||
-    r['itemId'] !== item.id ||
-    r['acousticValidated'] !== false ||
-    r['before'] !== item.before ||
-    r['after'] !== item.after
-  )
-    throw Error('contract');
-  return {
-    schemaVersion: 1,
-    scope: 'lab_simulation',
-    planId: plan.id,
-    itemId: item.id,
-    before: item.before,
-    after: item.after,
-    verification: text(r['verification']),
-    acousticValidated: false,
+    items: plan.items.map((i) => ({
+      id: i.spec.id,
+      channel: i.spec.channel,
+      destination: plan.scope,
+      title: `Teste virtual CH${i.spec.channel ?? '?'}`,
+      before:
+        i.observation?.status === 'known'
+          ? String(i.observation.value) + ' dB (virtual)'
+          : 'Indisponível — não presumido',
+      after:
+        i.target === undefined
+          ? 'Aguardando contexto'
+          : `${i.target} dB (virtual); diferença ${i.spec.deltaDB} dB`,
+      rationale: i.spec.rationale,
+      evidence:
+        i.spec.evidence
+          .map((e) => `${e.kind === 'human_report' ? 'Relato humano' : 'Teoria'}: ${e.text}`)
+          .join('; ') || 'Evidência ausente',
+      preconditions: ['Preparação atual no servidor e autorização individual da sessão operadora.'],
+      limitations: [
+        'Somente level_delta virtual, até ±3 dB. Não é uma recomendação acústica.',
+        'AUX1 compartilhado; nenhum áudio coletado.',
+      ],
+      validation: 'Verificador do servidor compara valores virtuais; não valida som.',
+      rollback: 'Desfazer retorna apenas a visão virtual. Não existe compensação na mesa.',
+      references: [
+        {
+          title: 'Núcleo AutoConfig — contrato e limites',
+          url: 'https://github.com/dodoxbr/MixAI/blob/main/docs/autoconfig/CORE.md',
+        },
+      ],
+    })),
   };
 }
