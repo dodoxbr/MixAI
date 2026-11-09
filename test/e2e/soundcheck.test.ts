@@ -100,7 +100,7 @@ it("operator runs, pauses and resumes event checklist after page reload; approve
       expect(saved.status()).toBe(200);
       const version = (await saved.json()).version;
       await expect
-        .poll(() => wizard.locator("h3").innerText())
+        .poll(() => wizard.getByTestId("sc-event-heading").innerText())
         .toContain("· v" + version + " ·");
       await expect
         .poll(() =>
