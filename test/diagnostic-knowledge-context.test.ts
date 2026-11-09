@@ -54,8 +54,7 @@ describe('a base recebe o contexto consolidado, não a última resposta', () => 
     let step = await say(l, token, COMPLAINT);
     expect(step.reply.clarification.field).toBe('channel');
     step = await say(l, token, step.pick(/fred/i)!, step.ctx);                  // fonte
-    expect(step.reply.clarification.question).toMatch(/retorno|PA/);
-    step = await say(l, token, step.pick(/só no retorno/i)!, step.ctx);          // esclarecimento: abrangência
+    expect(step.reply.clarification.question).toMatch(/sozinha/);               // o destino já veio no relato: não se pergunta PA/fones de novo
     step = await say(l, token, step.pick(/também sozinha/i)!, step.ctx);         // esclarecimento: isolamento
     step = await say(l, token, step.pick(/^microfone$/i)!, step.ctx);            // esclarecimento: captação
     const last = await say(l, token, step.pick(/encontrei um problema/i)!, step.ctx);
@@ -73,7 +72,7 @@ describe('a base recebe o contexto consolidado, não a última resposta', () => 
     // a fonte escolhida e os esclarecimentos foram consolidados
     const withFred = l.calls.filter((c) => c.channel === 3);
     expect(withFred.length).toBeGreaterThanOrEqual(3);
-    expect(withFred.at(-1)!.text).toContain('Só no retorno.');
+    expect(withFred.at(-1)!.text).not.toMatch(/Só no retorno|Só no PA/);
     expect(withFred.at(-1)!.text).toContain('Soa assim também sozinha.');
     expect(withFred.at(-1)!.text).toContain('A fonte usa microfone.');
     // o resultado da verificação final não muda a consulta: reaproveita a anterior em vez de buscar de novo
