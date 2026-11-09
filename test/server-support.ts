@@ -1,3 +1,4 @@
+import type { AutoConfigSimulator } from '../src/autoconfig/contracts.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +25,7 @@ export interface TestServerOptions {
   mode?: 'lab' | 'mock';
   pttRecognizer?: FileSpeechRecognizer;
   referencePorts?: ReferencePorts;
+  autoConfigSimulator?: AutoConfigSimulator;
   /** Base de conhecimento local já montada (testes usam arquivo temporário e Ollama falso). */
   knowledge?: LocalKnowledge;
   safety?: Partial<SafetyConfig>;
@@ -75,7 +77,7 @@ export async function startTestServer(opts: TestServerOptions = {}) {
     (async () => {
       throw new Error('teste tentou chamar a API real da Anthropic');
     });
-  const server = await startServer(loaded, { port: opts.port ?? 0, clock: clock.now, app: { loaded, mixer, controller, log }, aiFetch, pttRecognizer: opts.pttRecognizer, referencePorts: opts.referencePorts, knowledge: opts.knowledge });
+  const server = await startServer(loaded, { port: opts.port ?? 0, clock: clock.now, app: { loaded, mixer, controller, log }, aiFetch, pttRecognizer: opts.pttRecognizer, referencePorts: opts.referencePorts, autoConfigSimulator: opts.autoConfigSimulator, knowledge: opts.knowledge });
   const base = server.urls[0]!;
 
   const http = async (path: string, init: { method?: string; token?: string; body?: unknown } = {}) => {

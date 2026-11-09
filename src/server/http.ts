@@ -1,3 +1,5 @@
+import type { AutoConfigService } from '../autoconfig/service.js';
+import { autoConfigRoutes } from '../autoconfig/routes.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import fastifyStatic from '@fastify/static';
@@ -70,7 +72,7 @@ function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) 
  * instância por endereço de escuta: 127.0.0.1 e, se configurado, o IP do Wi-Fi), sempre com o
  * MESMO core: um só controlador, um só estado, uma só fila.
  */
-export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string; labProxyOrigin?: string; privatePtt?: PrivatePtt; references?: ReferenceService; knowledge?: LocalKnowledge } = {}): Promise<FastifyInstance> {
+export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webRoot?: string; labProxyOrigin?: string; privatePtt?: PrivatePtt; references?: ReferenceService; autoConfig?: AutoConfigService; knowledge?: LocalKnowledge } = {}): Promise<FastifyInstance> {
   // forceCloseConnections: ao desligar, encerra TODAS as conexões na hora. Sem isso, conexões
   // abertas pelo navegador sem requisição (pré-conexão) seguram o desligamento por até 60 s.
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 512 * 1024, forceCloseConnections: true });
@@ -141,6 +143,8 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
       onRevoke: (callback: (session: string) => void) => core.auth.onRevoke(id => callback(id)),
     });
   }
+
+  if (opts.autoConfig && (core.mode === 'lab' || core.mode === 'mock') && core.mixer.mode === core.mode) await app.register(autoConfigRoutes, { service: opts.autoConfig, origin: opts.labProxyOrigin, principal: (req: FastifyRequest, reply: FastifyReply) => principalOf(core, req, reply), active: (p: Principal) => core.auth.isActive(p) });
 
   if (opts.references && core.mode === 'lab' && core.mixer.mode === 'lab') {
     await app.register(referenceRoutes, { service: opts.references, origin: opts.labProxyOrigin,
