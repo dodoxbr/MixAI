@@ -1,0 +1,3045 @@
+{
+  "notice": "LAB: SYNTHETIC PCM ONLY. Not real band audio; no diagnostic verdict or EQ settings.",
+  "completeMeasurement": {
+    "schemaVersion": 1,
+    "algorithmVersion": "fft-hann-v1",
+    "mode": "LAB",
+    "origin": {
+      "kind": "synthetic",
+      "sourceId": "pilot_voz",
+      "conditionsId": "voz_fixture_v1",
+      "target": {
+        "kind": "channel",
+        "channel": 3
+      },
+      "path": "unknown",
+      "tap": "unknown"
+    },
+    "provenanceVerification": "caller_declared_not_verified",
+    "representation": {
+      "format": "f64",
+      "levelReference": "full_scale"
+    },
+    "sampleRate": 48000,
+    "processing": {
+      "fftSize": 256,
+      "hopSize": 128,
+      "window": "periodic_hann",
+      "normalization": "one_sided_power_window_energy",
+      "dcRemoval": false,
+      "aggregation": "mean_power",
+      "smoothingAlpha": null,
+      "peakCount": 3,
+      "binWidthHz": 187.5
+    },
+    "coverage": {
+      "inputSamples": 256,
+      "analyzedSamples": 256,
+      "discardedTailSamples": 0,
+      "frames": 1,
+      "durationSeconds": 0.005333333333333333
+    },
+    "rms": {
+      "linear": 0.3535533905932738,
+      "dbRelativeToUnit": -9.030899869919436,
+      "dbFS": -9.030899869919436
+    },
+    "totalSpectralPower": {
+      "power": 0.12499999999999997,
+      "dbRelativeToUnit": -9.030899869919436,
+      "dbFS": -9.030899869919436
+    },
+    "bins": [
+      {
+        "frequencyHz": 0,
+        "power": 3.948833390196624e-33,
+        "dbRelativeToUnit": -324.0353118969842,
+        "dbFS": -324.0353118969842
+      },
+      {
+        "frequencyHz": 187.5,
+        "power": 9.946451227136777e-33,
+        "dbRelativeToUnit": -320.0233184260927,
+        "dbFS": -320.0233184260927
+      },
+      {
+        "frequencyHz": 375,
+        "power": 1.3903184443876785e-32,
+        "dbRelativeToUnit": -318.5688571571648,
+        "dbFS": -318.5688571571648
+      },
+      {
+        "frequencyHz": 562.5,
+        "power": 1.307432890491662e-32,
+        "dbRelativeToUnit": -318.8358059388489,
+        "dbFS": -318.8358059388489
+      },
+      {
+        "frequencyHz": 750,
+        "power": 3.81046125703307e-33,
+        "dbRelativeToUnit": -324.1902244971566,
+        "dbFS": -324.1902244971566
+      },
+      {
+        "frequencyHz": 937.5,
+        "power": 1.3086706416184812e-32,
+        "dbRelativeToUnit": -318.83169640329066,
+        "dbFS": -318.83169640329066
+      },
+      {
+        "frequencyHz": 1125,
+        "power": 2.1298840778457928e-32,
+        "dbRelativeToUnit": -316.7164403305042,
+        "dbFS": -316.7164403305042
+      },
+      {
+        "frequencyHz": 1312.5,
+        "power": 0.020833333333333332,
+        "dbRelativeToUnit": -16.812412373755873,
+        "dbFS": -16.812412373755873
+      },
+      {
+        "frequencyHz": 1500,
+        "power": 0.08333333333333333,
+        "dbRelativeToUnit": -10.79181246047625,
+        "dbFS": -10.79181246047625
+      },
+      {
+        "frequencyHz": 1687.5,
+        "power": 0.02083333333333331,
+        "dbRelativeToUnit": -16.812412373755876,
+        "dbFS": -16.812412373755876
+      },
+      {
+        "frequencyHz": 1875,
+        "power": 3.07952315142916e-33,
+        "dbRelativeToUnit": -325.11516526595597,
+        "dbFS": -325.11516526595597
+      },
+      {
+        "frequencyHz": 2062.5,
+        "power": 1.2012495256864355e-34,
+        "dbRelativeToUnit": -339.20366770804605,
+        "dbFS": -339.20366770804605
+      },
+      {
+        "frequencyHz": 2250,
+        "power": 2.261393120216366e-33,
+        "dbRelativeToUnit": -326.4562393340873,
+        "dbFS": -326.4562393340873
+      },
+      {
+        "frequencyHz": 2437.5,
+        "power": 2.609440326724882e-33,
+        "dbRelativeToUnit": -325.8345263023999,
+        "dbFS": -325.8345263023999
+      },
+      {
+        "frequencyHz": 2625,
+        "power": 1.551892365949095e-35,
+        "dbRelativeToUnit": -348.0913840324237,
+        "dbFS": -348.0913840324237
+      },
+      {
+        "frequencyHz": 2812.5,
+        "power": 2.754043648126712e-33,
+        "dbRelativeToUnit": -325.6002918100344,
+        "dbFS": -325.6002918100344
+      },
+      {
+        "frequencyHz": 3000,
+        "power": 2.0645639688456824e-33,
+        "dbRelativeToUnit": -326.8517165631735,
+        "dbFS": -326.8517165631735
+      },
+      {
+        "frequencyHz": 3187.5,
+        "power": 7.0447966450168685e-34,
+        "dbRelativeToUnit": -331.52131538711,
+        "dbFS": -331.52131538711
+      },
+      {
+        "frequencyHz": 3375,
+        "power": 3.525981312469291e-33,
+        "dbRelativeToUnit": -324.5271999377038,
+        "dbFS": -324.5271999377038
+      },
+      {
+        "frequencyHz": 3562.5,
+        "power": 1.6199115111912418e-32,
+        "dbRelativeToUnit": -317.90508708451796,
+        "dbFS": -317.90508708451796
+      },
+      {
+        "frequencyHz": 3750,
+        "power": 7.161816620393314e-33,
+        "dbRelativeToUnit": -321.4497680337031,
+        "dbFS": -321.4497680337031
+      },
+      {
+        "frequencyHz": 3937.5,
+        "power": 2.058757172663856e-32,
+        "dbRelativeToUnit": -316.8639487474731,
+        "dbFS": -316.8639487474731
+      },
+      {
+        "frequencyHz": 4125,
+        "power": 2.4361953535342654e-32,
+        "dbRelativeToUnit": -316.13287889454494,
+        "dbFS": -316.13287889454494
+      },
+      {
+        "frequencyHz": 4312.5,
+        "power": 1.748552995929953e-32,
+        "dbRelativeToUnit": -317.5732120036294,
+        "dbFS": -317.5732120036294
+      },
+      {
+        "frequencyHz": 4500,
+        "power": 4.112707857814917e-33,
+        "dbRelativeToUnit": -323.8587213907946,
+        "dbFS": -323.8587213907946
+      },
+      {
+        "frequencyHz": 4687.5,
+        "power": 1.1287627263560163e-33,
+        "dbRelativeToUnit": -329.47397340151275,
+        "dbFS": -329.47397340151275
+      },
+      {
+        "frequencyHz": 4875,
+        "power": 4.294713967265184e-33,
+        "dbRelativeToUnit": -323.67065755365905,
+        "dbFS": -323.67065755365905
+      },
+      {
+        "frequencyHz": 5062.5,
+        "power": 5.396087932980801e-33,
+        "dbRelativeToUnit": -322.67920981813853,
+        "dbFS": -322.67920981813853
+      },
+      {
+        "frequencyHz": 5250,
+        "power": 1.0942606984605329e-32,
+        "dbRelativeToUnit": -319.60879198647075,
+        "dbFS": -319.60879198647075
+      },
+      {
+        "frequencyHz": 5437.5,
+        "power": 4.058044330994874e-33,
+        "dbRelativeToUnit": -323.9168321294553,
+        "dbFS": -323.9168321294553
+      },
+      {
+        "frequencyHz": 5625,
+        "power": 1.8148723656378672e-33,
+        "dbRelativeToUnit": -327.4115391214207,
+        "dbFS": -327.4115391214207
+      },
+      {
+        "frequencyHz": 5812.5,
+        "power": 2.3760174786637597e-33,
+        "dbRelativeToUnit": -326.2415036888474,
+        "dbFS": -326.2415036888474
+      },
+      {
+        "frequencyHz": 6000,
+        "power": 8.22524476211504e-34,
+        "dbRelativeToUnit": -330.84851169699647,
+        "dbFS": -330.84851169699647
+      },
+      {
+        "frequencyHz": 6187.5,
+        "power": 1.3708711526199854e-33,
+        "dbRelativeToUnit": -328.6300336237736,
+        "dbFS": -328.6300336237736
+      },
+      {
+        "frequencyHz": 6375,
+        "power": 5.3407781126972095e-34,
+        "dbRelativeToUnit": -332.7239546480056,
+        "dbFS": -332.7239546480056
+      },
+      {
+        "frequencyHz": 6562.5,
+        "power": 4.99497286440276e-33,
+        "dbRelativeToUnit": -323.0146686677176,
+        "dbFS": -323.0146686677176
+      },
+      {
+        "frequencyHz": 6750,
+        "power": 2.148274194414306e-33,
+        "dbRelativeToUnit": -326.67910288372235,
+        "dbFS": -326.67910288372235
+      },
+      {
+        "frequencyHz": 6937.5,
+        "power": 4.830611911748709e-33,
+        "dbRelativeToUnit": -323.159978520511,
+        "dbFS": -323.159978520511
+      },
+      {
+        "frequencyHz": 7125,
+        "power": 1.357188027717364e-33,
+        "dbRelativeToUnit": -328.673599800903,
+        "dbFS": -328.673599800903
+      },
+      {
+        "frequencyHz": 7312.5,
+        "power": 1.060389980892412e-33,
+        "dbRelativeToUnit": -329.7453438435623,
+        "dbFS": -329.7453438435623
+      },
+      {
+        "frequencyHz": 7500,
+        "power": 9.018507485156446e-33,
+        "dbRelativeToUnit": -320.44865329929655,
+        "dbFS": -320.44865329929655
+      },
+      {
+        "frequencyHz": 7687.5,
+        "power": 2.1223589145969645e-33,
+        "dbRelativeToUnit": -326.7318117017637,
+        "dbFS": -326.7318117017637
+      },
+      {
+        "frequencyHz": 7875,
+        "power": 6.3238057288297125e-34,
+        "dbRelativeToUnit": -331.9902148032636,
+        "dbFS": -331.9902148032636
+      },
+      {
+        "frequencyHz": 8062.5,
+        "power": 8.210184108335556e-34,
+        "dbRelativeToUnit": -330.8564710398437,
+        "dbFS": -330.8564710398437
+      },
+      {
+        "frequencyHz": 8250,
+        "power": 3.433193728004398e-33,
+        "dbRelativeToUnit": -324.6430168954556,
+        "dbFS": -324.6430168954556
+      },
+      {
+        "frequencyHz": 8437.5,
+        "power": 3.0579610851465907e-34,
+        "dbRelativeToUnit": -335.14568045612265,
+        "dbFS": -335.14568045612265
+      },
+      {
+        "frequencyHz": 8625,
+        "power": 1.1013682691173724e-33,
+        "dbRelativeToUnit": -329.5806743988101,
+        "dbFS": -329.5806743988101
+      },
+      {
+        "frequencyHz": 8812.5,
+        "power": 2.3883156489500882e-35,
+        "dbRelativeToUnit": -346.2190827572607,
+        "dbFS": -346.2190827572607
+      },
+      {
+        "frequencyHz": 9000,
+        "power": 1.4920368685374072e-33,
+        "dbRelativeToUnit": -328.26220445224925,
+        "dbFS": -328.26220445224925
+      },
+      {
+        "frequencyHz": 9187.5,
+        "power": 1.8980855779267002e-33,
+        "dbRelativeToUnit": -327.21684210674016,
+        "dbFS": -327.21684210674016
+      },
+      {
+        "frequencyHz": 9375,
+        "power": 2.423314168089819e-33,
+        "dbRelativeToUnit": -326.15590278548007,
+        "dbFS": -326.15590278548007
+      },
+      {
+        "frequencyHz": 9562.5,
+        "power": 5.177609008217106e-33,
+        "dbRelativeToUnit": -322.8587074879978,
+        "dbFS": -322.8587074879978
+      },
+      {
+        "frequencyHz": 9750,
+        "power": 1.951225254503692e-33,
+        "dbRelativeToUnit": -327.09692591630045,
+        "dbFS": -327.09692591630045
+      },
+      {
+        "frequencyHz": 9937.5,
+        "power": 2.1424988187397414e-33,
+        "dbRelativeToUnit": -326.6907940885165,
+        "dbFS": -326.6907940885165
+      },
+      {
+        "frequencyHz": 10125,
+        "power": 1.6299190362862632e-33,
+        "dbRelativeToUnit": -327.87833967968686,
+        "dbFS": -327.87833967968686
+      },
+      {
+        "frequencyHz": 10312.5,
+        "power": 1.737118280243101e-33,
+        "dbRelativeToUnit": -327.60170609469986,
+        "dbFS": -327.60170609469986
+      },
+      {
+        "frequencyHz": 10500,
+        "power": 4.4094996256402104e-33,
+        "dbRelativeToUnit": -323.5561068993186,
+        "dbFS": -323.5561068993186
+      },
+      {
+        "frequencyHz": 10687.5,
+        "power": 2.7402556064293118e-33,
+        "dbRelativeToUnit": -325.6220892503206,
+        "dbFS": -325.6220892503206
+      },
+      {
+        "frequencyHz": 10875,
+        "power": 3.961159166372965e-33,
+        "dbRelativeToUnit": -324.02177706525606,
+        "dbFS": -324.02177706525606
+      },
+      {
+        "frequencyHz": 11062.5,
+        "power": 4.5961868761698256e-33,
+        "dbRelativeToUnit": -323.37602321663604,
+        "dbFS": -323.37602321663604
+      },
+      {
+        "frequencyHz": 11250,
+        "power": 3.392958086805967e-33,
+        "dbRelativeToUnit": -324.6942150515928,
+        "dbFS": -324.6942150515928
+      },
+      {
+        "frequencyHz": 11437.5,
+        "power": 2.044599071581182e-33,
+        "dbRelativeToUnit": -326.89391840747413,
+        "dbFS": -326.89391840747413
+      },
+      {
+        "frequencyHz": 11625,
+        "power": 1.0422468417986284e-33,
+        "dbRelativeToUnit": -329.82029412192554,
+        "dbFS": -329.82029412192554
+      },
+      {
+        "frequencyHz": 11812.5,
+        "power": 4.568398133468904e-34,
+        "dbRelativeToUnit": -333.40236054579634,
+        "dbFS": -333.40236054579634
+      },
+      {
+        "frequencyHz": 12000,
+        "power": 3.350691966127935e-33,
+        "dbRelativeToUnit": -324.7486549563828,
+        "dbFS": -324.7486549563828
+      },
+      {
+        "frequencyHz": 12187.5,
+        "power": 1.0957169679262719e-33,
+        "dbRelativeToUnit": -329.6030161295197,
+        "dbFS": -329.6030161295197
+      },
+      {
+        "frequencyHz": 12375,
+        "power": 9.892376510173308e-35,
+        "dbRelativeToUnit": -340.0469936247058,
+        "dbFS": -340.0469936247058
+      },
+      {
+        "frequencyHz": 12562.5,
+        "power": 9.286392396469463e-34,
+        "dbRelativeToUnit": -330.32152969170716,
+        "dbFS": -330.32152969170716
+      },
+      {
+        "frequencyHz": 12750,
+        "power": 1.2130913343070537e-33,
+        "dbRelativeToUnit": -329.16106499634424,
+        "dbFS": -329.16106499634424
+      },
+      {
+        "frequencyHz": 12937.5,
+        "power": 2.686105207786716e-34,
+        "dbRelativeToUnit": -335.708769811437,
+        "dbFS": -335.708769811437
+      },
+      {
+        "frequencyHz": 13125,
+        "power": 7.430808566211469e-34,
+        "dbRelativeToUnit": -331.28963926920704,
+        "dbFS": -331.28963926920704
+      },
+      {
+        "frequencyHz": 13312.5,
+        "power": 2.04595777212612e-34,
+        "dbRelativeToUnit": -336.89103334222034,
+        "dbFS": -336.89103334222034
+      },
+      {
+        "frequencyHz": 13500,
+        "power": 9.867574798598541e-34,
+        "dbRelativeToUnit": -330.0578957286298,
+        "dbFS": -330.0578957286298
+      },
+      {
+        "frequencyHz": 13687.5,
+        "power": 1.050603303572393e-33,
+        "dbRelativeToUnit": -329.7856123791231,
+        "dbFS": -329.7856123791231
+      },
+      {
+        "frequencyHz": 13875,
+        "power": 1.678379395303672e-34,
+        "dbRelativeToUnit": -337.7510986075254,
+        "dbFS": -337.7510986075254
+      },
+      {
+        "frequencyHz": 14062.5,
+        "power": 1.433864344964537e-34,
+        "dbRelativeToUnit": -338.4349193445632,
+        "dbFS": -338.4349193445632
+      },
+      {
+        "frequencyHz": 14250,
+        "power": 1.3224493638591075e-34,
+        "dbRelativeToUnit": -338.7862094796392,
+        "dbFS": -338.7862094796392
+      },
+      {
+        "frequencyHz": 14437.5,
+        "power": 4.893433691721576e-34,
+        "dbRelativeToUnit": -333.1038629219534,
+        "dbFS": -333.1038629219534
+      },
+      {
+        "frequencyHz": 14625,
+        "power": 1.020534232567371e-33,
+        "dbRelativeToUnit": -329.91172422828595,
+        "dbFS": -329.91172422828595
+      },
+      {
+        "frequencyHz": 14812.5,
+        "power": 1.2746393556512174e-33,
+        "dbRelativeToUnit": -328.94612676411396,
+        "dbFS": -328.94612676411396
+      },
+      {
+        "frequencyHz": 15000,
+        "power": 3.700366972724558e-33,
+        "dbRelativeToUnit": -324.31755203952923,
+        "dbFS": -324.31755203952923
+      },
+      {
+        "frequencyHz": 15187.5,
+        "power": 3.3424405585180365e-33,
+        "dbRelativeToUnit": -324.7593630742788,
+        "dbFS": -324.7593630742788
+      },
+      {
+        "frequencyHz": 15375,
+        "power": 2.7460000586833284e-34,
+        "dbRelativeToUnit": -335.6129945781819,
+        "dbFS": -335.6129945781819
+      },
+      {
+        "frequencyHz": 15562.5,
+        "power": 1.4686942753336225e-33,
+        "dbRelativeToUnit": -328.3306859791557,
+        "dbFS": -328.3306859791557
+      },
+      {
+        "frequencyHz": 15750,
+        "power": 1.0219282917496195e-33,
+        "dbRelativeToUnit": -329.90579577381396,
+        "dbFS": -329.90579577381396
+      },
+      {
+        "frequencyHz": 15937.5,
+        "power": 1.5429514204935368e-35,
+        "dbRelativeToUnit": -348.11647747393573,
+        "dbFS": -348.11647747393573
+      },
+      {
+        "frequencyHz": 16125,
+        "power": 6.8041345840650755e-34,
+        "dbRelativeToUnit": -331.67227104739254,
+        "dbFS": -331.67227104739254
+      },
+      {
+        "frequencyHz": 16312.5,
+        "power": 1.5811199689924687e-33,
+        "dbRelativeToUnit": -328.01035176307676,
+        "dbFS": -328.01035176307676
+      },
+      {
+        "frequencyHz": 16500,
+        "power": 1.8018774902086257e-33,
+        "dbRelativeToUnit": -327.44274740068965,
+        "dbFS": -327.44274740068965
+      },
+      {
+        "frequencyHz": 16687.5,
+        "power": 5.576707682840951e-34,
+        "dbRelativeToUnit": -332.53622119549385,
+        "dbFS": -332.53622119549385
+      },
+      {
+        "frequencyHz": 16875,
+        "power": 1.9254702833952493e-33,
+        "dbRelativeToUnit": -327.15463179641637,
+        "dbFS": -327.15463179641637
+      },
+      {
+        "frequencyHz": 17062.5,
+        "power": 1.8738074402326555e-33,
+        "dbRelativeToUnit": -327.2727504095155,
+        "dbFS": -327.2727504095155
+      },
+      {
+        "frequencyHz": 17250,
+        "power": 1.998052515422129e-34,
+        "dbRelativeToUnit": -336.9939310126603,
+        "dbFS": -336.9939310126603
+      },
+      {
+        "frequencyHz": 17437.5,
+        "power": 1.663550929848454e-33,
+        "dbRelativeToUnit": -327.78963898604263,
+        "dbFS": -327.78963898604263
+      },
+      {
+        "frequencyHz": 17625,
+        "power": 2.8575128009293014e-33,
+        "dbRelativeToUnit": -325.44011815399693,
+        "dbFS": -325.44011815399693
+      },
+      {
+        "frequencyHz": 17812.5,
+        "power": 9.546685177313323e-34,
+        "dbRelativeToUnit": -330.2014739900313,
+        "dbFS": -330.2014739900313
+      },
+      {
+        "frequencyHz": 18000,
+        "power": 8.094268476261519e-34,
+        "dbRelativeToUnit": -330.91822394727603,
+        "dbFS": -330.91822394727603
+      },
+      {
+        "frequencyHz": 18187.5,
+        "power": 2.088698682061659e-33,
+        "dbRelativeToUnit": -326.80124207294233,
+        "dbFS": -326.80124207294233
+      },
+      {
+        "frequencyHz": 18375,
+        "power": 1.1517269070064067e-34,
+        "dbRelativeToUnit": -339.3865048692007,
+        "dbFS": -339.3865048692007
+      },
+      {
+        "frequencyHz": 18562.5,
+        "power": 3.899259922621102e-34,
+        "dbRelativeToUnit": -334.09017814004727,
+        "dbFS": -334.09017814004727
+      },
+      {
+        "frequencyHz": 18750,
+        "power": 1.9597603152140663e-34,
+        "dbRelativeToUnit": -337.0779704096248,
+        "dbFS": -337.0779704096248
+      },
+      {
+        "frequencyHz": 18937.5,
+        "power": 5.800858009646825e-35,
+        "dbRelativeToUnit": -342.36507764834346,
+        "dbFS": -342.36507764834346
+      },
+      {
+        "frequencyHz": 19125,
+        "power": 1.0028354022851225e-34,
+        "dbRelativeToUnit": -339.9877034289722,
+        "dbFS": -339.9877034289722
+      },
+      {
+        "frequencyHz": 19312.5,
+        "power": 1.0151653667892516e-34,
+        "dbRelativeToUnit": -339.9346320697805,
+        "dbFS": -339.9346320697805
+      },
+      {
+        "frequencyHz": 19500,
+        "power": 5.39232755655807e-35,
+        "dbRelativeToUnit": -342.6822373448369,
+        "dbFS": -342.6822373448369
+      },
+      {
+        "frequencyHz": 19687.5,
+        "power": 1.2821299375487944e-34,
+        "dbRelativeToUnit": -338.92067958981926,
+        "dbFS": -338.92067958981926
+      },
+      {
+        "frequencyHz": 19875,
+        "power": 5.242778554786366e-34,
+        "dbRelativeToUnit": -332.80438485689933,
+        "dbFS": -332.80438485689933
+      },
+      {
+        "frequencyHz": 20062.5,
+        "power": 1.0865129092263952e-33,
+        "dbRelativeToUnit": -329.6396510931356,
+        "dbFS": -329.6396510931356
+      },
+      {
+        "frequencyHz": 20250,
+        "power": 1.305573875908436e-33,
+        "dbRelativeToUnit": -328.84198548588927,
+        "dbFS": -328.84198548588927
+      },
+      {
+        "frequencyHz": 20437.5,
+        "power": 4.776590350951966e-34,
+        "dbRelativeToUnit": -333.2088200300171,
+        "dbFS": -333.2088200300171
+      },
+      {
+        "frequencyHz": 20625,
+        "power": 8.187538214300355e-35,
+        "dbRelativeToUnit": -340.8684665998079,
+        "dbFS": -340.8684665998079
+      },
+      {
+        "frequencyHz": 20812.5,
+        "power": 9.749261297129482e-34,
+        "dbRelativeToUnit": -330.1102828960754,
+        "dbFS": -330.1102828960754
+      },
+      {
+        "frequencyHz": 21000,
+        "power": 1.230438779766875e-33,
+        "dbRelativeToUnit": -329.09939989657926,
+        "dbFS": -329.09939989657926
+      },
+      {
+        "frequencyHz": 21187.5,
+        "power": 4.4636154110060435e-34,
+        "dbRelativeToUnit": -333.5031323164959,
+        "dbFS": -333.5031323164959
+      },
+      {
+        "frequencyHz": 21375,
+        "power": 5.369419199827046e-34,
+        "dbRelativeToUnit": -332.7007268859314,
+        "dbFS": -332.7007268859314
+      },
+      {
+        "frequencyHz": 21562.5,
+        "power": 2.6437601532171527e-34,
+        "dbRelativeToUnit": -335.77777947393326,
+        "dbFS": -335.77777947393326
+      },
+      {
+        "frequencyHz": 21750,
+        "power": 6.102101628755947e-34,
+        "dbRelativeToUnit": -332.14520563583096,
+        "dbFS": -332.14520563583096
+      },
+      {
+        "frequencyHz": 21937.5,
+        "power": 5.205371924479926e-34,
+        "dbRelativeToUnit": -332.83548234649373,
+        "dbFS": -332.83548234649373
+      },
+      {
+        "frequencyHz": 22125,
+        "power": 1.3827908903070999e-34,
+        "dbRelativeToUnit": -338.5924349021033,
+        "dbFS": -338.5924349021033
+      },
+      {
+        "frequencyHz": 22312.5,
+        "power": 6.274769306329419e-32,
+        "dbRelativeToUnit": -312.02402236513035,
+        "dbFS": -312.02402236513035
+      },
+      {
+        "frequencyHz": 22500,
+        "power": 2.344204292761672e-31,
+        "dbRelativeToUnit": -306.3000454310064,
+        "dbFS": -306.3000454310064
+      },
+      {
+        "frequencyHz": 22687.5,
+        "power": 5.835141471649949e-32,
+        "dbRelativeToUnit": -312.33948610122104,
+        "dbFS": -312.33948610122104
+      },
+      {
+        "frequencyHz": 22875,
+        "power": 1.0988894261209804e-34,
+        "dbRelativeToUnit": -339.5904600552143,
+        "dbFS": -339.5904600552143
+      },
+      {
+        "frequencyHz": 23062.5,
+        "power": 7.172700746589998e-34,
+        "dbRelativeToUnit": -331.4431728805704,
+        "dbFS": -331.4431728805704
+      },
+      {
+        "frequencyHz": 23250,
+        "power": 9.22424699492749e-34,
+        "dbRelativeToUnit": -330.35069076583056,
+        "dbFS": -330.35069076583056
+      },
+      {
+        "frequencyHz": 23437.5,
+        "power": 6.758014965604414e-34,
+        "dbRelativeToUnit": -331.70180850816195,
+        "dbFS": -331.70180850816195
+      },
+      {
+        "frequencyHz": 23625,
+        "power": 3.6621178824068e-34,
+        "dbRelativeToUnit": -334.36267680008433,
+        "dbFS": -334.36267680008433
+      },
+      {
+        "frequencyHz": 23812.5,
+        "power": 6.598830794452636e-35,
+        "dbRelativeToUnit": -341.8053300756418,
+        "dbFS": -341.8053300756418
+      },
+      {
+        "frequencyHz": 24000,
+        "power": 3.584007198736468e-34,
+        "dbRelativeToUnit": -334.4563112669731,
+        "dbFS": -334.4563112669731
+      }
+    ],
+    "bands": [
+      {
+        "id": "band_1",
+        "lowHz": 20,
+        "highHz": 80,
+        "level": {
+          "power": 0,
+          "dbRelativeToUnit": null,
+          "dbFS": null
+        },
+        "fractionOfTotalPower": 0
+      },
+      {
+        "id": "band_2",
+        "lowHz": 80,
+        "highHz": 250,
+        "level": {
+          "power": 9.946451227136777e-33,
+          "dbRelativeToUnit": -320.0233184260927,
+          "dbFS": -320.0233184260927
+        },
+        "fractionOfTotalPower": 7.957160981709424e-32
+      },
+      {
+        "id": "band_3",
+        "lowHz": 250,
+        "highHz": 500,
+        "level": {
+          "power": 1.3903184443876785e-32,
+          "dbRelativeToUnit": -318.5688571571648,
+          "dbFS": -318.5688571571648
+        },
+        "fractionOfTotalPower": 1.112254755510143e-31
+      },
+      {
+        "id": "band_4",
+        "lowHz": 500,
+        "highHz": 2000,
+        "level": {
+          "power": 0.12499999999999997,
+          "dbRelativeToUnit": -9.030899869919436,
+          "dbFS": -9.030899869919436
+        },
+        "fractionOfTotalPower": 1
+      },
+      {
+        "id": "band_5",
+        "lowHz": 2000,
+        "highHz": 5000,
+        "level": {
+          "power": 1.0938771742213536e-31,
+          "dbRelativeToUnit": -309.6103143993364,
+          "dbFS": -309.6103143993364
+        },
+        "fractionOfTotalPower": 8.75101739377083e-31
+      },
+      {
+        "id": "band_6",
+        "lowHz": 5000,
+        "highHz": 20000,
+        "level": {
+          "power": 1.4191407529134717e-31,
+          "dbRelativeToUnit": -308.4797452830424,
+          "dbFS": -308.4797452830424
+        },
+        "fractionOfTotalPower": 1.1353126023307776e-30
+      }
+    ],
+    "peaks": [
+      {
+        "frequencyHz": 1500,
+        "bin": 8,
+        "level": {
+          "power": 0.08333333333333333,
+          "dbRelativeToUnit": -10.79181246047625,
+          "dbFS": -10.79181246047625
+        }
+      },
+      {
+        "frequencyHz": 22500,
+        "bin": 120,
+        "level": {
+          "power": 2.344204292761672e-31,
+          "dbRelativeToUnit": -306.3000454310064,
+          "dbFS": -306.3000454310064
+        }
+      },
+      {
+        "frequencyHz": 4125,
+        "bin": 22,
+        "level": {
+          "power": 2.4361953535342654e-32,
+          "dbRelativeToUnit": -316.13287889454494,
+          "dbFS": -316.13287889454494
+        }
+      }
+    ],
+    "clipping": {
+      "status": "not_indicated",
+      "basis": "declared_unit_full_scale",
+      "atOrBeyondFullScaleSamples": 0,
+      "fraction": 0,
+      "longestRun": 0
+    },
+    "limitations": [
+      "Offline LAB analysis of supplied PCM only; no acquisition or verification of physical origin.",
+      "Synthetic signal: not real band audio or evidence from the Soundcraft.",
+      "Levels describe PCM units or declared digital full scale, not acoustic SPL, analog gain or audibility.",
+      "Spectrum does not establish a defect, intelligibility, timbre quality, feedback or an EQ recommendation.",
+      "Peaks are FFT-bin local maxima, not identified instruments or measured feedback frequencies.",
+      "Possible clipping means samples at/beyond representable or declared full scale; absence does not rule out upstream clipping.",
+      "Periodic Hann power normalization; bands sum bin centers without interpolation. DC is retained; gaps and out-of-band energy are possible.",
+      "Spectral mean/EMA is window-weighted; RMS and clipping use the unwindowed analyzed prefix. Tail is reported and excluded."
+    ]
+  },
+  "examples": [
+    {
+      "scenario": "CH8_surdo",
+      "excerpt": true,
+      "omitted": [
+        "bins"
+      ],
+      "before": {
+        "schemaVersion": 1,
+        "algorithmVersion": "fft-hann-v1",
+        "mode": "LAB",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_surdo",
+          "conditionsId": "surdo_fixture_v1",
+          "target": {
+            "kind": "channel",
+            "channel": 8
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "provenanceVerification": "caller_declared_not_verified",
+        "representation": {
+          "format": "f64",
+          "levelReference": "full_scale"
+        },
+        "sampleRate": 48000,
+        "processing": {
+          "fftSize": 4096,
+          "hopSize": 2048,
+          "window": "periodic_hann",
+          "normalization": "one_sided_power_window_energy",
+          "dcRemoval": false,
+          "aggregation": "mean_power",
+          "smoothingAlpha": null,
+          "peakCount": 8,
+          "binWidthHz": 11.71875
+        },
+        "coverage": {
+          "inputSamples": 4096,
+          "analyzedSamples": 4096,
+          "discardedTailSamples": 0,
+          "frames": 1,
+          "durationSeconds": 0.08533333333333333
+        },
+        "rms": {
+          "linear": 0.3535533905932738,
+          "dbRelativeToUnit": -9.030899869919436,
+          "dbFS": -9.030899869919436
+        },
+        "totalSpectralPower": {
+          "power": 0.12499999999999978,
+          "dbRelativeToUnit": -9.030899869919443,
+          "dbFS": -9.030899869919443
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "level": {
+              "power": 0.12499999999999978,
+              "dbRelativeToUnit": -9.030899869919443,
+              "dbFS": -9.030899869919443
+            },
+            "fractionOfTotalPower": 1
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "level": {
+              "power": 1.8898040936820095e-33,
+              "dbRelativeToUnit": -327.235832145795,
+              "dbFS": -327.235832145795
+            },
+            "fractionOfTotalPower": 1.5118432749456104e-32
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "level": {
+              "power": 1.8107499307569525e-32,
+              "dbRelativeToUnit": -317.4214152273466,
+              "dbFS": -317.4214152273466
+            },
+            "fractionOfTotalPower": 1.4485999446055646e-31
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "level": {
+              "power": 1.40733422240533e-31,
+              "dbRelativeToUnit": -308.51602751385917,
+              "dbFS": -308.51602751385917
+            },
+            "fractionOfTotalPower": 1.125867377924266e-30
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "level": {
+              "power": 1.6140899823764355e-30,
+              "dbRelativeToUnit": -297.92072257866585,
+              "dbFS": -297.92072257866585
+            },
+            "fractionOfTotalPower": 1.2912719859011506e-29
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "level": {
+              "power": 1.1374146357047048e-29,
+              "dbRelativeToUnit": -289.44081187755296,
+              "dbFS": -289.44081187755296
+            },
+            "fractionOfTotalPower": 9.099317085637654e-29
+          }
+        ],
+        "peaks": [
+          {
+            "frequencyHz": 46.875,
+            "bin": 4,
+            "level": {
+              "power": 0.08333333333333318,
+              "dbRelativeToUnit": -10.791812460476255,
+              "dbFS": -10.791812460476255
+            }
+          },
+          {
+            "frequencyHz": 23953.125,
+            "bin": 2044,
+            "level": {
+              "power": 9.306217265585089e-29,
+              "dbRelativeToUnit": -280.3122681252237,
+              "dbFS": -280.3122681252237
+            }
+          },
+          {
+            "frequencyHz": 11953.125,
+            "bin": 1020,
+            "level": {
+              "power": 3.914887619228852e-30,
+              "dbRelativeToUnit": -294.0728070028529,
+              "dbFS": -294.0728070028529
+            }
+          },
+          {
+            "frequencyHz": 5953.125,
+            "bin": 508,
+            "level": {
+              "power": 2.9086876309786537e-30,
+              "dbRelativeToUnit": -295.36302915888183,
+              "dbFS": -295.36302915888183
+            }
+          },
+          {
+            "frequencyHz": 2953.125,
+            "bin": 252,
+            "level": {
+              "power": 1.0613516012329292e-30,
+              "dbRelativeToUnit": -299.7414072054752,
+              "dbFS": -299.7414072054752
+            }
+          },
+          {
+            "frequencyHz": 17953.125,
+            "bin": 1532,
+            "level": {
+              "power": 4.94847300777324e-31,
+              "dbRelativeToUnit": -303.05528794320287,
+              "dbFS": -303.05528794320287
+            }
+          },
+          {
+            "frequencyHz": 8953.125,
+            "bin": 764,
+            "level": {
+              "power": 1.3653510686360502e-31,
+              "dbRelativeToUnit": -308.6475566542322,
+              "dbFS": -308.6475566542322
+            }
+          },
+          {
+            "frequencyHz": 1453.125,
+            "bin": 124,
+            "level": {
+              "power": 8.474384357036351e-32,
+              "dbRelativeToUnit": -310.7189184239374,
+              "dbFS": -310.7189184239374
+            }
+          }
+        ],
+        "clipping": {
+          "status": "not_indicated",
+          "basis": "declared_unit_full_scale",
+          "atOrBeyondFullScaleSamples": 0,
+          "fraction": 0,
+          "longestRun": 0
+        },
+        "limitations": [
+          "Offline LAB analysis of supplied PCM only; no acquisition or verification of physical origin.",
+          "Synthetic signal: not real band audio or evidence from the Soundcraft.",
+          "Levels describe PCM units or declared digital full scale, not acoustic SPL, analog gain or audibility.",
+          "Spectrum does not establish a defect, intelligibility, timbre quality, feedback or an EQ recommendation.",
+          "Peaks are FFT-bin local maxima, not identified instruments or measured feedback frequencies.",
+          "Possible clipping means samples at/beyond representable or declared full scale; absence does not rule out upstream clipping.",
+          "Periodic Hann power normalization; bands sum bin centers without interpolation. DC is retained; gaps and out-of-band energy are possible.",
+          "Spectral mean/EMA is window-weighted; RMS and clipping use the unwindowed analyzed prefix. Tail is reported and excluded."
+        ]
+      },
+      "after": {
+        "schemaVersion": 1,
+        "algorithmVersion": "fft-hann-v1",
+        "mode": "LAB",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_surdo",
+          "conditionsId": "surdo_fixture_v1",
+          "target": {
+            "kind": "channel",
+            "channel": 8
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "provenanceVerification": "caller_declared_not_verified",
+        "representation": {
+          "format": "f64",
+          "levelReference": "full_scale"
+        },
+        "sampleRate": 48000,
+        "processing": {
+          "fftSize": 4096,
+          "hopSize": 2048,
+          "window": "periodic_hann",
+          "normalization": "one_sided_power_window_energy",
+          "dcRemoval": false,
+          "aggregation": "mean_power",
+          "smoothingAlpha": null,
+          "peakCount": 8,
+          "binWidthHz": 11.71875
+        },
+        "coverage": {
+          "inputSamples": 4096,
+          "analyzedSamples": 4096,
+          "discardedTailSamples": 0,
+          "frames": 1,
+          "durationSeconds": 0.08533333333333333
+        },
+        "rms": {
+          "linear": 0.3535533905932738,
+          "dbRelativeToUnit": -9.030899869919436,
+          "dbFS": -9.030899869919436
+        },
+        "totalSpectralPower": {
+          "power": 0.12499999999999976,
+          "dbRelativeToUnit": -9.030899869919445,
+          "dbFS": -9.030899869919445
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "level": {
+              "power": 1.3138707696423409e-33,
+              "dbRelativeToUnit": -328.8144734922926,
+              "dbFS": -328.8144734922926
+            },
+            "fractionOfTotalPower": 1.0510966157138746e-32
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "level": {
+              "power": 0.12499999999999976,
+              "dbRelativeToUnit": -9.030899869919445,
+              "dbFS": -9.030899869919445
+            },
+            "fractionOfTotalPower": 1
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "level": {
+              "power": 4.381951610626756e-33,
+              "dbRelativeToUnit": -323.5833242261142,
+              "dbFS": -323.5833242261142
+            },
+            "fractionOfTotalPower": 3.5055612885014113e-32
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "level": {
+              "power": 1.2955183566368206e-31,
+              "dbRelativeToUnit": -308.87556428969475,
+              "dbFS": -308.87556428969475
+            },
+            "fractionOfTotalPower": 1.0364146853094584e-30
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "level": {
+              "power": 1.732015539528957e-30,
+              "dbRelativeToUnit": -297.614482158398,
+              "dbFS": -297.614482158398
+            },
+            "fractionOfTotalPower": 1.385612431623168e-29
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "level": {
+              "power": 1.2028056000429597e-29,
+              "dbRelativeToUnit": -289.1980455857111,
+              "dbFS": -289.1980455857111
+            },
+            "fractionOfTotalPower": 9.622444800343695e-29
+          }
+        ],
+        "peaks": [
+          {
+            "frequencyHz": 187.5,
+            "bin": 16,
+            "level": {
+              "power": 0.08333333333333318,
+              "dbRelativeToUnit": -10.791812460476255,
+              "dbFS": -10.791812460476255
+            }
+          },
+          {
+            "frequencyHz": 23812.5,
+            "bin": 2032,
+            "level": {
+              "power": 9.21368989718109e-29,
+              "dbRelativeToUnit": -280.35566408776356,
+              "dbFS": -280.35566408776356
+            }
+          },
+          {
+            "frequencyHz": 11812.5,
+            "bin": 1008,
+            "level": {
+              "power": 3.783471243141413e-30,
+              "dbRelativeToUnit": -294.2210956260628,
+              "dbFS": -294.2210956260628
+            }
+          },
+          {
+            "frequencyHz": 5812.5,
+            "bin": 496,
+            "level": {
+              "power": 2.8431983972528144e-30,
+              "dbRelativeToUnit": -295.46192834356043,
+              "dbFS": -295.46192834356043
+            }
+          },
+          {
+            "frequencyHz": 2812.5,
+            "bin": 240,
+            "level": {
+              "power": 9.693281028151712e-31,
+              "dbRelativeToUnit": -300.1352919598999,
+              "dbFS": -300.1352919598999
+            }
+          },
+          {
+            "frequencyHz": 17812.5,
+            "bin": 1520,
+            "level": {
+              "power": 4.759438798102776e-31,
+              "dbRelativeToUnit": -303.2244425342572,
+              "dbFS": -303.2244425342572
+            }
+          },
+          {
+            "frequencyHz": 8812.5,
+            "bin": 752,
+            "level": {
+              "power": 1.2268248445333225e-31,
+              "dbRelativeToUnit": -309.1121743766634,
+              "dbFS": -309.1121743766634
+            }
+          },
+          {
+            "frequencyHz": 6023.4375,
+            "bin": 514,
+            "level": {
+              "power": 6.962233991980274e-32,
+              "dbRelativeToUnit": -311.57251384711867,
+              "dbFS": -311.57251384711867
+            }
+          }
+        ],
+        "clipping": {
+          "status": "not_indicated",
+          "basis": "declared_unit_full_scale",
+          "atOrBeyondFullScaleSamples": 0,
+          "fraction": 0,
+          "longestRun": 0
+        },
+        "limitations": [
+          "Offline LAB analysis of supplied PCM only; no acquisition or verification of physical origin.",
+          "Synthetic signal: not real band audio or evidence from the Soundcraft.",
+          "Levels describe PCM units or declared digital full scale, not acoustic SPL, analog gain or audibility.",
+          "Spectrum does not establish a defect, intelligibility, timbre quality, feedback or an EQ recommendation.",
+          "Peaks are FFT-bin local maxima, not identified instruments or measured feedback frequencies.",
+          "Possible clipping means samples at/beyond representable or declared full scale; absence does not rule out upstream clipping.",
+          "Periodic Hann power normalization; bands sum bin centers without interpolation. DC is retained; gaps and out-of-band energy are possible.",
+          "Spectral mean/EMA is window-weighted; RMS and clipping use the unwindowed analyzed prefix. Tail is reported and excluded."
+        ]
+      },
+      "comparison": {
+        "kind": "comparison",
+        "mode": "LAB",
+        "comparability": "caller_declared_conditions_match",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_surdo",
+          "conditionsId": "surdo_fixture_v1",
+          "target": {
+            "kind": "channel",
+            "channel": 8
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "rms": {
+          "before": 0.3535533905932738,
+          "after": 0.3535533905932738,
+          "deltaDB": 0,
+          "transition": "finite"
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "power": {
+              "before": 0.12499999999999978,
+              "after": 1.3138707696423409e-33,
+              "deltaDB": -319.7835736223732,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "power": {
+              "before": 1.8898040936820095e-33,
+              "after": 0.12499999999999976,
+              "deltaDB": 318.20493227587554,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "power": {
+              "before": 1.8107499307569525e-32,
+              "after": 4.381951610626756e-33,
+              "deltaDB": -6.1619089987675935,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "power": {
+              "before": 1.40733422240533e-31,
+              "after": 1.2955183566368206e-31,
+              "deltaDB": -0.3595367758356005,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "power": {
+              "before": 1.6140899823764355e-30,
+              "after": 1.732015539528957e-30,
+              "deltaDB": 0.3062404202677982,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "power": {
+              "before": 1.1374146357047048e-29,
+              "after": 1.2028056000429597e-29,
+              "deltaDB": 0.24276629184189602,
+              "transition": "finite"
+            }
+          }
+        ],
+        "dominantPeakHz": {
+          "before": 46.875,
+          "after": 187.5
+        },
+        "limitations": [
+          "Comparison relies on caller-declared conditions, not verified capture metadata.",
+          "No resampling, gain compensation, calibration or interpolation. Unknown physical differences invalidate interpretation.",
+          "Changes describe supplied PCM only; they do not establish improvement, a defect, causality or an EQ adjustment.",
+          "Null deltaDB with a zero transition represents an unbounded or undefined logarithmic difference, not zero change."
+        ]
+      }
+    },
+    {
+      "scenario": "CH3_voz",
+      "excerpt": true,
+      "omitted": [
+        "bins"
+      ],
+      "before": {
+        "schemaVersion": 1,
+        "algorithmVersion": "fft-hann-v1",
+        "mode": "LAB",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_voz",
+          "conditionsId": "voz_fixture_v1",
+          "target": {
+            "kind": "channel",
+            "channel": 3
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "provenanceVerification": "caller_declared_not_verified",
+        "representation": {
+          "format": "f64",
+          "levelReference": "full_scale"
+        },
+        "sampleRate": 48000,
+        "processing": {
+          "fftSize": 4096,
+          "hopSize": 2048,
+          "window": "periodic_hann",
+          "normalization": "one_sided_power_window_energy",
+          "dcRemoval": false,
+          "aggregation": "mean_power",
+          "smoothingAlpha": null,
+          "peakCount": 8,
+          "binWidthHz": 11.71875
+        },
+        "coverage": {
+          "inputSamples": 4096,
+          "analyzedSamples": 4096,
+          "discardedTailSamples": 0,
+          "frames": 1,
+          "durationSeconds": 0.08533333333333333
+        },
+        "rms": {
+          "linear": 0.3535533905932738,
+          "dbRelativeToUnit": -9.030899869919436,
+          "dbFS": -9.030899869919436
+        },
+        "totalSpectralPower": {
+          "power": 0.12499999999999926,
+          "dbRelativeToUnit": -9.03089986991946,
+          "dbFS": -9.03089986991946
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "level": {
+              "power": 9.975501837392435e-33,
+              "dbRelativeToUnit": -320.0106524704691,
+              "dbFS": -320.0106524704691
+            },
+            "fractionOfTotalPower": 7.980401469913995e-32
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "level": {
+              "power": 2.618199884895937e-32,
+              "dbRelativeToUnit": -315.81997200568475,
+              "dbFS": -315.81997200568475
+            },
+            "fractionOfTotalPower": 2.094559907916762e-31
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "level": {
+              "power": 3.7424533390699577e-32,
+              "dbRelativeToUnit": -314.26843605737287,
+              "dbFS": -314.26843605737287
+            },
+            "fractionOfTotalPower": 2.9939626712559837e-31
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "level": {
+              "power": 0.12499999999999926,
+              "dbRelativeToUnit": -9.03089986991946,
+              "dbFS": -9.03089986991946
+            },
+            "fractionOfTotalPower": 1
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "level": {
+              "power": 5.701111663087942e-30,
+              "dbRelativeToUnit": -292.44040452735914,
+              "dbFS": -292.44040452735914
+            },
+            "fractionOfTotalPower": 4.5608893304703805e-29
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "level": {
+              "power": 2.8104531983548476e-29,
+              "dbRelativeToUnit": -285.5122364248827,
+              "dbFS": -285.5122364248827
+            },
+            "fractionOfTotalPower": 2.2483625586838915e-28
+          }
+        ],
+        "peaks": [
+          {
+            "frequencyHz": 750,
+            "bin": 64,
+            "level": {
+              "power": 0.08333333333333283,
+              "dbRelativeToUnit": -10.791812460476276,
+              "dbFS": -10.791812460476276
+            }
+          },
+          {
+            "frequencyHz": 23250,
+            "bin": 1984,
+            "level": {
+              "power": 8.878500185240781e-29,
+              "dbRelativeToUnit": -280.5166039191136,
+              "dbFS": -280.5166039191136
+            }
+          },
+          {
+            "frequencyHz": 11250,
+            "bin": 960,
+            "level": {
+              "power": 3.397195357707316e-30,
+              "dbRelativeToUnit": -294.68879478053503,
+              "dbFS": -294.68879478053503
+            }
+          },
+          {
+            "frequencyHz": 5250,
+            "bin": 448,
+            "level": {
+              "power": 2.3797138314496752e-30,
+              "dbRelativeToUnit": -296.2347526516812,
+              "dbFS": -296.2347526516812
+            }
+          },
+          {
+            "frequencyHz": 6585.9375,
+            "bin": 562,
+            "level": {
+              "power": 1.1101911601138202e-30,
+              "dbRelativeToUnit": -299.54602235055927,
+              "dbFS": -299.54602235055927
+            }
+          },
+          {
+            "frequencyHz": 5085.9375,
+            "bin": 434,
+            "level": {
+              "power": 1.0766683397290406e-30,
+              "dbRelativeToUnit": -299.6791805752677,
+              "dbFS": -299.6791805752677
+            }
+          },
+          {
+            "frequencyHz": 2250,
+            "bin": 192,
+            "level": {
+              "power": 9.373983346076188e-31,
+              "dbRelativeToUnit": -300.28075822387564,
+              "dbFS": -300.28075822387564
+            }
+          },
+          {
+            "frequencyHz": 12410.15625,
+            "bin": 1059,
+            "level": {
+              "power": 4.327106314676241e-31,
+              "dbRelativeToUnit": -303.63802434288215,
+              "dbFS": -303.63802434288215
+            }
+          }
+        ],
+        "clipping": {
+          "status": "not_indicated",
+          "basis": "declared_unit_full_scale",
+          "atOrBeyondFullScaleSamples": 0,
+          "fraction": 0,
+          "longestRun": 0
+        },
+        "limitations": [
+          "Offline LAB analysis of supplied PCM only; no acquisition or verification of physical origin.",
+          "Synthetic signal: not real band audio or evidence from the Soundcraft.",
+          "Levels describe PCM units or declared digital full scale, not acoustic SPL, analog gain or audibility.",
+          "Spectrum does not establish a defect, intelligibility, timbre quality, feedback or an EQ recommendation.",
+          "Peaks are FFT-bin local maxima, not identified instruments or measured feedback frequencies.",
+          "Possible clipping means samples at/beyond representable or declared full scale; absence does not rule out upstream clipping.",
+          "Periodic Hann power normalization; bands sum bin centers without interpolation. DC is retained; gaps and out-of-band energy are possible.",
+          "Spectral mean/EMA is window-weighted; RMS and clipping use the unwindowed analyzed prefix. Tail is reported and excluded."
+        ]
+      },
+      "after": {
+        "schemaVersion": 1,
+        "algorithmVersion": "fft-hann-v1",
+        "mode": "LAB",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_voz",
+          "conditionsId": "voz_fixture_v1",
+          "target": {
+            "kind": "channel",
+            "channel": 3
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "provenanceVerification": "caller_declared_not_verified",
+        "representation": {
+          "format": "f64",
+          "levelReference": "full_scale"
+        },
+        "sampleRate": 48000,
+        "processing": {
+          "fftSize": 4096,
+          "hopSize": 2048,
+          "window": "periodic_hann",
+          "normalization": "one_sided_power_window_energy",
+          "dcRemoval": false,
+          "aggregation": "mean_power",
+          "smoothingAlpha": null,
+          "peakCount": 8,
+          "binWidthHz": 11.71875
+        },
+        "coverage": {
+          "inputSamples": 4096,
+          "analyzedSamples": 4096,
+          "discardedTailSamples": 0,
+          "frames": 1,
+          "durationSeconds": 0.08533333333333333
+        },
+        "rms": {
+          "linear": 0.35355339059327373,
+          "dbRelativeToUnit": -9.030899869919436,
+          "dbFS": -9.030899869919436
+        },
+        "totalSpectralPower": {
+          "power": 0.12499999999999745,
+          "dbRelativeToUnit": -9.030899869919525,
+          "dbFS": -9.030899869919525
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "level": {
+              "power": 2.9857079249723922e-30,
+              "dbRelativeToUnit": -295.2495267912169,
+              "dbFS": -295.2495267912169
+            },
+            "fractionOfTotalPower": 2.3885663399779626e-29
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "level": {
+              "power": 1.8712475331219284e-29,
+              "dbRelativeToUnit": -287.2786875918182,
+              "dbFS": -287.2786875918182
+            },
+            "fractionOfTotalPower": 1.4969980264975732e-28
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "level": {
+              "power": 1.7311685299248377e-30,
+              "dbRelativeToUnit": -297.61660651331044,
+              "dbFS": -297.61660651331044
+            },
+            "fractionOfTotalPower": 1.3849348239398984e-29
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "level": {
+              "power": 5.488548573213345e-30,
+              "dbRelativeToUnit": -292.6054248796948,
+              "dbFS": -292.6054248796948
+            },
+            "fractionOfTotalPower": 4.390838858570766e-29
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "level": {
+              "power": 0.12499999999999745,
+              "dbRelativeToUnit": -9.030899869919525,
+              "dbFS": -9.030899869919525
+            },
+            "fractionOfTotalPower": 1
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "level": {
+              "power": 2.5316598839013403e-28,
+              "dbRelativeToUnit": -275.9659464007115,
+              "dbFS": -275.9659464007115
+            },
+            "fractionOfTotalPower": 2.0253279071211135e-27
+          }
+        ],
+        "peaks": [
+          {
+            "frequencyHz": 3000,
+            "bin": 256,
+            "level": {
+              "power": 0.08333333333333179,
+              "dbRelativeToUnit": -10.79181246047633,
+              "dbFS": -10.79181246047633
+            }
+          },
+          {
+            "frequencyHz": 21000,
+            "bin": 1792,
+            "level": {
+              "power": 6.685311365068967e-29,
+              "dbRelativeToUnit": -281.7487836088034,
+              "dbFS": -281.7487836088034
+            }
+          },
+          {
+            "frequencyHz": 8835.9375,
+            "bin": 754,
+            "level": {
+              "power": 1.8483356027412487e-29,
+              "dbRelativeToUnit": -287.3321917100235,
+              "dbFS": -287.3321917100235
+            }
+          },
+          {
+            "frequencyHz": 2835.9375,
+            "bin": 242,
+            "level": {
+              "power": 1.759913861032331e-29,
+              "dbRelativeToUnit": -287.54508588205067,
+              "dbFS": -287.54508588205067
+            }
+          },
+          {
+            "frequencyHz": 14578.125,
+            "bin": 1244,
+            "level": {
+              "power": 6.814928016270112e-30,
+              "dbRelativeToUnit": -291.6653872710763,
+              "dbFS": -291.6653872710763
+            }
+          },
+          {
+            "frequencyHz": 9000,
+            "bin": 768,
+            "level": {
+              "power": 6.146052911012965e-30,
+              "dbRelativeToUnit": -292.1140370524755,
+              "dbFS": -292.1140370524755
+            }
+          },
+          {
+            "frequencyHz": 14660.15625,
+            "bin": 1251,
+            "level": {
+              "power": 5.8687769668986894e-30,
+              "dbRelativeToUnit": -292.31452394811816,
+              "dbFS": -292.31452394811816
+            }
+          },
+          {
+            "frequencyHz": 8683.59375,
+            "bin": 741,
+            "level": {
+              "power": 5.6835144336822924e-30,
+              "dbRelativeToUnit": -292.45383032746724,
+              "dbFS": -292.45383032746724
+            }
+          }
+        ],
+        "clipping": {
+          "status": "not_indicated",
+          "basis": "declared_unit_full_scale",
+          "atOrBeyondFullScaleSamples": 0,
+          "fraction": 0,
+          "longestRun": 0
+        },
+        "limitations": [
+          "Offline LAB analysis of supplied PCM only; no acquisition or verification of physical origin.",
+          "Synthetic signal: not real band audio or evidence from the Soundcraft.",
+          "Levels describe PCM units or declared digital full scale, not acoustic SPL, analog gain or audibility.",
+          "Spectrum does not establish a defect, intelligibility, timbre quality, feedback or an EQ recommendation.",
+          "Peaks are FFT-bin local maxima, not identified instruments or measured feedback frequencies.",
+          "Possible clipping means samples at/beyond representable or declared full scale; absence does not rule out upstream clipping.",
+          "Periodic Hann power normalization; bands sum bin centers without interpolation. DC is retained; gaps and out-of-band energy are possible.",
+          "Spectral mean/EMA is window-weighted; RMS and clipping use the unwindowed analyzed prefix. Tail is reported and excluded."
+        ]
+      },
+      "comparison": {
+        "kind": "comparison",
+        "mode": "LAB",
+        "comparability": "caller_declared_conditions_match",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_voz",
+          "conditionsId": "voz_fixture_v1",
+          "target": {
+            "kind": "channel",
+            "channel": 3
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "rms": {
+          "before": 0.3535533905932738,
+          "after": 0.35355339059327373,
+          "deltaDB": -1.1102230246251565e-15,
+          "transition": "finite"
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "power": {
+              "before": 9.975501837392435e-33,
+              "after": 2.9857079249723922e-30,
+              "deltaDB": 24.761125679252203,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "power": {
+              "before": 2.618199884895937e-32,
+              "after": 1.8712475331219284e-29,
+              "deltaDB": 28.5412844138666,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "power": {
+              "before": 3.7424533390699577e-32,
+              "after": 1.7311685299248377e-30,
+              "deltaDB": 16.651829544062444,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "power": {
+              "before": 0.12499999999999926,
+              "after": 5.488548573213345e-30,
+              "deltaDB": -283.5745250097753,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "power": {
+              "before": 5.701111663087942e-30,
+              "after": 0.12499999999999745,
+              "deltaDB": 283.40950465743964,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "power": {
+              "before": 2.8104531983548476e-29,
+              "after": 2.5316598839013403e-28,
+              "deltaDB": 9.546290024171178,
+              "transition": "finite"
+            }
+          }
+        ],
+        "dominantPeakHz": {
+          "before": 750,
+          "after": 3000
+        },
+        "limitations": [
+          "Comparison relies on caller-declared conditions, not verified capture metadata.",
+          "No resampling, gain compensation, calibration or interpolation. Unknown physical differences invalidate interpretation.",
+          "Changes describe supplied PCM only; they do not establish improvement, a defect, causality or an EQ adjustment.",
+          "Null deltaDB with a zero transition represents an unbounded or undefined logarithmic difference, not zero change."
+        ]
+      }
+    },
+    {
+      "scenario": "CH1_cavaco",
+      "excerpt": true,
+      "omitted": [
+        "bins"
+      ],
+      "before": {
+        "schemaVersion": 1,
+        "algorithmVersion": "fft-hann-v1",
+        "mode": "LAB",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_cavaco",
+          "conditionsId": "cavaco_fixture_v1",
+          "target": {
+            "kind": "channel",
+            "channel": 1
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "provenanceVerification": "caller_declared_not_verified",
+        "representation": {
+          "format": "f64",
+          "levelReference": "full_scale"
+        },
+        "sampleRate": 48000,
+        "processing": {
+          "fftSize": 4096,
+          "hopSize": 2048,
+          "window": "periodic_hann",
+          "normalization": "one_sided_power_window_energy",
+          "dcRemoval": false,
+          "aggregation": "mean_power",
+          "smoothingAlpha": null,
+          "peakCount": 8,
+          "binWidthHz": 11.71875
+        },
+        "coverage": {
+          "inputSamples": 4096,
+          "analyzedSamples": 4096,
+          "discardedTailSamples": 0,
+          "frames": 1,
+          "durationSeconds": 0.08533333333333333
+        },
+        "rms": {
+          "linear": 0.35355339059327373,
+          "dbRelativeToUnit": -9.030899869919436,
+          "dbFS": -9.030899869919436
+        },
+        "totalSpectralPower": {
+          "power": 0.12499999999999745,
+          "dbRelativeToUnit": -9.030899869919525,
+          "dbFS": -9.030899869919525
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "level": {
+              "power": 2.9857079249723922e-30,
+              "dbRelativeToUnit": -295.2495267912169,
+              "dbFS": -295.2495267912169
+            },
+            "fractionOfTotalPower": 2.3885663399779626e-29
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "level": {
+              "power": 1.8712475331219284e-29,
+              "dbRelativeToUnit": -287.2786875918182,
+              "dbFS": -287.2786875918182
+            },
+            "fractionOfTotalPower": 1.4969980264975732e-28
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "level": {
+              "power": 1.7311685299248377e-30,
+              "dbRelativeToUnit": -297.61660651331044,
+              "dbFS": -297.61660651331044
+            },
+            "fractionOfTotalPower": 1.3849348239398984e-29
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "level": {
+              "power": 5.488548573213345e-30,
+              "dbRelativeToUnit": -292.6054248796948,
+              "dbFS": -292.6054248796948
+            },
+            "fractionOfTotalPower": 4.390838858570766e-29
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "level": {
+              "power": 0.12499999999999745,
+              "dbRelativeToUnit": -9.030899869919525,
+              "dbFS": -9.030899869919525
+            },
+            "fractionOfTotalPower": 1
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "level": {
+              "power": 2.5316598839013403e-28,
+              "dbRelativeToUnit": -275.9659464007115,
+              "dbFS": -275.9659464007115
+            },
+            "fractionOfTotalPower": 2.0253279071211135e-27
+          }
+        ],
+        "peaks": [
+          {
+            "frequencyHz": 3000,
+            "bin": 256,
+            "level": {
+              "power": 0.08333333333333179,
+              "dbRelativeToUnit": -10.79181246047633,
+              "dbFS": -10.79181246047633
+            }
+          },
+          {
+            "frequencyHz": 21000,
+            "bin": 1792,
+            "level": {
+              "power": 6.685311365068967e-29,
+              "dbRelativeToUnit": -281.7487836088034,
+              "dbFS": -281.7487836088034
+            }
+          },
+          {
+            "frequencyHz": 8835.9375,
+            "bin": 754,
+            "level": {
+              "power": 1.8483356027412487e-29,
+              "dbRelativeToUnit": -287.3321917100235,
+              "dbFS": -287.3321917100235
+            }
+          },
+          {
+            "frequencyHz": 2835.9375,
+            "bin": 242,
+            "level": {
+              "power": 1.759913861032331e-29,
+              "dbRelativeToUnit": -287.54508588205067,
+              "dbFS": -287.54508588205067
+            }
+          },
+          {
+            "frequencyHz": 14578.125,
+            "bin": 1244,
+            "level": {
+              "power": 6.814928016270112e-30,
+              "dbRelativeToUnit": -291.6653872710763,
+              "dbFS": -291.6653872710763
+            }
+          },
+          {
+            "frequencyHz": 9000,
+            "bin": 768,
+            "level": {
+              "power": 6.146052911012965e-30,
+              "dbRelativeToUnit": -292.1140370524755,
+              "dbFS": -292.1140370524755
+            }
+          },
+          {
+            "frequencyHz": 14660.15625,
+            "bin": 1251,
+            "level": {
+              "power": 5.8687769668986894e-30,
+              "dbRelativeToUnit": -292.31452394811816,
+              "dbFS": -292.31452394811816
+            }
+          },
+          {
+            "frequencyHz": 8683.59375,
+            "bin": 741,
+            "level": {
+              "power": 5.6835144336822924e-30,
+              "dbRelativeToUnit": -292.45383032746724,
+              "dbFS": -292.45383032746724
+            }
+          }
+        ],
+        "clipping": {
+          "status": "not_indicated",
+          "basis": "declared_unit_full_scale",
+          "atOrBeyondFullScaleSamples": 0,
+          "fraction": 0,
+          "longestRun": 0
+        },
+        "limitations": [
+          "Offline LAB analysis of supplied PCM only; no acquisition or verification of physical origin.",
+          "Synthetic signal: not real band audio or evidence from the Soundcraft.",
+          "Levels describe PCM units or declared digital full scale, not acoustic SPL, analog gain or audibility.",
+          "Spectrum does not establish a defect, intelligibility, timbre quality, feedback or an EQ recommendation.",
+          "Peaks are FFT-bin local maxima, not identified instruments or measured feedback frequencies.",
+          "Possible clipping means samples at/beyond representable or declared full scale; absence does not rule out upstream clipping.",
+          "Periodic Hann power normalization; bands sum bin centers without interpolation. DC is retained; gaps and out-of-band energy are possible.",
+          "Spectral mean/EMA is window-weighted; RMS and clipping use the unwindowed analyzed prefix. Tail is reported and excluded."
+        ]
+      },
+      "after": {
+        "schemaVersion": 1,
+        "algorithmVersion": "fft-hann-v1",
+        "mode": "LAB",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_cavaco",
+          "conditionsId": "cavaco_fixture_v1",
+          "target": {
+            "kind": "channel",
+            "channel": 1
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "provenanceVerification": "caller_declared_not_verified",
+        "representation": {
+          "format": "f64",
+          "levelReference": "full_scale"
+        },
+        "sampleRate": 48000,
+        "processing": {
+          "fftSize": 4096,
+          "hopSize": 2048,
+          "window": "periodic_hann",
+          "normalization": "one_sided_power_window_energy",
+          "dcRemoval": false,
+          "aggregation": "mean_power",
+          "smoothingAlpha": null,
+          "peakCount": 8,
+          "binWidthHz": 11.71875
+        },
+        "coverage": {
+          "inputSamples": 4096,
+          "analyzedSamples": 4096,
+          "discardedTailSamples": 0,
+          "frames": 1,
+          "durationSeconds": 0.08533333333333333
+        },
+        "rms": {
+          "linear": 0.35355339059327406,
+          "dbRelativeToUnit": -9.030899869919429,
+          "dbFS": -9.030899869919429
+        },
+        "totalSpectralPower": {
+          "power": 0.12499999999999702,
+          "dbRelativeToUnit": -9.03089986991954,
+          "dbFS": -9.03089986991954
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "level": {
+              "power": 1.968850976345034e-30,
+              "dbRelativeToUnit": -297.057871546594,
+              "dbFS": -297.057871546594
+            },
+            "fractionOfTotalPower": 1.5750807810760647e-29
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "level": {
+              "power": 1.0577738972666052e-28,
+              "dbRelativeToUnit": -279.75607154289,
+              "dbFS": -279.75607154289
+            },
+            "fractionOfTotalPower": 8.462191178133044e-28
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "level": {
+              "power": 3.4961839662451743e-28,
+              "dbRelativeToUnit": -274.5640572322783,
+              "dbFS": -274.5640572322783
+            },
+            "fractionOfTotalPower": 2.796947172996206e-27
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "level": {
+              "power": 1.3687045991377422e-28,
+              "dbRelativeToUnit": -278.63690273420167,
+              "dbFS": -278.63690273420167
+            },
+            "fractionOfTotalPower": 1.09496367931022e-27
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "level": {
+              "power": 1.668359645852214e-28,
+              "dbRelativeToUnit": -277.77710323378864,
+              "dbFS": -277.77710323378864
+            },
+            "fractionOfTotalPower": 1.334687716681803e-27
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "level": {
+              "power": 0.12499999999999702,
+              "dbRelativeToUnit": -9.03089986991954,
+              "dbFS": -9.03089986991954
+            },
+            "fractionOfTotalPower": 1
+          }
+        ],
+        "peaks": [
+          {
+            "frequencyHz": 9000,
+            "bin": 768,
+            "level": {
+              "power": 0.08333333333333144,
+              "dbRelativeToUnit": -10.791812460476347,
+              "dbFS": -10.791812460476347
+            }
+          },
+          {
+            "frequencyHz": 281.25,
+            "bin": 24,
+            "level": {
+              "power": 1.304583915900623e-28,
+              "dbRelativeToUnit": -278.8452798015867,
+              "dbFS": -278.8452798015867
+            }
+          },
+          {
+            "frequencyHz": 17718.75,
+            "bin": 1512,
+            "level": {
+              "power": 1.2351131821838797e-28,
+              "dbRelativeToUnit": -279.0829324309609,
+              "dbFS": -279.0829324309609
+            }
+          },
+          {
+            "frequencyHz": 19359.375,
+            "bin": 1652,
+            "level": {
+              "power": 1.1592479341509474e-28,
+              "dbRelativeToUnit": -279.3582366937017,
+              "dbFS": -279.3582366937017
+            }
+          },
+          {
+            "frequencyHz": 10640.625,
+            "bin": 908,
+            "level": {
+              "power": 1.1082076399443253e-28,
+              "dbRelativeToUnit": -279.55378860154974,
+              "dbFS": -279.55378860154974
+            }
+          },
+          {
+            "frequencyHz": 10675.78125,
+            "bin": 911,
+            "level": {
+              "power": 6.52689063350779e-29,
+              "dbRelativeToUnit": -281.8529366440867,
+              "dbFS": -281.8529366440867
+            }
+          },
+          {
+            "frequencyHz": 19324.21875,
+            "bin": 1649,
+            "level": {
+              "power": 6.241409397797806e-29,
+              "dbRelativeToUnit": -282.04717329456753,
+              "dbFS": -282.04717329456753
+            }
+          },
+          {
+            "frequencyHz": 246.09375,
+            "bin": 21,
+            "level": {
+              "power": 5.243289081597975e-29,
+              "dbRelativeToUnit": -282.8039619739178,
+              "dbFS": -282.8039619739178
+            }
+          }
+        ],
+        "clipping": {
+          "status": "not_indicated",
+          "basis": "declared_unit_full_scale",
+          "atOrBeyondFullScaleSamples": 0,
+          "fraction": 0,
+          "longestRun": 0
+        },
+        "limitations": [
+          "Offline LAB analysis of supplied PCM only; no acquisition or verification of physical origin.",
+          "Synthetic signal: not real band audio or evidence from the Soundcraft.",
+          "Levels describe PCM units or declared digital full scale, not acoustic SPL, analog gain or audibility.",
+          "Spectrum does not establish a defect, intelligibility, timbre quality, feedback or an EQ recommendation.",
+          "Peaks are FFT-bin local maxima, not identified instruments or measured feedback frequencies.",
+          "Possible clipping means samples at/beyond representable or declared full scale; absence does not rule out upstream clipping.",
+          "Periodic Hann power normalization; bands sum bin centers without interpolation. DC is retained; gaps and out-of-band energy are possible.",
+          "Spectral mean/EMA is window-weighted; RMS and clipping use the unwindowed analyzed prefix. Tail is reported and excluded."
+        ]
+      },
+      "comparison": {
+        "kind": "comparison",
+        "mode": "LAB",
+        "comparability": "caller_declared_conditions_match",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_cavaco",
+          "conditionsId": "cavaco_fixture_v1",
+          "target": {
+            "kind": "channel",
+            "channel": 1
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "rms": {
+          "before": 0.35355339059327373,
+          "after": 0.35355339059327406,
+          "deltaDB": 7.771561172376096e-15,
+          "transition": "finite"
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "power": {
+              "before": 2.9857079249723922e-30,
+              "after": 1.968850976345034e-30,
+              "deltaDB": -1.8083447553771492,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "power": {
+              "before": 1.8712475331219284e-29,
+              "after": 1.0577738972666052e-28,
+              "deltaDB": 7.522616048928157,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "power": {
+              "before": 1.7311685299248377e-30,
+              "after": 3.4961839662451743e-28,
+              "deltaDB": 23.052549281032135,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "power": {
+              "before": 5.488548573213345e-30,
+              "after": 1.3687045991377422e-28,
+              "deltaDB": 13.968522145493125,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "power": {
+              "before": 0.12499999999999745,
+              "after": 1.668359645852214e-28,
+              "deltaDB": -268.74620336386914,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "power": {
+              "before": 2.5316598839013403e-28,
+              "after": 0.12499999999999702,
+              "deltaDB": 266.93504653079196,
+              "transition": "finite"
+            }
+          }
+        ],
+        "dominantPeakHz": {
+          "before": 3000,
+          "after": 9000
+        },
+        "limitations": [
+          "Comparison relies on caller-declared conditions, not verified capture metadata.",
+          "No resampling, gain compensation, calibration or interpolation. Unknown physical differences invalidate interpretation.",
+          "Changes describe supplied PCM only; they do not establish improvement, a defect, causality or an EQ adjustment.",
+          "Null deltaDB with a zero transition represents an unbounded or undefined logarithmic difference, not zero change."
+        ]
+      }
+    },
+    {
+      "scenario": "AUX1_mix_artificial",
+      "excerpt": true,
+      "omitted": [
+        "bins"
+      ],
+      "before": {
+        "schemaVersion": 1,
+        "algorithmVersion": "fft-hann-v1",
+        "mode": "LAB",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_aux1",
+          "conditionsId": "aux1_fixture_v1",
+          "target": {
+            "kind": "bus",
+            "bus": "AUX1"
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "provenanceVerification": "caller_declared_not_verified",
+        "representation": {
+          "format": "f64",
+          "levelReference": "full_scale"
+        },
+        "sampleRate": 48000,
+        "processing": {
+          "fftSize": 4096,
+          "hopSize": 2048,
+          "window": "periodic_hann",
+          "normalization": "one_sided_power_window_energy",
+          "dcRemoval": false,
+          "aggregation": "mean_power",
+          "smoothingAlpha": null,
+          "peakCount": 8,
+          "binWidthHz": 11.71875
+        },
+        "coverage": {
+          "inputSamples": 4096,
+          "analyzedSamples": 4096,
+          "discardedTailSamples": 0,
+          "frames": 1,
+          "durationSeconds": 0.08533333333333333
+        },
+        "rms": {
+          "linear": 0.19999999999999996,
+          "dbRelativeToUnit": -13.979400086720378,
+          "dbFS": -13.979400086720378
+        },
+        "totalSpectralPower": {
+          "power": 0.0399999999999997,
+          "dbRelativeToUnit": -13.979400086720409,
+          "dbFS": -13.979400086720409
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "level": {
+              "power": 6.255172597976018e-33,
+              "dbRelativeToUnit": -322.0376070238712,
+              "dbFS": -322.0376070238712
+            },
+            "fractionOfTotalPower": 1.563793149494016e-31
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "level": {
+              "power": 0.019999999999999993,
+              "dbRelativeToUnit": -16.98970004336019,
+              "dbFS": -16.98970004336019
+            },
+            "fractionOfTotalPower": 0.5000000000000036
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "level": {
+              "power": 3.267468804748902e-32,
+              "dbRelativeToUnit": -314.85788550033595,
+              "dbFS": -314.85788550033595
+            },
+            "fractionOfTotalPower": 8.168672011872316e-31
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "level": {
+              "power": 0.019999999999999706,
+              "dbRelativeToUnit": -16.98970004336025,
+              "dbFS": -16.98970004336025
+            },
+            "fractionOfTotalPower": 0.49999999999999634
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "level": {
+              "power": 4.646815717293968e-30,
+              "dbRelativeToUnit": -293.3284455036367,
+              "dbFS": -293.3284455036367
+            },
+            "fractionOfTotalPower": 1.1617039293235006e-28
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "level": {
+              "power": 1.1774336503261778e-29,
+              "dbRelativeToUnit": -289.2906355647855,
+              "dbFS": -289.2906355647855
+            },
+            "fractionOfTotalPower": 2.943584125815466e-28
+          }
+        ],
+        "peaks": [
+          {
+            "frequencyHz": 93.75,
+            "bin": 8,
+            "level": {
+              "power": 0.013333333333333327,
+              "dbRelativeToUnit": -18.750612633917005,
+              "dbFS": -18.750612633917005
+            }
+          },
+          {
+            "frequencyHz": 1500,
+            "bin": 128,
+            "level": {
+              "power": 0.01333333333333313,
+              "dbRelativeToUnit": -18.75061263391707,
+              "dbFS": -18.75061263391707
+            }
+          },
+          {
+            "frequencyHz": 23906.25,
+            "bin": 2040,
+            "level": {
+              "power": 1.4914694911683371e-29,
+              "dbRelativeToUnit": -288.26385625944397,
+              "dbFS": -288.26385625944397
+            }
+          },
+          {
+            "frequencyHz": 22500,
+            "bin": 1920,
+            "level": {
+              "power": 1.282770614006022e-29,
+              "dbRelativeToUnit": -288.91850997544043,
+              "dbFS": -288.91850997544043
+            }
+          },
+          {
+            "frequencyHz": 4335.9375,
+            "bin": 370,
+            "level": {
+              "power": 7.863866177062885e-31,
+              "dbRelativeToUnit": -301.0436388569699,
+              "dbFS": -301.0436388569699
+            }
+          },
+          {
+            "frequencyHz": 7335.9375,
+            "bin": 626,
+            "level": {
+              "power": 6.454107532718928e-31,
+              "dbRelativeToUnit": -301.901638030354,
+              "dbFS": -301.901638030354
+            }
+          },
+          {
+            "frequencyHz": 11906.25,
+            "bin": 1016,
+            "level": {
+              "power": 6.162837225196823e-31,
+              "dbRelativeToUnit": -302.10219302840864,
+              "dbFS": -302.10219302840864
+            }
+          },
+          {
+            "frequencyHz": 10500,
+            "bin": 896,
+            "level": {
+              "power": 5.699899686117439e-31,
+              "dbRelativeToUnit": -302.44132787511546,
+              "dbFS": -302.44132787511546
+            }
+          }
+        ],
+        "clipping": {
+          "status": "not_indicated",
+          "basis": "declared_unit_full_scale",
+          "atOrBeyondFullScaleSamples": 0,
+          "fraction": 0,
+          "longestRun": 0
+        },
+        "limitations": [
+          "Offline LAB analysis of supplied PCM only; no acquisition or verification of physical origin.",
+          "Synthetic signal: not real band audio or evidence from the Soundcraft.",
+          "Levels describe PCM units or declared digital full scale, not acoustic SPL, analog gain or audibility.",
+          "Spectrum does not establish a defect, intelligibility, timbre quality, feedback or an EQ recommendation.",
+          "Peaks are FFT-bin local maxima, not identified instruments or measured feedback frequencies.",
+          "Possible clipping means samples at/beyond representable or declared full scale; absence does not rule out upstream clipping.",
+          "Periodic Hann power normalization; bands sum bin centers without interpolation. DC is retained; gaps and out-of-band energy are possible.",
+          "Spectral mean/EMA is window-weighted; RMS and clipping use the unwindowed analyzed prefix. Tail is reported and excluded."
+        ]
+      },
+      "after": {
+        "schemaVersion": 1,
+        "algorithmVersion": "fft-hann-v1",
+        "mode": "LAB",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_aux1",
+          "conditionsId": "aux1_fixture_v1",
+          "target": {
+            "kind": "bus",
+            "bus": "AUX1"
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "provenanceVerification": "caller_declared_not_verified",
+        "representation": {
+          "format": "f64",
+          "levelReference": "full_scale"
+        },
+        "sampleRate": 48000,
+        "processing": {
+          "fftSize": 4096,
+          "hopSize": 2048,
+          "window": "periodic_hann",
+          "normalization": "one_sided_power_window_energy",
+          "dcRemoval": false,
+          "aggregation": "mean_power",
+          "smoothingAlpha": null,
+          "peakCount": 8,
+          "binWidthHz": 11.71875
+        },
+        "coverage": {
+          "inputSamples": 4096,
+          "analyzedSamples": 4096,
+          "discardedTailSamples": 0,
+          "frames": 1,
+          "durationSeconds": 0.08533333333333333
+        },
+        "rms": {
+          "linear": 0.17320508075688762,
+          "dbRelativeToUnit": -15.228787452803383,
+          "dbFS": -15.228787452803383
+        },
+        "totalSpectralPower": {
+          "power": 0.029999999999999635,
+          "dbRelativeToUnit": -15.228787452803429,
+          "dbFS": -15.228787452803429
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "level": {
+              "power": 3.042315680147172e-31,
+              "dbRelativeToUnit": -305.1679572419727,
+              "dbFS": -305.1679572419727
+            },
+            "fractionOfTotalPower": 1.0141052267157363e-29
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "level": {
+              "power": 0.004999999999999972,
+              "dbRelativeToUnit": -23.010299956639834,
+              "dbFS": -23.010299956639834
+            },
+            "fractionOfTotalPower": 0.16666666666666777
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "level": {
+              "power": 6.099627922082946e-31,
+              "dbRelativeToUnit": -302.1469665618836,
+              "dbFS": -302.1469665618836
+            },
+            "fractionOfTotalPower": 2.0332093073610067e-29
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "level": {
+              "power": 0.019999999999999685,
+              "dbRelativeToUnit": -16.989700043360255,
+              "dbFS": -16.989700043360255
+            },
+            "fractionOfTotalPower": 0.6666666666666643
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "level": {
+              "power": 1.0371085865679669e-29,
+              "dbRelativeToUnit": -289.8417577005415,
+              "dbFS": -289.8417577005415
+            },
+            "fractionOfTotalPower": 3.457028621893265e-28
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "level": {
+              "power": 0.0049999999999999776,
+              "dbRelativeToUnit": -23.01029995663983,
+              "dbFS": -23.01029995663983
+            },
+            "fractionOfTotalPower": 0.16666666666666796
+          }
+        ],
+        "peaks": [
+          {
+            "frequencyHz": 1500,
+            "bin": 128,
+            "level": {
+              "power": 0.013333333333333119,
+              "dbRelativeToUnit": -18.75061263391707,
+              "dbFS": -18.75061263391707
+            }
+          },
+          {
+            "frequencyHz": 6000,
+            "bin": 512,
+            "level": {
+              "power": 0.0033333333333333283,
+              "dbRelativeToUnit": -24.77121254719663,
+              "dbFS": -24.77121254719663
+            }
+          },
+          {
+            "frequencyHz": 93.75,
+            "bin": 8,
+            "level": {
+              "power": 0.0033333333333333123,
+              "dbRelativeToUnit": -24.771212547196654,
+              "dbFS": -24.771212547196654
+            }
+          },
+          {
+            "frequencyHz": 22500,
+            "bin": 1920,
+            "level": {
+              "power": 1.3116299935480885e-29,
+              "dbRelativeToUnit": -288.8218866070998,
+              "dbFS": -288.8218866070998
+            }
+          },
+          {
+            "frequencyHz": 23906.25,
+            "bin": 2040,
+            "level": {
+              "power": 3.427084059911261e-30,
+              "dbRelativeToUnit": -294.65075243014576,
+              "dbFS": -294.65075243014576
+            }
+          },
+          {
+            "frequencyHz": 11835.9375,
+            "bin": 1010,
+            "level": {
+              "power": 2.7184956769521913e-30,
+              "dbRelativeToUnit": -295.6567135329214,
+              "dbFS": -295.6567135329214
+            }
+          },
+          {
+            "frequencyHz": 164.0625,
+            "bin": 14,
+            "level": {
+              "power": 2.589687738844159e-30,
+              "dbRelativeToUnit": -295.8675259942168,
+              "dbFS": -295.8675259942168
+            }
+          },
+          {
+            "frequencyHz": 18000,
+            "bin": 1536,
+            "level": {
+              "power": 2.3790276552463494e-30,
+              "dbRelativeToUnit": -296.23600509433487,
+              "dbFS": -296.23600509433487
+            }
+          }
+        ],
+        "clipping": {
+          "status": "not_indicated",
+          "basis": "declared_unit_full_scale",
+          "atOrBeyondFullScaleSamples": 0,
+          "fraction": 0,
+          "longestRun": 0
+        },
+        "limitations": [
+          "Offline LAB analysis of supplied PCM only; no acquisition or verification of physical origin.",
+          "Synthetic signal: not real band audio or evidence from the Soundcraft.",
+          "Levels describe PCM units or declared digital full scale, not acoustic SPL, analog gain or audibility.",
+          "Spectrum does not establish a defect, intelligibility, timbre quality, feedback or an EQ recommendation.",
+          "Peaks are FFT-bin local maxima, not identified instruments or measured feedback frequencies.",
+          "Possible clipping means samples at/beyond representable or declared full scale; absence does not rule out upstream clipping.",
+          "Periodic Hann power normalization; bands sum bin centers without interpolation. DC is retained; gaps and out-of-band energy are possible.",
+          "Spectral mean/EMA is window-weighted; RMS and clipping use the unwindowed analyzed prefix. Tail is reported and excluded."
+        ]
+      },
+      "comparison": {
+        "kind": "comparison",
+        "mode": "LAB",
+        "comparability": "caller_declared_conditions_match",
+        "origin": {
+          "kind": "synthetic",
+          "sourceId": "pilot_aux1",
+          "conditionsId": "aux1_fixture_v1",
+          "target": {
+            "kind": "bus",
+            "bus": "AUX1"
+          },
+          "path": "unknown",
+          "tap": "unknown"
+        },
+        "rms": {
+          "before": 0.19999999999999996,
+          "after": 0.17320508075688762,
+          "deltaDB": -1.2493873660830013,
+          "transition": "finite"
+        },
+        "bands": [
+          {
+            "id": "band_1",
+            "lowHz": 20,
+            "highHz": 80,
+            "power": {
+              "before": 6.255172597976018e-33,
+              "after": 3.042315680147172e-31,
+              "deltaDB": 16.869649781898524,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_2",
+            "lowHz": 80,
+            "highHz": 250,
+            "power": {
+              "before": 0.019999999999999993,
+              "after": 0.004999999999999972,
+              "deltaDB": -6.020599913279645,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_3",
+            "lowHz": 250,
+            "highHz": 500,
+            "power": {
+              "before": 3.267468804748902e-32,
+              "after": 6.099627922082946e-31,
+              "deltaDB": 12.71091893845238,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_4",
+            "lowHz": 500,
+            "highHz": 2000,
+            "power": {
+              "before": 0.019999999999999706,
+              "after": 0.019999999999999685,
+              "deltaDB": -4.440892098500626e-15,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_5",
+            "lowHz": 2000,
+            "highHz": 5000,
+            "power": {
+              "before": 4.646815717293968e-30,
+              "after": 1.0371085865679669e-29,
+              "deltaDB": 3.486687803095201,
+              "transition": "finite"
+            }
+          },
+          {
+            "id": "band_6",
+            "lowHz": 5000,
+            "highHz": 20000,
+            "power": {
+              "before": 1.1774336503261778e-29,
+              "after": 0.0049999999999999776,
+              "deltaDB": 266.28033560814566,
+              "transition": "finite"
+            }
+          }
+        ],
+        "dominantPeakHz": {
+          "before": 93.75,
+          "after": 1500
+        },
+        "limitations": [
+          "Comparison relies on caller-declared conditions, not verified capture metadata.",
+          "No resampling, gain compensation, calibration or interpolation. Unknown physical differences invalidate interpretation.",
+          "Changes describe supplied PCM only; they do not establish improvement, a defect, causality or an EQ adjustment.",
+          "Null deltaDB with a zero transition represents an unbounded or undefined logarithmic difference, not zero change."
+        ]
+      }
+    }
+  ]
+}
