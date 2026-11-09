@@ -1,3 +1,4 @@
+import { AutoConfigComponent } from '../autoconfig/autoconfig.component';
 import { Component, ElementRef, afterNextRender, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LiveService } from '../core/live.service';
@@ -51,7 +52,7 @@ interface Plan {
  */
 @Component({
   selector: 'mx-soundcheck',
-  imports: [FormsModule],
+  imports: [FormsModule, AutoConfigComponent],
   host: { style: 'display:block' },
   styles: [
     `
@@ -177,7 +178,7 @@ interface Plan {
           </div>
         } @else if (selected(); as event) {
           <div class="card">
-            <h3>{{ event.name }} — {{ event.date }} · v{{ event.version }} · {{ event.status }}</h3>
+            <h3 data-testid="sc-event-heading">{{ event.name }} — {{ event.date }} · v{{ event.version }} · {{ event.status }}</h3>
             <div class="pills">
               <span class="pill">{{ eventStatusLabel(event) }}</span>
               <span class="pill">Operador declarado: {{ event.operatorName }}</span>
@@ -209,6 +210,10 @@ interface Plan {
               </p>
             </details>
           </div>
+
+          @if (ready()) {
+            @defer (on immediate) { <mx-autoconfig [event]="{ eventId: event.id, eventName: event.name, eventVersion: event.version }" /> }
+          }
 
           <div class="workspace">
             <nav class="steps-nav" aria-label="Etapas da passagem">
@@ -393,7 +398,7 @@ export class SoundcheckComponent {
     });
     // A tela é independente: carrega os eventos ao abrir (antes isso dependia de abrir um <details>).
     effect(() => {
-      if (this.eligible() && this.session.token()) untracked(() => void this.refresh());
+      if (this.eligible() && this.session.token() && this.live.connection() === 'online') untracked(() => void this.refresh());
     });
   }
   private clearForm() {
