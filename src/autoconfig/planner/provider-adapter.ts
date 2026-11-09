@@ -6,7 +6,7 @@ import { OllamaClient } from '../../knowledge/local/ollama.js';
 import type { AiProvider } from '../../knowledge/local/provider.js';
 import type { PlannerObservationPort, PlannerPolicy, PlannerProvider } from './contracts.js';
 import { bandKnowledgeAdapter } from './kb-adapter.js';
-import { TechnicalPlanner } from './planner.js';
+import { TechnicalPlanner } from './engine.js';
 
 /** Narrow existing provider to text generation only; never pass health/embed/tools to the planner. */
 export function textProviderAdapter(provider: AiProvider): PlannerProvider {
@@ -20,7 +20,7 @@ function loopback(url: string) {
  * Configuration alone NEVER manufactures consent. Qwen3 is used when it is the configured Ollama model.
  */
 export function createConfiguredPlanner(loaded: LoadedConfig, names: ChannelMap, deps: {
-  policy(): PlannerPolicy; observations?: PlannerObservationPort; microphones?: MicPack;
+  policy(): PlannerPolicy; observations?: PlannerObservationPort; microphones?: MicPack; allowDeterministicWithoutKnowledge?: boolean;
   fetch?: typeof fetch; geminiFetch?: typeof fetch; clock?: () => number; timeoutMs?: number;
 }) {
   const k = loaded.config.knowledge, providers: PlannerProvider[] = [];
@@ -29,5 +29,5 @@ export function createConfiguredPlanner(loaded: LoadedConfig, names: ChannelMap,
     if (k.gemini.enabled) providers.push(textProviderAdapter(new GeminiClient({ ...k.gemini, generateTimeoutMs: k.gemini.narrativeTimeoutMs }, loaded.secrets?.geminiApiKey, deps.geminiFetch ?? fetch, deps.clock)));
   }
   return new TechnicalPlanner({ knowledge: bandKnowledgeAdapter(names, deps.microphones), providers, observations: deps.observations, clock: deps.clock, timeoutMs: deps.timeoutMs,
-    policy: () => { const p = deps.policy(); return { ...p, enabled: k.enabled && loaded.config.mixer.mode === 'lab' && p.enabled }; } });
+    policy: () => { const p = deps.policy(); return { ...p, enabled: (k.enabled || !!deps.allowDeterministicWithoutKnowledge) && loaded.config.mixer.mode === 'lab' && p.enabled }; } });
 }

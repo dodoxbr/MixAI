@@ -1,6 +1,6 @@
 import { queryInstructorGuidance, voiceRole } from '../../knowledge/sound-engineer/index.js';
 import type { DiagnosticConsultation } from '../../knowledge/sound-engineer/index.js';
-import { diagnosticConsultationSchema } from '../../knowledge/sound-engineer/index.js';
+import { diagnosticSessionSchema, diagnosticConsultationSchema } from '../../knowledge/sound-engineer/index.js';
 import type { ChannelMap } from '../../core/channels.js';
 import type { MicPack } from '../../knowledge/local/pack.js';
 import { bandSourceSchema, plannerCandidateSchema, plannerInputSchema, type PlannerInput, type PlannerKnowledgePort } from './contracts.js';
@@ -42,3 +42,16 @@ export function plannerInputFromConsultation(raw: DiagnosticConsultation, goal: 
     destination: c.diagnostic.destination ?? undefined, goal,
     ...(report ? { report: { id: report.id, kind: report.kind, symptom: report.symptom } } : {}) });
 }
+
+/** M1 server projection, not a client-provided snapshot. Does not call/advance the diagnosis. */
+export function plannerInputFromSession(raw: unknown, scope: 'PA' | 'AUX1'): PlannerInput {
+  const session = diagnosticSessionSchema.parse(raw), k = session.knownContext;
+  const report = session.evidence.reports.find(r => r.symptom === k.symptom);
+  return plannerInputSchema.parse({ mode: 'LAB', channel: k.channel ?? undefined, instrument: k.instrument ?? undefined,
+    destination: k.destination ?? (scope === 'PA' ? 'pa' : 'fones'), symptom: k.symptom ?? undefined,
+    goal: k.symptom ? k.symptom === 'magro' ? 'body' : k.symptom === 'microfonia' ? 'feedback_safety' : k.symptom === 'abafado' || k.instrument === 'vozes' ? 'intelligibility' : 'separation' : undefined,
+    comparison: k.scope === 'selected_only' ? 'target_only' : k.scope ?? undefined, isolation: k.isolation ?? undefined,
+    ...(report ? { report: { id: /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(report.id) ? report.id : 'm1-human-report', kind: report.kind, symptom: report.symptom } } : {}) });
+}
+
+export function m1RequiresStop(raw: unknown): boolean { return diagnosticSessionSchema.parse(raw).knownContext.results.some(r => r.result === 'worse'); }

@@ -26,6 +26,8 @@ export interface TestServerOptions {
   pttRecognizer?: FileSpeechRecognizer;
   referencePorts?: ReferencePorts;
   autoConfigSimulator?: AutoConfigSimulator;
+  autoConfigPlannerFetch?: typeof fetch; autoConfigPlannerGeminiFetch?: typeof fetch;
+  knowledgeConfig?: Record<string, unknown>; geminiApiKey?: string;
   /** Base de conhecimento local já montada (testes usam arquivo temporário e Ollama falso). */
   knowledge?: LocalKnowledge;
   safety?: Partial<SafetyConfig>;
@@ -58,6 +60,7 @@ export async function startTestServer(opts: TestServerOptions = {}) {
       logs: { dir: null },
       safety: { maxActionsPerSecond: 100, ...opts.safety },
       ai: opts.ai ?? {},
+      knowledge: opts.knowledgeConfig ?? {},
       server: opts.server ?? {},
     }),
     channels: opts.channels ?? fixtureChannels(),
@@ -65,7 +68,7 @@ export async function startTestServer(opts: TestServerOptions = {}) {
     logDir: opts.logDir ?? null,
     labFile: join(dir, 'lab-state.json'),
     dataDir: dir,
-    secrets: { ...pinHashes(), anthropicApiKey: opts.aiKey },
+    secrets: { ...pinHashes(), anthropicApiKey: opts.aiKey, geminiApiKey: opts.geminiApiKey },
   };
   const clock = shiftableClock();
   const log = new ActionLog(opts.logDir ?? null);
@@ -77,7 +80,7 @@ export async function startTestServer(opts: TestServerOptions = {}) {
     (async () => {
       throw new Error('teste tentou chamar a API real da Anthropic');
     });
-  const server = await startServer(loaded, { port: opts.port ?? 0, clock: clock.now, app: { loaded, mixer, controller, log }, aiFetch, pttRecognizer: opts.pttRecognizer, referencePorts: opts.referencePorts, autoConfigSimulator: opts.autoConfigSimulator, knowledge: opts.knowledge });
+  const server = await startServer(loaded, { port: opts.port ?? 0, clock: clock.now, app: { loaded, mixer, controller, log }, aiFetch, pttRecognizer: opts.pttRecognizer, referencePorts: opts.referencePorts, autoConfigSimulator: opts.autoConfigSimulator, autoConfigPlannerFetch: opts.autoConfigPlannerFetch, autoConfigPlannerGeminiFetch: opts.autoConfigPlannerGeminiFetch, knowledge: opts.knowledge });
   const base = server.urls[0]!;
 
   const http = async (path: string, init: { method?: string; token?: string; body?: unknown } = {}) => {

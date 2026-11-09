@@ -63,6 +63,9 @@ export class AssistantService {
   private aiBusy = new Set<string>();
   /** Última consulta documental de cada sessão: só é reaproveitada se o contexto consolidado NÃO mudou (e por pouco tempo). */
   private knowledgeCache = new Map<string, { key: string; expiresAt: number; knowledge: KnowledgeContext }>();
+  /** Read-only planning projection of this principal's latest M1 reply; never advances diagnosis. */
+  private planningContexts = new Map<string, { session: NonNullable<ConsultationReply['diagnosticSession']>; revision: number; key: string; expiresAt: number }>();
+  private planningRevision = 0;
   readonly builder: ProposalBuilder;
   readonly diagnosticContexts: DiagnosticContexts;
   private removeRevokeListener: () => void;
@@ -85,7 +88,7 @@ export class AssistantService {
     this.builder = new ProposalBuilder(core.controller, core.policy, opts.ttlMs, opts.clock, (p, cmd) => core.authorizeMusicianCommand(p, cmd));
     this.diagnosticContexts = new DiagnosticContexts(core.controller.names, core.policy.musicianAux, { clock: opts.clock, registeredCapture: ch => (this.registeredMics.has(ch) ? 'microphone' : undefined) });
     void this.refreshMics();
-    this.removeRevokeListener = core.auth.onRevoke(id => { this.diagnosticContexts.revoke(id); this.knowledgeCache.delete(id); });
+    this.removeRevokeListener = core.auth.onRevoke(id => { this.diagnosticContexts.revoke(id); this.knowledgeCache.delete(id); this.planningContexts.delete(id); });
   }
 
   aiAvailable(): boolean {
@@ -121,7 +124,7 @@ export class AssistantService {
     const local = parseRequest(text, { names: this.core.controller.names, role: p.role, steps: this.opts.steps, musicianPA: musicianHasPA(this.core.policy) });
     const explicitCommand = isExplicitMixRequest(text);
     if (explicitCommand && !consultation && local.kind !== 'unknown') {
-      this.diagnosticContexts.clear(p.id);
+      this.diagnosticContexts.clear(p.id); this.planningContexts.delete(p.id);
       this.prune();
       return { ...this.render(p, local, 'local'), diagnosticContext: null };
     }
@@ -182,8 +185,8 @@ export class AssistantService {
     if (!parsed.success) return error('INVALID', 'Conversa inválida: use texto de até 500 caracteres e a revisão opcional do esclarecimento.');
     if (isExplicitMixRequest(parsed.data.text)) return error('INVALID', 'Este endpoint aceita somente consulta; envie comandos diretos pelo chat de comandos.');
     void this.refreshMics();
-    return this.diagnosticContexts.handle(p.id, parsed.data.text, parsed.data.context)
-      ?? error('INVALID', 'Descreva o problema (por exemplo "A voz está abafada no retorno" ou "O surdo está sem grave") ou responda ao esclarecimento pendente.');
+    return this.capturePlanningContext(p, this.diagnosticContexts.handle(p.id, parsed.data.text, parsed.data.context)
+      ?? error('INVALID', 'Descreva o problema (por exemplo "A voz está abafada no retorno" ou "O surdo está sem grave") ou responda ao esclarecimento pendente.'));
   }
 
   /**
@@ -191,6 +194,7 @@ export class AssistantService {
    * (ou ausência dela) devolve a resposta original: o motor determinístico continua sendo a resposta.
    */
   async withKnowledge(p: Principal, reply: AssistantReply, text: string): Promise<AssistantReply> {
+    this.capturePlanningContext(p, reply);
     const k = this.opts.knowledge;
     if (!k || p.role !== 'operator' || reply.kind !== 'diagnosis' || !this.core.auth.isActive(p)) return reply;
     const known = reply.diagnosticSession?.knownContext;
@@ -218,15 +222,36 @@ export class AssistantService {
     return this.core.auth.isActive(p) ? { ...reply, knowledge } : reply;
   }
 
+  private capturePlanningContext(p: Principal, reply: AssistantReply): AssistantReply {
+    if (p.role !== 'operator' || !this.core.auth.isActive(p)) return reply;
+    const session = reply.diagnosticSession;
+    if (session) {
+      const key = JSON.stringify(session), old = this.planningContexts.get(p.id);
+      if (!old || old.expiresAt <= this.now() || old.key !== key) {
+        if (this.planningContexts.size >= 128 && !old) this.planningContexts.delete(this.planningContexts.keys().next().value!);
+        this.planningContexts.set(p.id, { session: structuredClone(session), key, revision: ++this.planningRevision,
+          expiresAt: session.expiresAt ? Date.parse(session.expiresAt) : this.now() + 300_000 });
+      }
+    } else if (reply.diagnosticContext === null) this.planningContexts.delete(p.id);
+    return reply;
+  }
+  planningContext(p: Principal): { session: NonNullable<ConsultationReply['diagnosticSession']>; revision: number } | undefined {
+    if (p.role !== 'operator' || !this.core.auth.isActive(p)) return undefined;
+    const cached = this.planningContexts.get(p.id);
+    if (!cached || cached.expiresAt <= this.now()) { this.planningContexts.delete(p.id); return undefined; }
+    return { session: structuredClone(cached.session), revision: cached.revision };
+  }
+
   sweep(): void {
     this.diagnosticContexts.sweep(id => this.core.auth.isActive({ id, role: 'operator', label: 'operador' }));
     const now = this.now();
+    for (const [id, c] of this.planningContexts) if (now >= c.expiresAt || !this.core.auth.isActive({ id, role: 'operator', label: 'operador' })) this.planningContexts.delete(id);
     for (const [id, c] of this.knowledgeCache) if (now >= c.expiresAt || !this.core.auth.isActive({ id, role: 'operator', label: 'operador' })) this.knowledgeCache.delete(id);
   }
   stop(): void {
     this.removeRevokeListener();
     this.diagnosticContexts.stop();
-    this.knowledgeCache.clear();
+    this.knowledgeCache.clear(); this.planningContexts.clear();
   }
 
   /** B3A: autorização e validação comuns a chat, HTTP e WS. Nunca cria propostas. */
@@ -236,7 +261,7 @@ export class AssistantService {
     const parsed = consultationSchema.safeParse(raw);
     if (!parsed.success) return error('INVALID', 'Consulta inválida: informe sintoma, canal/fonte, destino e evidências com origem, sem comandos ou aprovações.');
     try {
-      return consult(parsed.data, this.core.controller.names, this.core.policy.musicianAux);
+      return this.capturePlanningContext(p, consult(parsed.data, this.core.controller.names, this.core.policy.musicianAux));
     } catch (err) {
       return error('INVALID', (err as Error).message);
     }

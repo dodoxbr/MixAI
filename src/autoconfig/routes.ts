@@ -1,12 +1,14 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { Principal } from "../server/auth.js";
 import { ReferenceError } from "../reference/schema.js";
+import type { AutoConfigAdvisoryPort } from "./suggestion-source.js";
 import type { AutoConfigService } from "./service.js";
 /** Authentication is delegated to the central ingress policy; no second credentials or PIN. */
 export async function autoConfigRoutes(
   app: FastifyInstance,
   opts: {
     service: AutoConfigService;
+    advisor?: AutoConfigAdvisoryPort;
     origin?: string;
     principal(req: FastifyRequest, reply: FastifyReply): Principal | undefined;
     active(p: Principal): boolean;
@@ -51,6 +53,7 @@ export async function autoConfigRoutes(
                 : 409;
     reply.code(status).send({ code });
   });
+  if (opts.advisor) app.post("/api/autoconfig/suggestions", { bodyLimit: 4096 }, req => opts.advisor!.suggest(actors.get(req)!, req.body));
   app.get("/api/autoconfig", (req) => opts.service.list(actors.get(req)!));
   app.get<{ Params: { id: string } }>("/api/autoconfig/:id", (req) =>
     opts.service.detail(actors.get(req)!, req.params.id),

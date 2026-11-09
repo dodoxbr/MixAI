@@ -290,5 +290,10 @@ it('AutoConfig contracts retain central HTTPS authorization and reject physical/
  expect((await http('/api/autoconfig',{token:operator,body:{...input,transport:'real'}})).status).toBe(400);
  expect((await http('/api/autoconfig',{token:operator,body:input,headers:{origin:'https://foreign.invalid'}})).status).toBe(403);
  expect((await http('/api/autoconfig',{token:operator,body:input})).status).toBe(200);
+ expect((await http('/api/autoconfig/suggestions',{token:agent,body:{serverId:t!.server.core.serverId,scope:'AUX1'}})).status).toBe(401);
+ expect((await http('/api/autoconfig/suggestions',{token:musician,body:{serverId:t!.server.core.serverId,scope:'AUX1'}})).status).toBe(403);
+ const advisory=await http('/api/autoconfig/suggestions',{token:operator,body:{serverId:t!.server.core.serverId,scope:'AUX1'}});
+ expect(advisory.status).toBe(200);expect(advisory.body.createsDraft).toBe(false);expect(advisory.body.proposal).toBeNull();expect(advisory.body.advice.kind).toBe('question');
+ expect((await http('/api/autoconfig/suggestions',{token:operator,body:{serverId:t!.server.core.serverId,scope:'AUX1',deltaDB:1}})).status).toBe(400);
  expect(t!.server.core.snapshotFor('operator')).toEqual(snapshot);
 });

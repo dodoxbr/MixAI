@@ -1,15 +1,15 @@
 # Issue #73 — planejador técnico AutoConfig (LAB)
 
-Base: main `f399939`, branch `feature/autoconfig-ai-planner`. AGENTS.md, Issues #43,
+Implementação original: main `f399939`, branch `feature/autoconfig-ai-planner`. AGENTS.md, Issues #43,
 #44, #65 e #73 e skills mixai-mesario, live-sound-consultation e soundcraft-ui16-safety
 foram lidos. O escopo #73 prevalece sobre atribuições históricas nas skills.
 
+A integração com main/PR #80 está em [INTEGRATION-78.md](INTEGRATION-78.md). O motor puro descrito abaixo permanece independente; a composição do servidor oferece conselho autenticado e contexto efêmero M1.
+
 ## Fronteira entregue
 
-O planejador é funcional por `src/autoconfig/index.ts`, independente de diagnóstico,
-UI e execução. **Nenhum arquivo A1/A2** (`src/assistant/**`, interpretação,
-`src/knowledge/local/service.ts`) foi modificado; nenhum endpoint ou botão foi ligado
-implicitamente. O núcleo D pode injetar o port `AutoConfigPlannerPort`; B recebe a
+O planejador é funcional por `src/autoconfig/planner/index.ts` (reexportado por `src/autoconfig/index.ts`), independente de diagnóstico,
+UI e execução. `AssistantService` ganhou apenas projeção somente leitura por sessão para conselho, sem alterar decisões de M1. A integração adiciona uma rota explícita de conselho, sem botão ou caminho de execução automático. O núcleo D pode injetar o port `AutoConfigPlannerPort`; B recebe a
 união discriminada `question | proposal | refusal` e o adaptador de respostas.
 
 Não é uma segunda implementação de mixer, fila, autorização, LLM ou RAG. O adaptador
@@ -19,7 +19,7 @@ pacote de microfones existente quando fornecido. O adaptador de provedores usa
 configuração, política de rede, modelos, chaves, fallback do diagnóstico ou cache.
 
 O teste arquitetural anterior foi ampliado **apenas** para os dois novos consumidores
-explícitos (`kb-adapter.ts` e `provider-adapter.ts`). A pureza da base continua exigida;
+explícitos (`planner/kb-adapter.ts` e `planner/provider-adapter.ts`). A pureza da base continua exigida;
 um teste novo impede imports de mixer, servidor, diagnóstico, filesystem e mecanismos
 de execução pelo motor. Não se flexibilizou um gate de escrita para passar CI.
 
@@ -61,8 +61,7 @@ pode oferecer CH3–7 sem presumir identidade. AUX1 conhecido não é confundido
 atual e devolve a nova entrada. Confere fingerprint da entrada normalizada; resposta
 antiga ou campo/valor forjado falha. O chamador conserva essa entrada entre turnos.
 O fingerprint **não** é sessão, credencial ou autorização; D deve escopar contexto por
-principal e aplicar sua própria revisão/TTL/concorrência. O motor não cria um segundo
-store de sessões nem persiste conversas de outros usuários.
+principal e aplicar sua própria revisão/TTL/concorrência. O motor puro não cria store de sessões. Na composição do servidor, um cache limitado e efêmero guarda somente projeções M1/respostas consultivas por principal; não persiste conversas nem compartilha contexto.
 
 Apito ativo: interromper escuta e chamar operador, sem modelo. Se não sabe se o apito
 foi contido, não gera proposta. Modelo só entra após confirmar contenção e operador.
@@ -143,10 +142,10 @@ invalidam o resultado e impedem novas tentativas.
 agora. A política e as mesmas guardas continuam válidas. Não há bypass de consentimento
 via fallback nem envio de documentos locais ao Gemini.
 
-## Integração posterior B/D
+## API pura e composição B/D
 
 ```ts
-// Exemplo de ligação futura, não endpoint publicado nesta entrega.
+// API pura; o endpoint integrado e seus guardas estão em INTEGRATION-78.md.
 const planner = createConfiguredPlanner(loaded, names, {
   microphones: existingPack.microphones,
   policy: () => currentTrustedPlannerPolicy(),
@@ -188,6 +187,6 @@ leituras declaradas, isolamento e ID não aplicável no protocolo existente. O e
 com servidor MOCK confirma zero builder/execute/RealMixer.write e fila/estado intactos.
 
 Resultados completos e CI Windows/Ubuntu/Caddy/smoke constam no PR do SHA final.
-Integração de telas B/core D, avaliação consentida com modelos reais, julgamentos
+Integração das telas B e avaliação consentida com modelos reais, julgamentos
 subjetivos de utilidade e qualquer teste físico continuam pendentes. #43/#44 não
 liberam E6; nenhuma conexão/escrita REAL, rede Windows ou política de segurança mudou.
