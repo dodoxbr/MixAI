@@ -45,7 +45,18 @@ export class DiagnosticContexts {
   private rates = new Map<string, { until: number; count: number }>();
   constructor(private names: ChannelMap, private aux: number, private options: {
     clock?: () => number; ttlMs?: number; maxPending?: number; maxSessions?: number; requestsPerMinute?: number; id?: () => string;
+    /** Captação já CADASTRADA para o canal (hoje: microfone com modelo confirmado). Se existe, a pergunta não é feita; se não, continua sendo. */
+    registeredCapture?: (channel: number) => 'microphone' | undefined;
   } = {}) {}
+  /** Progresso efetivo: o que o operador respondeu + o que o cadastro já sabe. Nunca inventa: sem cadastro, nada é preenchido. */
+  private effective(input: ConsultationInput, progress: DiagnosticProgress): DiagnosticProgress {
+    if (progress.capture !== undefined || input.channel === undefined) return progress;
+    const capture = this.options.registeredCapture?.(input.channel);
+    return capture ? { ...progress, capture } : progress;
+  }
+  private guided(input: ConsultationInput, progress: DiagnosticProgress): ConsultationReply {
+    return guidedConsultation(input, this.names, this.aux, this.effective(input, progress));
+  }
   private now() { return (this.options.clock ?? Date.now)(); }
   sweep(active: (id: string) => boolean = () => true): void {
     const now = this.now();
@@ -72,7 +83,7 @@ export class DiagnosticContexts {
     if (!matching) return this.message('DIAGNOSIS_CONTEXT_STALE', 'Este esclarecimento expirou ou mudou. Use a pergunta atual ou inicie um diagnóstico completo.', current);
     if (restart) return this.save(id, { evidence: [] }, undefined, { results: [] }, '');
     if (current) {
-      const reply = guidedConsultation(current.input, this.names, this.aux, current.progress);
+      const reply = this.guided(current.input, current.progress);
       if (/^(?:detalhes|fontes|justificativas|ver detalhes|mostrar fontes)$/.test(normalized)) return this.present(current, reply);
       const correction = this.correction(text, current);
       if (correction) return this.save(id, correction.input, current, correction.progress);
@@ -156,7 +167,7 @@ export class DiagnosticContexts {
   }
   private save(id: string, input: ConsultationInput, previous?: Pending, progress = previous?.progress ?? { results: [] }, complaint = previous?.complaint ?? ''): ContextualReply {
     let reply: ConsultationReply;
-    try { reply = guidedConsultation(input, this.names, this.aux, progress); }
+    try { reply = this.guided(input, progress); }
     catch { this.clear(id); return this.message('INVALID', 'Fonte ou destino indisponível para esta consulta; confira o cadastro e o AUX.'); }
     input = { ...input, instrument: reply.diagnosticSession.knownContext.instrument ?? input.instrument };
     if (reply.clarification && !this.pending.has(id) && this.pending.size >= (this.options.maxPending ?? CONTEXT_LIMITS.pending)) {
@@ -167,13 +178,13 @@ export class DiagnosticContexts {
     if (reply.clarification) this.pending.set(id, pending); else this.clear(id);
     return this.present(pending, reply);
   }
-  private present(pending: Pending, reply = guidedConsultation(pending.input, this.names, this.aux, pending.progress)): ContextualReply {
+  private present(pending: Pending, reply = this.guided(pending.input, pending.progress)): ContextualReply {
     const session = diagnosticSessionSchema.parse({ ...reply.diagnosticSession, sessionId: pending.id, revision: pending.revision, expiresAt: new Date(pending.expiresAt).toISOString() });
     return withQuery({ ...reply, diagnosticSession: session, diagnosticContext: reply.clarification ? this.view(pending, reply) : null }, this.knowledgeQuery(pending, session.knownContext));
   }
   /** Relato original + esclarecimentos já dados. A ordem importa: o relato vem primeiro (o resto pode ser cortado pelo limite). */
   private knowledgeQuery(pending: Pending, known: DiagnosticSession['knownContext']): KnowledgeQuery {
-    const p = pending.progress, to = pending.input.destination;
+    const p = this.effective(pending.input, pending.progress), to = pending.input.destination;
     const hints = [
       p.scope === 'selected_only' ? (to === 'fones' ? 'Só no retorno.' : 'Só no PA.') : p.scope === 'both' ? 'Acontece no PA e nos fones.' : '',
       p.isolation === 'alone' ? 'Soa assim também sozinha.' : p.isolation === 'ensemble' ? 'Só soa assim com a banda.' : '',
@@ -183,7 +194,7 @@ export class DiagnosticContexts {
     return { text: [complaint, ...hints].filter(Boolean).join(' ').slice(0, 400), symptom: known.symptom ?? undefined,
       instrument: known.instrument ?? undefined, channel: known.channel ?? undefined, destination: known.destination ?? undefined };
   }
-  private view(pending: Pending, reply = guidedConsultation(pending.input, this.names, this.aux, pending.progress)): DiagnosticContextView {
+  private view(pending: Pending, reply = this.guided(pending.input, pending.progress)): DiagnosticContextView {
     return { id: pending.id, revision: pending.revision, expiresAt: new Date(pending.expiresAt).toISOString(),
       subject: `${pending.input.channel ? this.names.inputs.nameOf(pending.input.channel) : 'Fonte a confirmar'} · ${pending.input.symptom ?? 'Sintoma a confirmar'} · ${pending.input.destination?.toUpperCase() ?? 'Destino a confirmar'}`,
       field: reply.clarification!.field, question: reply.clarification!.question };

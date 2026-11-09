@@ -22,7 +22,6 @@ async function say(page: Page, text: string) {
 }
 
 async function finishChecks(page: Page) {
-  await page.locator('.diagnostic-options').last().getByRole('button', { name: 'Só no PA', exact: true }).click();
   await page.locator('.diagnostic-options').last().getByRole('button', { name: 'Só com a banda', exact: true }).click();
   await page.locator('.diagnostic-options').last().getByRole('button', { name: 'Melhorou', exact: true }).click();
 }

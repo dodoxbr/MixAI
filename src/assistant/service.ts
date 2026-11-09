@@ -66,6 +66,9 @@ export class AssistantService {
   readonly builder: ProposalBuilder;
   readonly diagnosticContexts: DiagnosticContexts;
   private removeRevokeListener: () => void;
+  /** Canais com microfone de modelo confirmado no cadastro da banda (instantâneo somente leitura, renovado a cada 30 s). */
+  private registeredMics = new Set<number>();
+  private micsAt = -Infinity;
 
   constructor(
     private core: ServerCore,
@@ -80,7 +83,8 @@ export class AssistantService {
     },
   ) {
     this.builder = new ProposalBuilder(core.controller, core.policy, opts.ttlMs, opts.clock, (p, cmd) => core.authorizeMusicianCommand(p, cmd));
-    this.diagnosticContexts = new DiagnosticContexts(core.controller.names, core.policy.musicianAux, { clock: opts.clock });
+    this.diagnosticContexts = new DiagnosticContexts(core.controller.names, core.policy.musicianAux, { clock: opts.clock, registeredCapture: ch => (this.registeredMics.has(ch) ? 'microphone' : undefined) });
+    void this.refreshMics();
     this.removeRevokeListener = core.auth.onRevoke(id => { this.diagnosticContexts.revoke(id); this.knowledgeCache.delete(id); });
   }
 
@@ -90,6 +94,21 @@ export class AssistantService {
 
   private now() {
     return (this.opts.clock ?? Date.now)();
+  }
+
+  /** Lê o cadastro de microfones da base local; falha ou ausência de base = nada cadastrado (a pergunta de captação continua). */
+  private async refreshMics(): Promise<void> {
+    const k = this.opts.knowledge;
+    if (!k || this.now() - this.micsAt < 30_000) return;
+    this.micsAt = this.now();
+    try {
+      const set = new Set<number>();
+      for (const [key, a] of Object.entries((await k.microphones()).assignments)) {
+        const n = /^CH(\d+)$/i.exec(key);
+        if (n && a.modelId && a.evidence !== 'unconfirmed') set.add(Number(n[1]));
+      }
+      this.registeredMics = set;
+    } catch { /* sem cadastro legível: nada é presumido */ }
   }
 
   async ask(p: Principal, raw: unknown, stamp?: unknown): Promise<AssistantReply> {
@@ -110,6 +129,7 @@ export class AssistantService {
     if (p.role === 'operator') {
       const parsedStamp = contextStampSchema.optional().safeParse(stamp);
       if (!parsedStamp.success) return error('INVALID', 'Referência de esclarecimento inválida.');
+      await this.refreshMics();
       const technical = this.diagnosticContexts.handle(p.id, text, parsedStamp.data);
       if (technical) return this.withKnowledge(p, technical, text);
     } else if (consultation || stamp !== undefined) {
@@ -161,6 +181,7 @@ export class AssistantService {
     const parsed = conversationSchema.safeParse(raw);
     if (!parsed.success) return error('INVALID', 'Conversa inválida: use texto de até 500 caracteres e a revisão opcional do esclarecimento.');
     if (isExplicitMixRequest(parsed.data.text)) return error('INVALID', 'Este endpoint aceita somente consulta; envie comandos diretos pelo chat de comandos.');
+    void this.refreshMics();
     return this.diagnosticContexts.handle(p.id, parsed.data.text, parsed.data.context)
       ?? error('INVALID', 'Descreva o problema (por exemplo "A voz está abafada no retorno" ou "O surdo está sem grave") ou responda ao esclarecimento pendente.');
   }
