@@ -79,6 +79,7 @@ export async function openLocalKnowledge(loaded: LoadedConfig, deps: OpenDeps = 
     narrative: k.ollama.narrative,
     search: k.search,
     minScore: k.ollama.minScore,
+    retrieval: k.retrieval,
     narrativeTimeoutMs: k.ollama.narrativeTimeoutMs,
     log: deps.log,
     storeFallbackFrom: fallbackFrom,

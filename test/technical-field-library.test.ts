@@ -76,7 +76,7 @@ it('seco pergunta significado primeiro, sem escolher reverb ou EQ por conta pró
   expect(first.diagnosticContext?.field).toBe('symptom'); expect(first.diagnosticSession!.choices.map(c => c.value)).toEqual(['magro', 'processamento']);
   expect(first.diagnosticSession!.nextCheck).toBeNull(); expect(first.text).not.toMatch(/abra|aumente|reverb/i);
   const next = c.handle('op', 'Falta corpo ou grave', { id: first.diagnosticContext!.id, revision: first.diagnosticContext!.revision })!;
-  expect(next.diagnosticContext!.field).toBe('scope');
+  expect(next.diagnosticContext!.field).toBe('isolation');
   expect(next.diagnosticSession!.knownContext).toMatchObject({ channel: 1, destination: 'fones', symptom: 'magro' });
 });
 it('conhecimento específico cobre papéis e alternativas sem presets numéricos', () => {

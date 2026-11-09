@@ -124,7 +124,7 @@ knowledge:
     narrative: false     # true = redigir texto de apoio com o modelo local (nunca vira comando)
     timeoutMs: 8000      # embeddings e verificação de saúde
     narrativeTimeoutMs: 30000   # resumo do modelo (CPU gera devagar)
-    minScore: 0.3        # similaridade mínima; depende do modelo de embedding (ver docs/lab/22)
+    minScore: 0.3        # similaridade mínima; depende do modelo de embedding (ver docs/lab/22). nomic-embed-text: 0,3. bge-m3: 0,40 (maior valor sem perder recall; ver docs/lab/26)
   # Provedores de IA. Padrão: tudo local (Ollama). O Gemini é um serviço EXTERNO do Google: só funciona com
   # gemini.enabled: true E uma chave em config/secrets.yaml (geminiApiKey) ou na variável MIXAI_GEMINI_API_KEY.
   # A chave NUNCA vai neste arquivo, no config.local.yaml, no Git, no log nem na tela. O operador escolhe o
