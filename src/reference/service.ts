@@ -109,7 +109,7 @@ export class ReferenceService {
     this.guard(p); const document = this.document();
     const requests = document.requests.filter(r => this.owns(p, r)).map(({ fingerprint: _, requestId: __, history, ...r }) => ({ ...r, historyCount: history.length }));
     return { requestCapabilities: { guidedPreviewVersion: 1, closure: true }, serverId: this.read.serverId, revision: document.revision,
-      references: p.role === 'operator' ? document.references.map(({ scene, observations, history, ...r }) => ({ ...r, sceneId: scene.id, observedCount: Object.keys(observations).length, historyCount: history.length })) : [],
+      references: p.role === 'operator' ? document.references.filter(r => !r.simulation && r.source.mode === this.read.mode).map(({ scene, observations, history, ...r }) => ({ ...r, sceneId: scene.id, observedCount: Object.keys(observations).length, historyCount: history.length })) : [],
       requests, channels: this.read.channels(), integrations: { identity: !!this.ports.identity, recommendations: !!this.ports.recommendations }, identity: this.identity(p), sharedAux: 1 };
   }
   detail(p: Principal, id: string) {
@@ -146,7 +146,7 @@ export class ReferenceService {
     document.references.push(reference); this.store.commit(document, document.revision); return reference;
   }
   compare(p: Principal, id: string) {
-    this.guard(p, true); const reference = this.document().references.find(r => r.id === id);
+    this.guard(p, true); const reference = this.document().references.find(r => r.id === id && !r.simulation && r.source.mode === this.read.mode);
     if (!reference) throw new ReferenceError('NOT_FOUND');
     if (JSON.stringify(reference.deviceProfile) !== JSON.stringify(this.read.device)) throw new ReferenceError('INVALID');
     const current = this.snapshot();

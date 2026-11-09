@@ -117,6 +117,13 @@ horizontal dos canais, MASTER separado à direita e a página rolando na vertica
 envia nenhum comando. O músico tem **MUTE / ABRIR** por canal nos FONES (e no PA, se
 `server.musicianAccess` permitir). Detalhes e capturas: `docs/lab/11-CELULAR-PAISAGEM-MUTE.md`.
 
+## AutoConfig — núcleo virtual (LAB/MOCK)
+
+Propostas estruturadas podem ser preparadas, autorizadas individualmente pelo operador,
+simuladas e revisadas pela API. Nenhum mixer é movimentado: referências candidatas são
+salvas como **não aplicadas** e separadas do estado observado. Contratos B/C e limites
+estão no [manual do núcleo AutoConfig](docs/autoconfig/CORE.md). Não há escrita REAL.
+
 ## Passagem de som (LAB)
 
 Na Mesa do operador, **Passagem de som — assistente LAB** oferece checklist por evento,
