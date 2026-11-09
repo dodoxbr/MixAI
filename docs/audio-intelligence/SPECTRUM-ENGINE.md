@@ -85,6 +85,10 @@ exigem IDs únicos, ordem crescente, ausência de sobreposição e limites dentr
 superior da banda. Energia abaixo de 20 Hz/acima de 20 kHz ou nas lacunas pode ficar fora
 das bandas, mas continua no total. Não há repartição artificial de bins entre bandas.
 `fractionOfTotalPower` usa o total completo, incluindo DC.
+`binCount` informa quantos centros participam de cada banda. Quando é zero, a resolução
+não cobre aquela faixa com centros de bins: potência agregada zero **não comprova**
+ausência de energia nessa faixa. O consumidor deve exibir cobertura indisponível,
+sem interpretar esse zero como silêncio medido na banda.
 
 Picos são máximos locais, ordenados por potência e desempate por bin. Têm resolução
 `sampleRate / fftSize`; não são frequências identificadas de microfonia, notas,
@@ -164,6 +168,8 @@ poderão ser promovidos por um adaptador posterior.
 Diferenças são razões de RMS (20 log) ou potência por banda (10 log). Zero preserva
 `both_zero`, `from_zero` ou `to_zero` com `deltaDB: null`. Não serializa ±Infinity,
 nem afirma melhora, piora, causa, medição acústica ou ajuste ideal de EQ.
+Bandas com `binCount: 0` retornam `power: null` na comparação: não há delta disponível,
+nem alegação de silêncio ou igualdade nessa faixa.
 
 ## Contrato para futura SpectrumSource (Agente D)
 

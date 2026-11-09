@@ -62,8 +62,9 @@ export function analyzePcm(raw: unknown): SpectrumMeasurement {
     rms: { linear: rms, dbRelativeToUnit: powerDB(rmsPower), dbFS: referenced ? powerDB(rmsPower) : null },
     totalSpectralPower: level(total, referenced), bins,
     bands: bands.map(b => {
-      const power = bins.reduce((sum, bin) => sum + (bin.frequencyHz >= b.lowHz && (bin.frequencyHz < b.highHz || (b.highHz === nyquist && bin.frequencyHz === nyquist)) ? bin.power : 0), 0);
-      return { ...b, level: level(power, referenced), fractionOfTotalPower: total === 0 ? 0 : Math.min(1, power / total) };
+      let power = 0, binCount = 0;
+      for (const bin of bins) if (bin.frequencyHz >= b.lowHz && (bin.frequencyHz < b.highHz || (b.highHz === nyquist && bin.frequencyHz === nyquist))) { power += bin.power; binCount++; }
+      return { ...b, binCount, level: level(power, referenced), fractionOfTotalPower: total === 0 ? 0 : Math.min(1, power / total) };
     }), peaks,
     clipping: { status: !referenced ? 'unavailable' : clipped ? 'possible' : 'not_indicated', basis: integer ? 'integer_rails' : referenced ? 'declared_unit_full_scale' : 'unknown_float_scale',
       atOrBeyondFullScaleSamples: referenced ? clipped : null, fraction: referenced ? clipped / used : null, longestRun: referenced ? longestRun : null },

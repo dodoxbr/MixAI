@@ -59,7 +59,7 @@ export const spectrumMeasurementSchema = z.strictObject({
   rms: z.strictObject({ linear: z.number().finite().nonnegative(), dbRelativeToUnit: z.number().finite().nullable(), dbFS: z.number().finite().nullable() }),
   totalSpectralPower: spectrumLevelSchema,
   bins: z.array(spectrumLevelSchema.extend({ frequencyHz: z.number().finite().nonnegative() })).min(129).max(8193),
-  bands: z.array(frequencyBandSchema.extend({ level: spectrumLevelSchema, fractionOfTotalPower: z.number().finite().min(0).max(1) })).min(1).max(32),
+  bands: z.array(frequencyBandSchema.extend({ binCount: z.number().int().min(0).max(8193), level: spectrumLevelSchema, fractionOfTotalPower: z.number().finite().min(0).max(1) })).min(1).max(32),
   peaks: z.array(z.strictObject({ frequencyHz: z.number().finite().nonnegative(), bin: z.number().int().nonnegative(), level: spectrumLevelSchema })).max(32),
   clipping: z.strictObject({ status: z.enum(['possible', 'not_indicated', 'unavailable']), basis: z.enum(['integer_rails', 'declared_unit_full_scale', 'unknown_float_scale']),
     atOrBeyondFullScaleSamples: z.number().int().nonnegative().nullable(), fraction: z.number().finite().min(0).max(1).nullable(), longestRun: z.number().int().nonnegative().nullable() }),

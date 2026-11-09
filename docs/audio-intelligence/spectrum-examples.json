@@ -830,6 +830,7 @@
         "id": "band_1",
         "lowHz": 20,
         "highHz": 80,
+        "binCount": 0,
         "level": {
           "power": 0,
           "dbRelativeToUnit": null,
@@ -841,6 +842,7 @@
         "id": "band_2",
         "lowHz": 80,
         "highHz": 250,
+        "binCount": 1,
         "level": {
           "power": 9.946451227136777e-33,
           "dbRelativeToUnit": -320.0233184260927,
@@ -852,6 +854,7 @@
         "id": "band_3",
         "lowHz": 250,
         "highHz": 500,
+        "binCount": 1,
         "level": {
           "power": 1.3903184443876785e-32,
           "dbRelativeToUnit": -318.5688571571648,
@@ -863,6 +866,7 @@
         "id": "band_4",
         "lowHz": 500,
         "highHz": 2000,
+        "binCount": 8,
         "level": {
           "power": 0.12499999999999997,
           "dbRelativeToUnit": -9.030899869919436,
@@ -874,6 +878,7 @@
         "id": "band_5",
         "lowHz": 2000,
         "highHz": 5000,
+        "binCount": 16,
         "level": {
           "power": 1.0938771742213536e-31,
           "dbRelativeToUnit": -309.6103143993364,
@@ -885,6 +890,7 @@
         "id": "band_6",
         "lowHz": 5000,
         "highHz": 20000,
+        "binCount": 80,
         "level": {
           "power": 1.4191407529134717e-31,
           "dbRelativeToUnit": -308.4797452830424,
@@ -1001,6 +1007,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "level": {
               "power": 0.12499999999999978,
               "dbRelativeToUnit": -9.030899869919443,
@@ -1012,6 +1019,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "level": {
               "power": 1.8898040936820095e-33,
               "dbRelativeToUnit": -327.235832145795,
@@ -1023,6 +1031,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "level": {
               "power": 1.8107499307569525e-32,
               "dbRelativeToUnit": -317.4214152273466,
@@ -1034,6 +1043,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "level": {
               "power": 1.40733422240533e-31,
               "dbRelativeToUnit": -308.51602751385917,
@@ -1045,6 +1055,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "level": {
               "power": 1.6140899823764355e-30,
               "dbRelativeToUnit": -297.92072257866585,
@@ -1056,6 +1067,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "level": {
               "power": 1.1374146357047048e-29,
               "dbRelativeToUnit": -289.44081187755296,
@@ -1210,6 +1222,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "level": {
               "power": 1.3138707696423409e-33,
               "dbRelativeToUnit": -328.8144734922926,
@@ -1221,6 +1234,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "level": {
               "power": 0.12499999999999976,
               "dbRelativeToUnit": -9.030899869919445,
@@ -1232,6 +1246,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "level": {
               "power": 4.381951610626756e-33,
               "dbRelativeToUnit": -323.5833242261142,
@@ -1243,6 +1258,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "level": {
               "power": 1.2955183566368206e-31,
               "dbRelativeToUnit": -308.87556428969475,
@@ -1254,6 +1270,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "level": {
               "power": 1.732015539528957e-30,
               "dbRelativeToUnit": -297.614482158398,
@@ -1265,6 +1282,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "level": {
               "power": 1.2028056000429597e-29,
               "dbRelativeToUnit": -289.1980455857111,
@@ -1391,6 +1409,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "power": {
               "before": 0.12499999999999978,
               "after": 1.3138707696423409e-33,
@@ -1402,6 +1421,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "power": {
               "before": 1.8898040936820095e-33,
               "after": 0.12499999999999976,
@@ -1413,6 +1433,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "power": {
               "before": 1.8107499307569525e-32,
               "after": 4.381951610626756e-33,
@@ -1424,6 +1445,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "power": {
               "before": 1.40733422240533e-31,
               "after": 1.2955183566368206e-31,
@@ -1435,6 +1457,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "power": {
               "before": 1.6140899823764355e-30,
               "after": 1.732015539528957e-30,
@@ -1446,6 +1469,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "power": {
               "before": 1.1374146357047048e-29,
               "after": 1.2028056000429597e-29,
@@ -1526,6 +1550,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "level": {
               "power": 9.975501837392435e-33,
               "dbRelativeToUnit": -320.0106524704691,
@@ -1537,6 +1562,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "level": {
               "power": 2.618199884895937e-32,
               "dbRelativeToUnit": -315.81997200568475,
@@ -1548,6 +1574,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "level": {
               "power": 3.7424533390699577e-32,
               "dbRelativeToUnit": -314.26843605737287,
@@ -1559,6 +1586,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "level": {
               "power": 0.12499999999999926,
               "dbRelativeToUnit": -9.03089986991946,
@@ -1570,6 +1598,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "level": {
               "power": 5.701111663087942e-30,
               "dbRelativeToUnit": -292.44040452735914,
@@ -1581,6 +1610,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "level": {
               "power": 2.8104531983548476e-29,
               "dbRelativeToUnit": -285.5122364248827,
@@ -1735,6 +1765,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "level": {
               "power": 2.9857079249723922e-30,
               "dbRelativeToUnit": -295.2495267912169,
@@ -1746,6 +1777,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "level": {
               "power": 1.8712475331219284e-29,
               "dbRelativeToUnit": -287.2786875918182,
@@ -1757,6 +1789,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "level": {
               "power": 1.7311685299248377e-30,
               "dbRelativeToUnit": -297.61660651331044,
@@ -1768,6 +1801,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "level": {
               "power": 5.488548573213345e-30,
               "dbRelativeToUnit": -292.6054248796948,
@@ -1779,6 +1813,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "level": {
               "power": 0.12499999999999745,
               "dbRelativeToUnit": -9.030899869919525,
@@ -1790,6 +1825,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "level": {
               "power": 2.5316598839013403e-28,
               "dbRelativeToUnit": -275.9659464007115,
@@ -1916,6 +1952,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "power": {
               "before": 9.975501837392435e-33,
               "after": 2.9857079249723922e-30,
@@ -1927,6 +1964,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "power": {
               "before": 2.618199884895937e-32,
               "after": 1.8712475331219284e-29,
@@ -1938,6 +1976,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "power": {
               "before": 3.7424533390699577e-32,
               "after": 1.7311685299248377e-30,
@@ -1949,6 +1988,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "power": {
               "before": 0.12499999999999926,
               "after": 5.488548573213345e-30,
@@ -1960,6 +2000,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "power": {
               "before": 5.701111663087942e-30,
               "after": 0.12499999999999745,
@@ -1971,6 +2012,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "power": {
               "before": 2.8104531983548476e-29,
               "after": 2.5316598839013403e-28,
@@ -2051,6 +2093,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "level": {
               "power": 2.9857079249723922e-30,
               "dbRelativeToUnit": -295.2495267912169,
@@ -2062,6 +2105,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "level": {
               "power": 1.8712475331219284e-29,
               "dbRelativeToUnit": -287.2786875918182,
@@ -2073,6 +2117,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "level": {
               "power": 1.7311685299248377e-30,
               "dbRelativeToUnit": -297.61660651331044,
@@ -2084,6 +2129,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "level": {
               "power": 5.488548573213345e-30,
               "dbRelativeToUnit": -292.6054248796948,
@@ -2095,6 +2141,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "level": {
               "power": 0.12499999999999745,
               "dbRelativeToUnit": -9.030899869919525,
@@ -2106,6 +2153,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "level": {
               "power": 2.5316598839013403e-28,
               "dbRelativeToUnit": -275.9659464007115,
@@ -2260,6 +2308,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "level": {
               "power": 1.968850976345034e-30,
               "dbRelativeToUnit": -297.057871546594,
@@ -2271,6 +2320,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "level": {
               "power": 1.0577738972666052e-28,
               "dbRelativeToUnit": -279.75607154289,
@@ -2282,6 +2332,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "level": {
               "power": 3.4961839662451743e-28,
               "dbRelativeToUnit": -274.5640572322783,
@@ -2293,6 +2344,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "level": {
               "power": 1.3687045991377422e-28,
               "dbRelativeToUnit": -278.63690273420167,
@@ -2304,6 +2356,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "level": {
               "power": 1.668359645852214e-28,
               "dbRelativeToUnit": -277.77710323378864,
@@ -2315,6 +2368,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "level": {
               "power": 0.12499999999999702,
               "dbRelativeToUnit": -9.03089986991954,
@@ -2441,6 +2495,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "power": {
               "before": 2.9857079249723922e-30,
               "after": 1.968850976345034e-30,
@@ -2452,6 +2507,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "power": {
               "before": 1.8712475331219284e-29,
               "after": 1.0577738972666052e-28,
@@ -2463,6 +2519,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "power": {
               "before": 1.7311685299248377e-30,
               "after": 3.4961839662451743e-28,
@@ -2474,6 +2531,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "power": {
               "before": 5.488548573213345e-30,
               "after": 1.3687045991377422e-28,
@@ -2485,6 +2543,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "power": {
               "before": 0.12499999999999745,
               "after": 1.668359645852214e-28,
@@ -2496,6 +2555,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "power": {
               "before": 2.5316598839013403e-28,
               "after": 0.12499999999999702,
@@ -2576,6 +2636,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "level": {
               "power": 6.255172597976018e-33,
               "dbRelativeToUnit": -322.0376070238712,
@@ -2587,6 +2648,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "level": {
               "power": 0.019999999999999993,
               "dbRelativeToUnit": -16.98970004336019,
@@ -2598,6 +2660,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "level": {
               "power": 3.267468804748902e-32,
               "dbRelativeToUnit": -314.85788550033595,
@@ -2609,6 +2672,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "level": {
               "power": 0.019999999999999706,
               "dbRelativeToUnit": -16.98970004336025,
@@ -2620,6 +2684,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "level": {
               "power": 4.646815717293968e-30,
               "dbRelativeToUnit": -293.3284455036367,
@@ -2631,6 +2696,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "level": {
               "power": 1.1774336503261778e-29,
               "dbRelativeToUnit": -289.2906355647855,
@@ -2785,6 +2851,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "level": {
               "power": 3.042315680147172e-31,
               "dbRelativeToUnit": -305.1679572419727,
@@ -2796,6 +2863,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "level": {
               "power": 0.004999999999999972,
               "dbRelativeToUnit": -23.010299956639834,
@@ -2807,6 +2875,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "level": {
               "power": 6.099627922082946e-31,
               "dbRelativeToUnit": -302.1469665618836,
@@ -2818,6 +2887,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "level": {
               "power": 0.019999999999999685,
               "dbRelativeToUnit": -16.989700043360255,
@@ -2829,6 +2899,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "level": {
               "power": 1.0371085865679669e-29,
               "dbRelativeToUnit": -289.8417577005415,
@@ -2840,6 +2911,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "level": {
               "power": 0.0049999999999999776,
               "dbRelativeToUnit": -23.01029995663983,
@@ -2966,6 +3038,7 @@
             "id": "band_1",
             "lowHz": 20,
             "highHz": 80,
+            "binCount": 5,
             "power": {
               "before": 6.255172597976018e-33,
               "after": 3.042315680147172e-31,
@@ -2977,6 +3050,7 @@
             "id": "band_2",
             "lowHz": 80,
             "highHz": 250,
+            "binCount": 15,
             "power": {
               "before": 0.019999999999999993,
               "after": 0.004999999999999972,
@@ -2988,6 +3062,7 @@
             "id": "band_3",
             "lowHz": 250,
             "highHz": 500,
+            "binCount": 21,
             "power": {
               "before": 3.267468804748902e-32,
               "after": 6.099627922082946e-31,
@@ -2999,6 +3074,7 @@
             "id": "band_4",
             "lowHz": 500,
             "highHz": 2000,
+            "binCount": 128,
             "power": {
               "before": 0.019999999999999706,
               "after": 0.019999999999999685,
@@ -3010,6 +3086,7 @@
             "id": "band_5",
             "lowHz": 2000,
             "highHz": 5000,
+            "binCount": 256,
             "power": {
               "before": 4.646815717293968e-30,
               "after": 1.0371085865679669e-29,
@@ -3021,6 +3098,7 @@
             "id": "band_6",
             "lowHz": 5000,
             "highHz": 20000,
+            "binCount": 1280,
             "power": {
               "before": 1.1774336503261778e-29,
               "after": 0.0049999999999999776,

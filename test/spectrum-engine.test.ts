@@ -43,6 +43,16 @@ it('Nyquist não é duplicado na normalização e entra na última banda', () =>
   expect(result.totalSpectralPower.power).toBeCloseTo(0.25, 12);
   expect(result.bands[0].level.power).toBeCloseTo(0.25, 12);
 });
+it('banda sem centros de bins declara falta de cobertura; zero agregado não comprova ausência de energia', () => {
+  const result = analyzePcm(pcm(tones([[50, 0.5]], 48000, 256), { settings: { fftSize: 256 } }));
+  const low = result.bands[0];
+  expect(low).toMatchObject({ lowHz: 20, highHz: 80, binCount: 0, level: { power: 0 } });
+  expect(result.processing.binWidthHz).toBe(187.5);
+  expect(result.totalSpectralPower.power).toBeGreaterThan(0);
+  const comparison = compareSpectra(result, result);
+  expect(comparison.kind).toBe('comparison');
+  if (comparison.kind === 'comparison') expect(comparison.bands[0]).toMatchObject({ binCount: 0, power: null });
+});
 it('ruído determinístico concorda com DFT direta independente em bins selecionados', () => {
   const samples = noise(256), result = analyzePcm(pcm(samples, { settings: { fftSize: 256 } }));
   for (const k of [0, 1, 17, 57, 127, 128]) {
@@ -140,7 +150,7 @@ it('comparação antes/depois preserva origem, usa dB de razão e não recomenda
   expect(result.kind).toBe('comparison');
   if (result.kind !== 'comparison') throw Error('comparison');
   expect(result.rms.deltaDB).toBeCloseTo(6.02059991, 7);
-  expect(result.bands.find(b => b.id === 'band_4')!.power.deltaDB).toBeCloseTo(6.02059991, 7);
+  expect(result.bands.find(b => b.id === 'band_4')!.power!.deltaDB).toBeCloseTo(6.02059991, 7);
   expect(result.comparability).toBe('caller_declared_conditions_match');
   expect(result).not.toHaveProperty('eq'); expect(result).not.toHaveProperty('approved');
 });

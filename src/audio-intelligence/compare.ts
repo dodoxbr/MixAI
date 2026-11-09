@@ -11,7 +11,7 @@ export type SpectrumComparison =
   | { kind: 'incomparable'; reasons: SpectrumIncompatibility[] }
   | { kind: 'comparison'; mode: 'LAB'; comparability: 'caller_declared_conditions_match';
       origin: SpectrumMeasurement['origin']; rms: LevelDifference;
-      bands: Array<{ id: string; lowHz: number; highHz: number; power: LevelDifference }>;
+      bands: Array<{ id: string; lowHz: number; highHz: number; binCount: number; power: LevelDifference | null }>;
       dominantPeakHz: { before: number | null; after: number | null };
       limitations: string[] };
 function difference(before: number, after: number, multiplier: number): LevelDifference {
@@ -37,7 +37,7 @@ export function compareSpectra(before: unknown, after: unknown): SpectrumCompari
   equal('sample_rate', x.sampleRate, y.sampleRate);
   equal('processing', x.processing, y.processing);
   equal('coverage', x.coverage, y.coverage);
-  equal('bands', x.bands.map(({ id, lowHz, highHz }) => ({ id, lowHz, highHz })), y.bands.map(({ id, lowHz, highHz }) => ({ id, lowHz, highHz })));
+  equal('bands', x.bands.map(({ id, lowHz, highHz, binCount }) => ({ id, lowHz, highHz, binCount })), y.bands.map(({ id, lowHz, highHz, binCount }) => ({ id, lowHz, highHz, binCount })));
   // Keep malformed serialized shapes from posing as a different frequency grid.
   for (const m of [x, y]) {
     const n = m.processing.fftSize;
@@ -45,12 +45,13 @@ export function compareSpectra(before: unknown, after: unknown): SpectrumCompari
         m.bins.some((bin, i) => bin.frequencyHz !== i * m.sampleRate / n) ||
         m.coverage.analyzedSamples !== n + (m.coverage.frames - 1) * m.processing.hopSize ||
         m.coverage.analyzedSamples + m.coverage.discardedTailSamples !== m.coverage.inputSamples ||
-        m.coverage.durationSeconds !== m.coverage.analyzedSamples / m.sampleRate) reasons.push('invalid_grid_or_coverage');
+        m.coverage.durationSeconds !== m.coverage.analyzedSamples / m.sampleRate ||
+        m.bands.some(band => band.binCount !== m.bins.filter(bin => bin.frequencyHz >= band.lowHz && (bin.frequencyHz < band.highHz || (band.highHz === m.sampleRate / 2 && bin.frequencyHz === band.highHz))).length)) reasons.push('invalid_grid_or_coverage');
   }
   if (reasons.length) return { kind: 'incomparable', reasons: [...new Set(reasons)] };
   return { kind: 'comparison', mode: 'LAB', comparability: 'caller_declared_conditions_match', origin: x.origin,
     rms: difference(x.rms.linear, y.rms.linear, 20),
-    bands: x.bands.map((band, i) => ({ id: band.id, lowHz: band.lowHz, highHz: band.highHz, power: difference(band.level.power, y.bands[i].level.power, 10) })),
+    bands: x.bands.map((band, i) => ({ id: band.id, lowHz: band.lowHz, highHz: band.highHz, binCount: band.binCount, power: band.binCount === 0 ? null : difference(band.level.power, y.bands[i].level.power, 10) })),
     dominantPeakHz: { before: x.peaks[0]?.frequencyHz ?? null, after: y.peaks[0]?.frequencyHz ?? null },
     limitations: ['Comparison relies on caller-declared conditions, not verified capture metadata.',
       'No resampling, gain compensation, calibration or interpolation. Unknown physical differences invalidate interpretation.',
