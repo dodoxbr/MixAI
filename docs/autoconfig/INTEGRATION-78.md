@@ -1,4 +1,4 @@
-# PR #78 — integração consultiva com núcleo D / PR #80
+# PR #78 — integração consultiva com núcleo D e verificação da interface B
 
 A branch `feature/autoconfig-ai-planner` foi sincronizada com `origin/main` em
 `cd66766` (PR #80 integrado). A sincronização é um merge **para a branch de trabalho**;
@@ -7,7 +7,51 @@ foram resolvidos preservando **integralmente** as versões autoritativas de D.
 O planejador C foi movido para `src/autoconfig/planner/`; `src/autoconfig/index.ts`
 reexporta sua API anterior. O núcleo `service.ts` e contratos D não foram modificados.
 
-## Fluxo funcional
+Após o merge do PR #77, a branch foi novamente sincronizada com `origin/main`
+`81edc43a0690165031e897d6a9d934bbf7c9080b`, sem conflitos. A interface B foi
+incorporada integralmente, sem adaptações locais. O resultado é **integração parcial**:
+C ↔ D e B ↔ D funcionam; **C → B → D ainda não existe de ponta a ponta**.
+
+## Verificação após PR #77
+
+| Ligação | Evidência automatizada | Estado |
+| --- | --- | --- |
+| M1 → C → contrato D | API real autenticada reaproveita contexto M1, pergunta comparação e isolamento quando faltam e retorna inspeção + esqueleto sem número | Funcional no servidor |
+| B → D | Navegador cria rascunho com número digitado pelo operador e envia prepare/approve/simulate/review; autorização e recibo vêm do servidor | Funcional na interface |
+| B → `/api/autoconfig/suggestions` | Rastreamento das requisições durante o fluxo real da UI não registra chamada; serviço B usa apenas workspace/plan/actions | **Não implementado** |
+| Perguntas e inspeções C → B | A UI conserva seu assistente local de quatro etapas; não renderiza `advice.question`, suas escolhas ou a inspeção citada de C | **Não implementado** |
+| Esqueleto C → autorização pela UI B | A UI cria outro item com justificativa humana e valor explícito; não importa o esqueleto C | **Não implementado** |
+
+`test/e2e/autoconfig-planner.test.ts` separa explicitamente consultas diretas à API
+(mesma sessão do navegador, **não** consumo pela tela) das interações reais de B.
+O teste primeiro obtém perguntas e inspeção de C sem número, depois acompanha todas
+as requisições da UI até revisão da simulação em D. O zero inicial não permite criar
+rascunho; o teste digita 0,5 dB como decisão humana fictícia, sem relação causal com
+a inspeção. Confere digest/aprovação, ausência de `/suggestions` na etapa de UI,
+nenhuma chamada a `/api/command`, zero escrita/execução e snapshot intacto.
+Os E2E preexistentes de B também continuam completos, incluindo autorizações
+individuais, revisão, desfazer, persistência e invalidação de sessão/conexão.
+
+### Lacuna para integração futura
+
+O Agente B precisará adicionar o consumo explícito de `AdvisoryRequest` e
+`AdvisoryResponse` de `src/autoconfig/suggestion-source.ts`, com os mesmos guardas
+de sessão/origem/modo e validação estrita. A expressão de caminhos do adaptador HTTP
+atual aceita `suggestions` como segmento de ID, mas **isso não constitui suporte**:
+não há chamada, parser da resposta consultiva ou apresentação correspondente.
+O adaptador de planos existente espera os contratos de D, não um `PlannerResult`.
+
+Será necessário apresentar uma pergunta de C por vez, enviar somente a escolha e
+seu `inputFingerprint`, reaproveitar M1 no servidor e tratar recusas/contexto obsoleto.
+As inspeções devem continuar distintas de ajustes. Antes de um eventual rascunho D,
+o operador decide se um teste virtual de nível é pertinente e informa o número;
+nenhum valor pode ser derivado da inspeção. A criação do plano e todas as ações,
+versões, digests, aprovações, revisões e recibos permanecem autoritativos em D.
+Até esse consumo e seus testes de navegador existirem, não declarar AutoConfig
+integrado de ponta a ponta. Esta atualização preserva os arquivos de produção B e
+os contratos/serviço/fixtures D exatamente como na main sincronizada.
+
+## Fluxo funcional do servidor (handoff explícito por API)
 
 1. Operador conversa com M1 normalmente, por HTTP ou WebSocket.
 2. O servidor conserva uma projeção somente leitura do último `diagnosticSession`
@@ -144,9 +188,11 @@ intacto. São usados Gemini/Ollama com HTTP falso, inclusive seleção, consenti
 por sessão, quota/fallback e respostas tardias após logout, M1, consentimento e queda.
 Nenhuma API externa/modelo real é usado nos testes.
 
-E2E de Yoga/celular passa pelo M1 da interface existente e consulta o conselho pelo
-mesmo navegador, sem botões novos. HTTPS testa acesso, origem, papéis e ausência de
+E2E de Yoga/celular passa pelo M1 da interface existente e consulta o conselho por
+**fetch direto** no mesmo navegador, sem botões novos. Isso não comprova consumo de
+C pela interface B. HTTPS testa acesso, origem, papéis e ausência de
 número. Regressões completas e CI Windows/Ubuntu/Caddy/smoke estão descritos no PR
-#78 do SHA final. A UI B pode consumir esta nova rota; nenhum arquivo web foi alterado.
+#78 do SHA final. A UI B **ainda não consome** esta nova rota; nenhum arquivo web
+foi alterado por C em relação à main com PR #77.
 Validação física, avaliação consentida de modelos reais e qualquer escrita REAL/E6
 continuam fora desta entrega.
