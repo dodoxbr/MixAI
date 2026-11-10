@@ -160,9 +160,14 @@ tem prazo adicional e não usa o texto recebido depois do prazo. Nenhum replay.
 
 Portas exportadas: `ModelConsentPort` (`grant/allowed/revoke`, escopo tipado) e
 `SessionConsentBackend` compatível com `ExternalConsent.selection/allowed/revoke`
-do contrato consultado na main e no PR #92. A composição atual usa
+do contrato consultado na main e nos PRs #92/#93. A composição atual usa
 `SessionModelConsent(() => new ExternalConsent())`, instâncias **privadas por sessão**
-e escopo adicional por modelo/revisão. Não reutiliza o singleton global de
+e escopo adicional por modelo/revisão, incluindo a revisão do backend para não reviver
+respostas após revogação/reconfirmação. A lista de provedores aceitos pelo contrato
+#93 é respeitada: Gemini/DeepSeek/Anthropic delegam a A; OpenAI usa somente o
+consentimento explícito e estrito do catálogo. Não o apresenta como Gemini nem
+como aprovado por A. A pode estender o port/registro posteriormente.
+Não reutiliza o singleton global de
 `core.externalConsent`, cujo `selection()` limpa as concessões de todos: isso
 violaria o isolamento deste catálogo. Nenhum arquivo de consentimento de A foi editado.
 
@@ -175,7 +180,7 @@ revogação são registrados e removidos no encerramento.
 
 **Dependência explícita:** o assistente/RAG/planejador legados ainda não consomem esse
 port de seleção. Sua migração cabe à missão A/integração posterior, após revisão.
-O PR #92 foi somente consultado, não incorporado. Revogar consentimento no painel
+Os PRs #92/#93 foram somente consultados, não incorporados. Revogar consentimento no painel
 legado não é uma chamada ao clear do novo catálogo; o painel C deve usar as rotas
 novas ou um adaptador explícito de revogação de A. Não afirmar consentimento global
 unificado entre fluxos sem essa integração. Não esperar outro agente para testar
@@ -193,7 +198,10 @@ reservas, custo estimado e estado do registro, sem prompts/chaves/conteúdo.
 Preço desconhecido **bloqueia antes da geração**. A política configurável nesta
 versão é conservadora: `unknownPricePolicy:block` mais preços explícitos por modelo;
 não existe bypass HTTP ou preço suposto. Também foi removido o fallback genérico
-10/50 do wrapper legado, mantendo seu envelope `quota/budget` e log codificado.
+10/50 da factory legada: um `PricedProvider` adicional bloqueia preço ausente antes
+de chamar o `BudgetedProvider` existente, mantendo `quota/budget` e log codificado.
+O arquivo de orçamento de A permanece idêntico à main, para preservar sua evolução
+de reserva UTF-8 e demais correções, sem reimplementá-las.
 Lookup de preços usa apenas propriedades próprias; nomes como `constructor` não
 herdam acidentalmente um preço do protótipo JavaScript.
 
@@ -230,7 +238,7 @@ Referências oficiais consultadas em 2026-11-10 (sem executar APIs pagas):
 
 - OpenAI Responses create: https://developers.openai.com/api/reference/resources/responses/methods/create
 - OpenAI retrieve model: https://developers.openai.com/api/reference/resources/models/methods/retrieve
-- Contrato de consentimento de A: `src/server/external-consent.ts`, PR https://github.com/dodoxbr/MixAI/pull/92
+- Contrato de consentimento de A: `src/server/external-consent.ts`, PRs https://github.com/dodoxbr/MixAI/pull/92 e https://github.com/dodoxbr/MixAI/pull/93
 
 Pendentes: painel C, integração do port no fluxo A, ensaio consentido com modelos
 reais, confirmação de preços/compatibilidade da conta e desempenho no Yoga físico.

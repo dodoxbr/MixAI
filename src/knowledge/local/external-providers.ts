@@ -3,7 +3,7 @@ import { UsageTracker } from '../../ai/usage.js';
 import type { LoadedConfig } from '../../core/config.js';
 import { PROJECT_ROOT } from '../../core/config.js';
 import { AnthropicClient } from './anthropic.js';
-import { BudgetedProvider } from './budget.js';
+import { PricedProvider } from './priced-provider.js';
 import { DeepSeekClient } from './deepseek.js';
 import type { AiProvider } from './provider.js';
 
@@ -24,10 +24,10 @@ export function externalUsageTracker(file: string, clock?: () => number): UsageT
 export function buildExternalProviders(loaded: LoadedConfig, deps: { fetch?: typeof fetch; clock?: () => number; log?: (msg: string) => void; dataDir?: string } = {}): AiProvider[] {
   const k = loaded.config.knowledge, e = k.external;
   const tracker = externalUsageTracker(join(deps.dataDir ?? loaded.dataDir ?? join(PROJECT_ROOT, 'data'), 'external-ai-usage.json'), deps.clock);
-  const wrap = (inner: AiProvider, maxOutputTokens: number): AiProvider => new BudgetedProvider(inner, {
+  const wrap = (inner: AiProvider, maxOutputTokens: number): AiProvider => new PricedProvider(inner, {
     tracker, dailyBudgetUSD: e.dailyBudgetUSD, maxRequestsPerMinute: e.maxRequestsPerMinute, maxOutputTokens, log: deps.log,
-    price: (model) => Object.hasOwn(e.prices, model) ? e.prices[model] : undefined,
-  });
+    price: (model) => e.prices[model],
+  }, model => Object.hasOwn(e.prices, model) && [e.prices[model].inputPerMTok, e.prices[model].outputPerMTok].every(n => Number.isFinite(n) && n >= 0));
   const out: AiProvider[] = [];
   if (k.deepseek.enabled) out.push(wrap(new DeepSeekClient({ chatModel: k.deepseek.chatModel, timeoutMs: k.deepseek.timeoutMs, generateTimeoutMs: k.deepseek.narrativeTimeoutMs, maxOutputTokens: k.deepseek.maxOutputTokens }, loaded.secrets?.deepseekApiKey, deps.fetch ?? fetch, deps.clock), k.deepseek.maxOutputTokens));
   if (k.anthropic.enabled) out.push(wrap(new AnthropicClient({ chatModel: k.anthropic.chatModel, timeoutMs: k.anthropic.timeoutMs, generateTimeoutMs: k.anthropic.narrativeTimeoutMs, maxOutputTokens: k.anthropic.maxOutputTokens }, loaded.secrets?.anthropicApiKey, deps.fetch ?? fetch, deps.clock), k.anthropic.maxOutputTokens));

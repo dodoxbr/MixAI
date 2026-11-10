@@ -3,17 +3,17 @@ import { ModelCatalogService, SessionModelConsent, modelCatalogConfigSchema, sel
 import { UsageTracker } from '../src/ai/usage.js';
 import { OpenAITextClient } from '../src/ai/model-catalog/openai.js';
 const actor = (id = 'one'): CatalogActor => ({ id, role: 'operator' });
-function fixture(extra: { price?: boolean; dailyBudgetUSD?: number; maxRequestsPerMinute?: number; active?: (actor: CatalogActor) => boolean; consent?: ModelConsentPort; generate?: (model: string) => Promise<any>; health?: () => Promise<any> } = {}) {
+function fixture(extra: { provider?: CatalogProviderId; price?: boolean; dailyBudgetUSD?: number; maxRequestsPerMinute?: number; active?: (actor: CatalogActor) => boolean; consent?: ModelConsentPort; generate?: (model: string) => Promise<any>; health?: () => Promise<any> } = {}) {
   const calls: string[] = [], tracker = new UsageTracker(null);
-  const provider: CatalogProviderDefinition = { id: 'openai', enabled: true, configured: true, external: true, models: ['model-one'],
+  const provider: CatalogProviderDefinition = { id: extra.provider ?? 'openai', enabled: true, configured: true, external: true, models: ['model-one'],
     price: () => extra.price === false ? undefined : { inputPerMTok: 1, outputPerMTok: 2 },
-    create: model => ({ id: 'openai', external: true, model, health: extra.health ?? (async () => ({ reachable: true, chatModel: true, embedModel: false, detail: 'ok' })), embed: async () => undefined,
+    create: model => ({ id: extra.provider ?? 'openai', external: true, model, health: extra.health ?? (async () => ({ reachable: true, chatModel: true, embedModel: false, detail: 'ok' })), embed: async () => undefined,
       generateDetailed: async () => { calls.push(model); return extra.generate ? extra.generate(model) : { text: 'advice', usage: { inputTokens: 8, outputTokens: 5 } }; } }),
   };
   const service = new ModelCatalogService({ config: modelCatalogConfigSchema.parse({ enabled: true, timeoutMs: 1000 }), providers: [provider], tracker,
     dailyBudgetUSD: extra.dailyBudgetUSD ?? 1, maxRequestsPerMinute: extra.maxRequestsPerMinute ?? 100,
     mode: () => 'lab', active: extra.active ?? (() => true), consent: extra.consent });
-  const select = (id = 'one', model = 'model-one', expectedRevision = 0) => service.select(actor(id), { provider: 'openai', model, expectedRevision, confirmExternal: true });
+  const select = (id = 'one', model = 'model-one', expectedRevision = 0) => service.select(actor(id), { provider: extra.provider ?? 'openai', model, expectedRevision, confirmExternal: true });
   return { service, tracker, calls, select };
 }
 afterEach(() => vi.useRealTimers());
@@ -163,18 +163,26 @@ it('adapta o contrato ExternalConsent da missão A em instâncias por sessão, s
   const { ExternalConsent } = await import('../src/server/external-consent.js');
   const backends: InstanceType<typeof ExternalConsent>[] = [];
   const consent = new SessionModelConsent(() => { const backend = new ExternalConsent(); backends.push(backend); return backend; });
-  const f = fixture({ consent }); await f.select(); await f.select('two', 'model-two');
+  const f = fixture({ provider: 'gemini', consent }); await f.select(); await f.select('two', 'model-two');
   expect(backends).toHaveLength(2);
   await f.service.generate(actor(), 's', 'u', 1); await f.service.generate(actor('two'), 's', 'u', 1);
   backends[0].revoke('one');
+  backends[0].selection({ ...actor(), role: 'operator', label: 'fixture' }, 'gemini', true); // Reconfirming A alone must not revive the old catalog grant.
   await expect(f.service.generate(actor(), 's', 'u', 1)).rejects.toMatchObject({ code: 'NOT_CONSENTED' });
   await expect(f.service.generate(actor('two'), 's', 'u', 1)).resolves.toMatchObject({ execution: 'not_executable' });
 });
 it('registro legado compartilhado também bloqueia preço desconhecido em vez de inventar fallback', async () => {
-  const { BudgetedProvider } = await import('../src/knowledge/local/budget.js');
+  const { PricedProvider } = await import('../src/knowledge/local/priced-provider.js');
   const generate = vi.fn(async () => ({ text: 'not sent' }));
-  const provider = new BudgetedProvider({ id: 'deepseek', external: true, model: 'unknown-new-model', health: async () => ({ reachable: true, chatModel: true, embedModel: false, detail: 'ok' }), embed: async () => undefined, generateDetailed: generate },
-    { tracker: new UsageTracker(null), dailyBudgetUSD: 1, maxRequestsPerMinute: 10, maxOutputTokens: 64, price: () => undefined });
+  const provider = new PricedProvider({ id: 'deepseek', external: true, model: 'unknown-new-model', health: async () => ({ reachable: true, chatModel: true, embedModel: false, detail: 'ok' }), embed: async () => undefined, generateDetailed: generate },
+    { tracker: new UsageTracker(null), dailyBudgetUSD: 1, maxRequestsPerMinute: 10, maxOutputTokens: 64, price: () => { throw Error('price must not be guessed'); } }, () => false);
   expect(await provider.generateDetailed('s', 'u')).toMatchObject({ failure: 'quota', reason: 'budget' });
   expect(generate).not.toHaveBeenCalled();
+});
+it('OpenAI mantém consentimento próprio sem simular um provedor autorizado pelo contrato A #93', async () => {
+  const createBackend = vi.fn(() => { throw Error('A does not support OpenAI yet'); });
+  const f = fixture({ consent: new SessionModelConsent(createBackend) });
+  await f.select();
+  await expect(f.service.generate(actor(), 's', 'u', 1)).resolves.toMatchObject({ execution: 'not_executable' });
+  expect(createBackend).not.toHaveBeenCalled();
 });

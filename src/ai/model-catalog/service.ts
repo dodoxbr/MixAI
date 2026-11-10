@@ -4,23 +4,26 @@ import { ModelCatalogError, modelPriceSchema, validModel, type CatalogActor, typ
 
 /** Structural compatibility with mission A's ExternalConsent; each backend instance MUST be private to one session. */
 export interface SessionConsentBackend {
+  readonly revision?: number;
   selection(actor: CatalogActor & { label: string }, provider: string, confirmed: boolean): void;
   allowed(actor: CatalogActor & { label: string }, provider: string): boolean;
   revoke(id: string): void;
 }
 export class SessionModelConsent implements ModelConsentPort {
-  private grants = new Map<string, { scope: ConsentScope; backend?: SessionConsentBackend }>();
-  constructor(private readonly createBackend?: () => SessionConsentBackend) {}
+  private grants = new Map<string, { scope: ConsentScope; backend?: SessionConsentBackend; backendRevision?: number }>();
+  constructor(private readonly createBackend?: () => SessionConsentBackend,
+    private readonly backendProviders: readonly CatalogProviderId[] = ['gemini', 'deepseek', 'anthropic']) {}
   grant(actor: CatalogActor, scope: ConsentScope) {
     this.revoke(actor);
-    const backend = this.createBackend?.();
+    // Mission A (#93) explicitly supports these providers only. Never impersonate one to authorize OpenAI.
+    const backend = this.backendProviders.includes(scope.provider) ? this.createBackend?.() : undefined;
     backend?.selection({ ...actor, label: 'Operador catálogo' }, scope.provider, true);
-    this.grants.set(actor.id, { scope: { ...scope }, backend });
+    this.grants.set(actor.id, { scope: { ...scope }, backend, backendRevision: backend?.revision });
   }
   allowed(actor: CatalogActor, scope: ConsentScope) {
     const grant = this.grants.get(actor.id);
     return !!grant && grant.scope.provider === scope.provider && grant.scope.model === scope.model && grant.scope.revision === scope.revision &&
-      (!grant.backend || grant.backend.allowed({ ...actor, label: 'Operador catálogo' }, scope.provider));
+      (!grant.backend || ((grant.backendRevision === undefined || grant.backendRevision === grant.backend.revision) && grant.backend.allowed({ ...actor, label: 'Operador catálogo' }, scope.provider)));
   }
   revoke(actor: CatalogActor) { const grant = this.grants.get(actor.id); this.grants.delete(actor.id); grant?.backend?.revoke(actor.id); }
 }
