@@ -115,6 +115,7 @@ export async function startServer(
     }
     core.assistant = new AssistantService(core, {
       knowledge,
+      knowledgeDeadlineMs: config.knowledge.replyDeadlineMs,
       steps: config.assistant,
       ttlMs: config.assistant.proposalTtlSec * 1000,
       channels: loaded.channels.channels,

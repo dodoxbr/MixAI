@@ -16,6 +16,8 @@ import { fmtDb, ProposalBuilder, type Proposal, type ProposalCard } from './prop
 
 const KNOWLEDGE_CACHE_MS = 60_000;
 const KNOWLEDGE_CACHE_SESSIONS = 256;
+/** A interface desiste em 25 s (web/src/app/core/live.service.ts). A resposta precisa chegar antes, com folga. */
+export const KNOWLEDGE_DEADLINE_MS = 20_000;
 
 export interface AssistantReply {
   kind: 'proposals' | 'clarify' | 'answer' | 'error' | 'diagnosis';
@@ -81,6 +83,8 @@ export class AssistantService {
       channels: NamedEntry[];
       ai?: ClaudeClient;
       knowledge?: LocalKnowledge;
+      /** Prazo máximo da consulta documental dentro da resposta (deve ficar abaixo do prazo da interface). Padrão 20 s. */
+      knowledgeDeadlineMs?: number;
       log: ActionLog;
       clock?: () => number;
     },
@@ -193,6 +197,20 @@ export class AssistantService {
    * Acrescenta o contexto da base local a uma resposta de diagnóstico do operador. Falha da base
    * (ou ausência dela) devolve a resposta original: o motor determinístico continua sendo a resposta.
    */
+  private async enrichWithin(k: LocalKnowledge, query: Parameters<LocalKnowledge['enrich']>[0]): Promise<KnowledgeContext> {
+    const ms = this.opts.knowledgeDeadlineMs ?? KNOWLEDGE_DEADLINE_MS;
+    // enrich() já captura os próprios erros; a captura extra garante que uma rejeição inesperada nunca derrube a resposta.
+    const work = k.enrich(query).catch((): KnowledgeContext => ({ mode: 'deterministic', degraded: true, reason: 'Base de conhecimento indisponível.', passages: [] }));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), ms); });
+    try {
+      const first = await Promise.race([work, late]);
+      if (first !== 'late') return first;
+      // o trabalho tardio é descartado, nunca reutilizado
+      return { mode: 'deterministic', degraded: true, reason: `A base de conhecimento demorou mais de ${Math.round(ms / 1000)} s (modelo local ocupado ou carregando). Mostrando a orientação local, sem o resumo.`, passages: [], narrativeStatus: { status: 'timeout' } };
+    } finally { clearTimeout(timer); }
+  }
+
   async withKnowledge(p: Principal, reply: AssistantReply, text: string): Promise<AssistantReply> {
     this.capturePlanningContext(p, reply);
     const k = this.opts.knowledge;
@@ -211,7 +229,8 @@ export class AssistantService {
     let knowledge: KnowledgeContext;
     if (hit && hit.key === key && hit.expiresAt > this.now()) knowledge = structuredClone(hit.knowledge);
     else {
-      knowledge = await k.enrich(query);
+      // A consulta documental (busca + resumo do modelo local) é OPCIONAL: não pode segurar a orientação determinística além do prazo da interface.
+      knowledge = await this.enrichWithin(k, query);
       // Resultado degradado (Ollama fora, tempo esgotado) não é guardado: a próxima volta tenta de novo.
       const transient = knowledge.degraded || ['timeout', 'unavailable', 'error'].includes(knowledge.narrativeStatus?.status ?? '');
       if (!transient && this.core.auth.isActive(p)) {
