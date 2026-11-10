@@ -60,8 +60,14 @@ const EVIDENCE: Record<string, string> = {
                 <p class="knowledge-warning" role="note">Atenção: com {{ short[selected()] }}, trechos de manuais públicos e a sua pergunta (sem nomes nem números sensíveis) saem deste computador para {{ dest[selected()] }}. Documentos locais nunca são enviados.@if (selected() !== 'gemini') { O consentimento vale só NESTA sessão. } @if (pv.externalFallback === 'none') { Se o serviço falhar, não há reserva. } @else { Se o serviço ficar indisponível, o Ollama local assume; nunca outro serviço externo. }</p>
                 <label class="provider-consent"><input type="checkbox" #agree [checked]="consent()" (change)="consent.set(agree.checked)" /> Entendo e aceito enviar esses dados ao serviço externo.</label>
               }
-              @if (selected() !== pv.chat.selected) {
-                <button type="button" class="btn" [disabled]="k.busy() || (isExternal(selected()) && !consent())" (click)="apply()">Aplicar provedor</button>
+              @if (selected() === 'anthropic' && chosenModel() === 'claude-fable-5-2') {
+                <p class="knowledge-warning" role="note">O Claude Fable 5.2 exige retenção de dados por 30 dias, conforme a política da Anthropic (não está disponível com retenção zero de dados). Confirme que isso é aceitável antes de enviar.</p>
+              }
+              @if (needsSessionConfirm(pv)) {
+                <p class="knowledge-warning" role="status">{{ short[pv.chat.selected] }} está selecionado, mas o envio ainda não foi confirmado NESTA sessão: nada é enviado até você confirmar.</p>
+              }
+              @if (selected() !== pv.chat.selected || needsSessionConfirm(pv)) {
+                <button type="button" class="btn" [disabled]="k.busy() || (isExternal(selected()) && !consent())" (click)="apply()">{{ selected() === pv.chat.selected ? 'Confirmar envio nesta sessão' : 'Aplicar provedor' }}</button>
               }
               <p class="knowledge-note">Em uso: {{ short[pv.chat.selected] }}@if (modelOf(pv.chat.selected)) { · {{ modelOf(pv.chat.selected) }} }@if (!pv.narrative) { · o resumo está desligado na configuração (knowledge.ollama.narrative) }</p>
             }
@@ -149,6 +155,7 @@ export class KnowledgeAdminComponent {
   readonly dest = PROVIDER_DEST;
   readonly model = signal<string | null>(null);
   private option(id: KProviderId) { return this.k.status()?.providers?.chat.options.find((o) => o.id === id); }
+  needsSessionConfirm(pv: { chat: { selected: KProviderId }; sessionConsent?: boolean }): boolean { return this.isExternal(pv.chat.selected) && pv.sessionConsent === false; }
   isExternal(id: KProviderId): boolean { return this.option(id)?.external === true; }
   modelsOf(id: KProviderId): string[] | undefined { return this.option(id)?.models; }
   modelOf(id: KProviderId): string | undefined { return this.option(id)?.model; }

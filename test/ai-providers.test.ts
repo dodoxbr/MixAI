@@ -80,7 +80,8 @@ async function service(opts: { ollama?: OllamaClient; gemini?: GeminiClient; cha
   await k.ingest();
   return { k, dir, store };
 }
-const ask = (k: LocalKnowledge, text = 'O Fred está microfonando no PA') => k.enrich({ text, symptom: 'microfonia' });
+/** Consentimento da sessão concedido (Gemini, como DeepSeek e Anthropic, só envia com ele). */
+const ask = (k: LocalKnowledge, text = 'O Fred está microfonando no PA') => k.enrich({ text, symptom: 'microfonia' }, { externalAllowed: () => true });
 const generateCalls = (calls: Call[]) => calls.filter((c) => c.url.includes(':generateContent'));
 
 describe('GeminiClient: segredo, rede e erros', () => {
