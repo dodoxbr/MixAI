@@ -80,6 +80,10 @@ describe('knowledgeView (validação do que o servidor envia)', () => {
     expect(fb.fallbackNote).toBe('Resumo gerado pelo modelo local porque o Gemini atingiu o limite de uso.');
     expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'openai', verified: false } })!.narrativeSource).toBeUndefined();
     expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'gemini', verified: true } })!.narrativeSource).toBeUndefined();
+    // falhas de serviço externo citam o provedor que falhou (mesma redação para os três)
+    for (const [provider, name] of [['gemini', 'do Gemini'], ['deepseek', 'da DeepSeek'], ['anthropic', 'da Anthropic']] as const)
+      for (const [status, tail] of [['auth', 'a chave foi recusada.'], ['quota', 'limite de uso atingido.']] as const)
+        expect(knowledgeView({ ...base, narrativeStatus: { status, provider } })!.narrativeNote).toBe(`Resumo ${name} indisponível: ${tail}`);
     for (const [status, text] of [['auth', /chave foi recusada/], ['quota', /limite de uso/], ['refused', /recusou o pedido por segurança/], ['recitation', /reproduzir texto protegido/], ['withheld', /documentos locais/]] as const) {
       expect(knowledgeView({ ...base, narrativeStatus: { status } })!.narrativeNote, status).toMatch(text);
     }
@@ -190,6 +194,77 @@ describe('painel de administração', () => {
       applyButton(el)!.click(); await settle(f);
       expect(bodies).toEqual([{ chat: 'anthropic', confirmExternal: true, model: 'claude-fable-5-2' }]);
       expect(JSON.stringify(bodies)).not.toMatch(/key|sk-/i);
+    });
+    const four = (selected: string, sessionConsent: boolean) => ({
+      chat: { selected, options: [
+        { id: 'ollama', external: false, configured: true },
+        { id: 'deepseek', external: true, configured: true, model: 'deepseek-flash', models: ['deepseek-flash', 'deepseek-v4-pro'] },
+        { id: 'anthropic', external: true, configured: true, model: 'claude-opus-5-5', models: ['claude-opus-5-5', 'claude-fable-5-2'] },
+      ] },
+      embed: { id: 'ollama', external: false }, narrative: true, externalFallback: 'ollama', sessionConsent,
+    });
+    it('Claude Fable 5.2: o aviso de retenção de 30 dias aparece só com esse modelo', async () => {
+      const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(four('ollama', true)) }) }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      radios(el)[2]!.click(); f.detectChanges();
+      expect(el.textContent).not.toContain('retenção de dados por 30 dias');
+      const select = el.querySelector('select[aria-label="Modelo do provedor"]') as HTMLSelectElement;
+      select.value = 'claude-fable-5-2'; select.dispatchEvent(new Event('change')); f.detectChanges();
+      expect(el.textContent).toContain('Claude Fable 5.2 exige retenção de dados por 30 dias, conforme a política da Anthropic');
+      select.value = 'claude-opus-5-5'; select.dispatchEvent(new Event('change')); f.detectChanges();
+      expect(el.textContent).not.toContain('retenção de dados por 30 dias');
+    });
+    it('provedor já selecionado mas SEM consentimento nesta sessão: avisa e oferece confirmar; confirmado, não avisa', async () => {
+      const bodies: unknown[] = [];
+      const { f, el, svc } = boot('operator', {
+        '/api/knowledge/status': () => ({ body: withProviders(four('deepseek', false)) }),
+        '/api/knowledge/providers': (init) => { bodies.push(JSON.parse(String(init?.body))); return { body: {} }; },
+      }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      expect(el.textContent).toContain('o envio ainda não foi confirmado NESTA sessão: nada é enviado até você confirmar');
+      const confirm = () => Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Confirmar envio nesta sessão')) as HTMLButtonElement;
+      expect(confirm().disabled).toBe(true);
+      (el.querySelector('.provider-consent input') as HTMLInputElement).click(); f.detectChanges();
+      confirm().click(); await settle(f);
+      expect(bodies).toEqual([{ chat: 'deepseek', confirmExternal: true, model: 'deepseek-flash' }]);
+    });
+    it.each([['gemini', 'o Google'], ['deepseek', 'a DeepSeek'], ['anthropic', 'a Anthropic']] as const)('informação de consentimento por sessão é a mesma para %s (aviso, confirmação pendente e confirmado)', async (id, dest) => {
+      const three = (selected: string, sessionConsent: boolean) => ({
+        chat: { selected, options: [
+          { id: 'ollama', external: false, configured: true },
+          { id: 'gemini', external: true, configured: true },
+          { id: 'deepseek', external: true, configured: true, model: 'deepseek-flash', models: ['deepseek-flash', 'deepseek-v4-pro'] },
+          { id: 'anthropic', external: true, configured: true, model: 'claude-opus-5-5', models: ['claude-opus-5-5', 'claude-fable-5-2'] },
+        ] },
+        embed: { id: 'ollama', external: false }, narrative: true, externalFallback: 'ollama', sessionConsent,
+      });
+      // 1) escolhendo na tela: mesmo aviso, com a mesma frase de sessão
+      const a = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(three('ollama', true)) }) }); await settle(a.f);
+      a.svc.open.set(true); a.f.detectChanges();
+      radios(a.el)[['ollama', 'gemini', 'deepseek', 'anthropic'].indexOf(id)]!.click(); a.f.detectChanges();
+      expect(a.el.textContent).toContain(`saem deste computador para ${dest}`);
+      expect(a.el.textContent).toContain('O consentimento vale só NESTA sessão.');
+      expect(a.el.textContent).toContain('nunca outro serviço externo');
+    });
+    it.each(['gemini', 'deepseek', 'anthropic'] as const)('já selecionado (%s): "Em uso" mostra se o envio está confirmado nesta sessão', async (id) => {
+      const mk = (consent: boolean) => ({ chat: { selected: id, options: [{ id: 'ollama', external: false, configured: true }, { id, external: true, configured: true }] }, embed: { id: 'ollama', external: false }, narrative: true, sessionConsent: consent });
+      const no = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(mk(false)) }) }); await settle(no.f);
+      no.svc.open.set(true); no.f.detectChanges();
+      expect(no.el.textContent).toContain('envio aguardando confirmação nesta sessão');
+      expect(no.el.textContent).toContain('ainda não foi confirmado NESTA sessão');
+    });
+    it.each(['gemini', 'deepseek', 'anthropic'] as const)('já selecionado (%s) e confirmado: "Em uso" informa envio confirmado nesta sessão', async (id) => {
+      const mk = { chat: { selected: id, options: [{ id: 'ollama', external: false, configured: true }, { id, external: true, configured: true }] }, embed: { id: 'ollama', external: false }, narrative: true, sessionConsent: true };
+      const ok = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(mk) }) }); await settle(ok.f);
+      ok.svc.open.set(true); ok.f.detectChanges();
+      expect(ok.el.textContent).toContain('envio confirmado nesta sessão');
+      expect(ok.el.textContent).not.toContain('ainda não foi confirmado');
+    });
+    it('com o consentimento da sessão confirmado, não há aviso nem botão pendente', async () => {
+      const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(four('deepseek', true)) }) }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      expect(el.textContent).not.toContain('ainda não foi confirmado');
+      expect(applyButton(el)).toBeUndefined();
     });
     it('voltar ao Ollama não pede consentimento nem envia confirmação', async () => {
       const bodies: unknown[] = [];

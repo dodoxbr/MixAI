@@ -196,6 +196,8 @@ const ConfigSchema = z.object({
           enabled: z.boolean().default(false),
           chatModel: z.enum(['deepseek-flash', 'deepseek-v4-pro']).default('deepseek-flash'),
           maxOutputTokens: z.number().int().min(64).max(4000).default(600),
+          /** O modo de raciocínio é o padrão da API e consumiria o teto de tokens do resumo: desligado por padrão. "default" = não enviar o campo (use se a API recusar). */
+          thinking: z.enum(['disabled', 'default']).default('disabled'),
           timeoutMs: z.number().int().min(500).max(120_000).default(10_000),
           narrativeTimeoutMs: z.number().int().min(1000).max(180_000).default(30_000),
         })
@@ -218,7 +220,7 @@ const ConfigSchema = z.object({
       /**
        * Regras comuns dos provedores EXTERNOS. fallback: "ollama" (padrão) usa o Ollama local se o externo falhar por indisponibilidade;
        * "none" não tenta nada. NUNCA há troca de um serviço externo para outro, nem fallback depois de uma recusa de segurança.
-       * Preços em USD por milhão de tokens: ESTIMATIVAS para o teto de gasto (confira nas páginas oficiais de preços).
+       * Preços em USD por milhão de tokens usados SÓ para o teto de gasto: DeepSeek = tabela oficial no horário de pico (cache miss); Anthropic = tabela de preços base. Confira nas páginas oficiais.
        */
       external: z
         .object({
@@ -226,8 +228,9 @@ const ConfigSchema = z.object({
           dailyBudgetUSD: z.number().min(0).max(1000).default(1),
           maxRequestsPerMinute: z.number().int().min(1).max(600).default(10),
           prices: z.record(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/), z.object({ inputPerMTok: z.number().min(0).max(1000), outputPerMTok: z.number().min(0).max(1000) }).strict()).default({
-            'deepseek-flash': { inputPerMTok: 0.5, outputPerMTok: 2 },
-            'deepseek-v4-pro': { inputPerMTok: 2, outputPerMTok: 8 },
+            // Tabela oficial da DeepSeek (api-docs.deepseek.com/quick_start/pricing), horário de PICO e cache miss: referência conservadora.
+            'deepseek-flash': { inputPerMTok: 0.3, outputPerMTok: 1.2 },
+            'deepseek-v4-pro': { inputPerMTok: 1.32, outputPerMTok: 3.96 },
             'claude-opus-5-5': { inputPerMTok: 4, outputPerMTok: 20 },
             'claude-fable-5-2': { inputPerMTok: 8, outputPerMTok: 40 },
           }),

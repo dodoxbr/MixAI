@@ -234,7 +234,11 @@ export class AssistantService {
     if (hit && hit.key === key && hit.expiresAt > this.now()) knowledge = structuredClone(hit.knowledge);
     else {
       // A consulta documental (busca + resumo do modelo local) é OPCIONAL: não pode segurar a orientação determinística além do prazo da interface.
+      const consentAtStart = this.opts.externalConsent?.revision ?? 0;
       knowledge = await this.enrichWithin(k, query, p);
+      // Consentimento mudou durante a consulta: o resultado pode ter vindo de um envio já revogado. O LocalKnowledge já descarta o
+      // resumo externo; aqui garantimos que nada dessa rodada fica em cache.
+      if ((this.opts.externalConsent?.revision ?? 0) !== consentAtStart) knowledge = { ...knowledge, degraded: true };
       // Resultado degradado (Ollama fora, tempo esgotado) não é guardado: a próxima volta tenta de novo.
       const transient = knowledge.degraded || ['timeout', 'unavailable', 'error'].includes(knowledge.narrativeStatus?.status ?? '');
       if (!transient && this.core.auth.isActive(p)) {

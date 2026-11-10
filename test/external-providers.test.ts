@@ -23,7 +23,7 @@ import { OPERATOR_PIN, startTestServer, wsClient } from './server-support.js';
  * DeepSeek e Anthropic como provedores de texto. TUDO com provedores simulados: nenhuma chamada paga ou de rede real.
  * Chaves de teste são fictícias e nunca devem aparecer em URL, corpo, erro, log ou resposta.
  */
-const DS_KEY = 'FAKE-deepseek-key-for-tests-0123456789';
+export const DS_KEY = 'FAKE-deepseek-key-for-tests-0123456789';
 const AN_KEY = 'FAKE-anthropic-key-for-tests-0123456789';
 const GOOD = 'Pode ser que o ganho esteja alto; o operador pode conferir o posicionamento do microfone no palco.';
 const DIMS = 8;
@@ -59,7 +59,11 @@ describe('DeepSeekClient', () => {
     expect(call.headers['authorization']).toBe(`Bearer ${DS_KEY}`);
     expect(call.url + call.body).not.toContain(DS_KEY);
     expect(body).toMatchObject({ model: 'deepseek-flash', stream: false, max_tokens: 600, messages: [{ role: 'system', content: 'SISTEMA' }, { role: 'user', content: 'USUARIO' }] });
-    expect(Object.keys(body).sort()).toEqual(['max_tokens', 'messages', 'model', 'stream', 'temperature']); // sem tools/functions
+    expect(Object.keys(body).sort()).toEqual(['max_tokens', 'messages', 'model', 'stream', 'temperature', 'thinking']); // sem tools/functions
+    expect(body.thinking).toEqual({ type: 'disabled' }); // o raciocínio padrão da API consumiria o teto de tokens do resumo
+    const g = fake(() => dsOk());
+    await new DeepSeekClient({ chatModel: 'deepseek-flash', timeoutMs: 2000, thinking: 'default' }, DS_KEY, g.fetchFn).generateDetailed('s', 'u');
+    expect(JSON.parse(g.calls[0]!.body).thinking).toBeUndefined();
   });
   it('sem chave não faz rede; modelos oferecidos: flash e v4-pro, e só eles', async () => {
     const f = fake(() => dsOk()); const c = deepseek(f, null);
@@ -449,7 +453,7 @@ describe('planejador com DeepSeek/Anthropic', () => {
       expect(r.kind, failure).toBe('proposal'); expect(r.provider.used).toBe('ollama'); expect(oll.generate).toHaveBeenCalledTimes(1);
     }
     const oll = pProvider('ollama', false);
-    const none = await new TechnicalPlanner({ knowledge: knowgledgePortSafe(), providers: [pProvider('deepseek', true, { failure: 'unavailable' }), oll], policy: pol(), fallbackToLocal: false }).plan(input());
+    const none = await new TechnicalPlanner({ knowledge: knowledgePort, providers: [pProvider('deepseek', true, { failure: 'unavailable' }), oll], policy: pol(), fallbackToLocal: false }).plan(input());
     expect(oll.generate).not.toHaveBeenCalled(); expect(none.provider.used).toBe('deterministic');
   });
   it('nunca troca de um externo para outro: com Gemini também registrado, a cadeia é só selecionado + Ollama', async () => {
@@ -463,4 +467,231 @@ describe('planejador com DeepSeek/Anthropic', () => {
     expect(r).toMatchObject({ kind: 'refusal', reason: 'invalid_model_output' });
   });
 });
-function knowgledgePortSafe() { return knowledgePort; }
+
+// ---- regressão: consentimento unificado, revogação durante a operação, troca de modelo e fallback ----------------
+const GEM_KEY = 'FAKE-gemini-key-for-tests-0123456789abcdef';
+const gemOk = () => ({ json: { candidates: [{ content: { parts: [{ text: GOOD }] }, finishReason: 'STOP' }], modelVersion: 'gemini-2.5-flash' } });
+const geminiClient = (f: ReturnType<typeof fake>, key: string | null = GEM_KEY) => new GeminiClient({ chatModel: 'gemini-2.5-flash', embedModel: 'gemini-embedding-001', embedDimensions: DIMS, timeoutMs: 2000 }, key ?? undefined, f.fetchFn);
+const deferred = () => { let release!: () => void; const gate = new Promise<void>((r) => { release = r; }); return { gate, release }; };
+
+describe('regressão: consentimento unificado (Gemini, DeepSeek, Anthropic)', () => {
+  it('Gemini também exige o consentimento da sessão: sem ele nada é enviado e o Ollama assume', async () => {
+    const f = fake(() => gemOk()); const { k } = await service({ chat: 'ollama', gemini: geminiClient(f) });
+    await k.setChatProvider('gemini', true);
+    f.calls.length = 0; // a verificação de saúde da seleção não conta
+    const ctx = await ask(k);
+    expect(f.calls).toHaveLength(0);
+    expect(ctx.narrativeStatus).toMatchObject({ provider: 'ollama', fellBackFrom: 'gemini', fallbackReason: 'not_consented' });
+    const allowed = await ask(k, yes);
+    expect(allowed.narrative?.source).toBe('gemini'); expect(f.calls.some((c) => c.url.includes(':generateContent'))).toBe(true);
+  });
+  it('provedor selecionado (preferência gravada) + chave presente NÃO enviam nada sem consentimento (nova sessão)', async () => {
+    for (const [name, build] of [
+      ['gemini', async () => { const f = fake(() => gemOk()); return { f, ...(await service({ chat: 'ollama', gemini: geminiClient(f) })) }; }],
+      ['deepseek', async () => { const f = fake((c) => c.url.endsWith('/models') ? { json: { data: [{ id: 'deepseek-flash' }] } } : dsOk()); return { f, ...(await service({ deepseek: deepseek(f) })) }; }],
+      ['anthropic', async () => { const f = fake(() => anOk()); return { f, ...(await service({ anthropic: anthropic(f) })) }; }],
+    ] as const) {
+      const { f, k } = await build();
+      await k.setChatProvider(name, true); // a escolha fica gravada na instância (como uma preferência de arquivo)
+      f.calls.length = 0;
+      const ctx = await ask(k); // "nova sessão": nenhum consentimento
+      expect(f.calls.filter((c) => /generateContent|chat\/completions|\/messages/.test(c.url)), name).toHaveLength(0);
+      expect(ctx.narrativeStatus?.fellBackFrom, name).toBe(name);
+    }
+  });
+  it('embeddings externos (embedProvider gemini) também só com consentimento: sem ele, busca por palavras e nenhuma consulta sai', async () => {
+    const f = fake((c) => c.url.includes(':batchEmbedContents') ? { json: { embeddings: [{ values: new Array(DIMS).fill(0.5) }] } } : gemOk());
+    const dir = mkdtempSync(join(tmpdir(), 'mixai-emb-')); const store = new FileKnowledgeStore(join(dir, 'k.json')); await store.init();
+    const k = new LocalKnowledge({ store, ollama: geminiClient(f), chatProviders: [fakeOllama().client], inboxDir: join(dir, 'inbox'), seedDir: join(PROJECT_ROOT, 'knowledge', 'seed', 'banda-v1_2'), maxDocumentBytes: 1024 * 1024, maxPassages: 3, narrative: false });
+    await k.importSeed();
+    f.calls.length = 0;
+    const denied = await k.search('microfonia no palco');
+    expect(f.calls).toHaveLength(0); expect(denied.reason).toMatch(/sem consentimento/);
+    await k.search('microfonia no palco', { externalAllowed: () => true });
+    expect(f.calls.some((c) => c.url.includes(':batchEmbedContents'))).toBe(true);
+  });
+  it('preços padrão = tabela oficial da DeepSeek no horário de pico (cache miss)', () => {
+    const p = parseConfig({}).knowledge.external.prices;
+    expect(p['deepseek-flash']).toEqual({ inputPerMTok: 0.3, outputPerMTok: 1.2 });
+    expect(p['deepseek-v4-pro']).toEqual({ inputPerMTok: 1.32, outputPerMTok: 3.96 });
+  });
+});
+
+describe('regressão: revogação durante uma operação pendente (resumo)', () => {
+  it('revogado enquanto o serviço responde: o resultado é descartado e não é exibido; nada novo é enviado depois', async () => {
+    const d = deferred(); let granted = true;
+    const f = fake((c) => c.url.includes('chat/completions') ? dsOk('RESUMO-NAO-DEVE-APARECER pode ser o ganho do microfone no palco') : { json: {} });
+    const client = deepseek(f); const gen = client.generateDetailed.bind(client);
+    client.generateDetailed = async (s, u) => { await d.gate; return gen(s, u); };
+    const { k } = await service({ chat: 'deepseek', deepseek: client });
+    const pending = ask(k, () => granted);
+    await new Promise((r) => setTimeout(r, 50));
+    granted = false; d.release();
+    const ctx = await pending;
+    expect(ctx.narrative).toBeUndefined();
+    expect(JSON.stringify(ctx)).not.toContain('RESUMO-NAO-DEVE-APARECER');
+    expect(ctx.narrativeStatus).toMatchObject({ status: 'not_consented', provider: 'deepseek' });
+    const before = f.calls.length;
+    await ask(k, () => granted);
+    expect(f.calls.length).toBe(before); // revogado: nenhum envio novo
+  });
+  it('revogado entre a falha do externo e o próximo envio: o externo não é chamado de novo', async () => {
+    let n = 0; const f = fake(() => ({ status: 503 })); const { k } = await service({ chat: 'deepseek', deepseek: deepseek(f) });
+    await ask(k, () => n++ === 0);
+    await ask(k, () => false);
+    expect(f.calls.filter((c) => c.url.includes('chat/completions')).length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('regressão: servidor — consentimento, nova sessão, troca de modelo e revogação em operação', () => {
+  async function bootReal(opts: { preselect?: 'deepseek' | 'gemini' } = {}) {
+    const dir = mkdtempSync(join(tmpdir(), 'mixai-extreal-'));
+    const store = new FileKnowledgeStore(join(dir, 'k.json')); await store.init();
+    const ollama = fakeOllama().client;
+    const gate = deferred(); let hold = false;
+    const fd = fake((c) => c.url.endsWith('/models') ? { json: { data: [{ id: 'deepseek-flash' }, { id: 'deepseek-v4-pro' }] } } : dsOk());
+    const ds = deepseek(fd); const gen = ds.generateDetailed.bind(ds);
+    ds.generateDetailed = async (s, u) => { if (hold) await gate.gate; return gen(s, u); };
+    const gf = fake((c) => c.url.includes(':generateContent') ? gemOk() : { json: { name: 'x' } }); const gem = geminiClient(gf);
+    const knowledge = new LocalKnowledge({ store, ollama, chatProviders: [ollama, ds, gem], chat: opts.preselect, inboxDir: join(dir, 'inbox'), seedDir: join(PROJECT_ROOT, 'knowledge', 'seed', 'banda-v1_2'), maxDocumentBytes: 1024 * 1024, maxPassages: 3, narrative: true });
+    await knowledge.importSeed(); mkdirSync(join(dir, 'inbox'), { recursive: true }); writeFileSync(join(dir, 'inbox', 'shure-live.md'), PUBLIC_DOC); await knowledge.ingest();
+    const t = await startTestServer({ knowledge, dir, channels: parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'config', 'channels.yaml'), 'utf8'))) }); servers.push(t);
+    const open = async () => {
+      const token = await t.login(OPERATOR_PIN); const c = await wsClient(t.base, token); sockets.push(c); await c.next((m) => m.type === 'snapshot'); let n = 0;
+      const say = async (text = 'O Fred está microfonando no PA') => { const requestId = `q${++n}`; c.send({ type: 'assistant', requestId, text }); return (await c.next((m) => m.type === 'assistant_reply' && m.requestId === requestId, 15000)).reply; };
+      const post = (json: unknown) => fetch(`${t.base}/api/knowledge/providers`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(json) });
+      const get = async () => (await fetch(`${t.base}/api/knowledge/providers`, { headers: { authorization: `Bearer ${token}` } })).json();
+      return { token, say, post, get };
+    };
+    return { t, open, fd, gf, ds, hold: (v: boolean) => { hold = v; }, release: gate.release };
+  }
+  const deepseekChats = (fd: ReturnType<typeof fake>) => fd.calls.filter((c) => c.url.includes('chat/completions'));
+
+  it('provedor pré-selecionado com chave presente: sessão nova NÃO envia; confirmar nesta sessão libera; outra sessão não herda', async () => {
+    const s = await bootReal({ preselect: 'deepseek' });
+    const a = await s.open();
+    const info = await a.get();
+    expect(info.chat.selected).toBe('deepseek'); expect(info.sessionConsent).toBe(false); // a tela sabe que falta confirmar
+    const r0 = await a.say();
+    expect(deepseekChats(s.fd)).toHaveLength(0);
+    expect(r0.knowledge?.narrative?.source ?? 'ollama').not.toBe('deepseek');
+    const ok = await a.post({ chat: 'deepseek', confirmExternal: true });
+    expect(ok.status).toBe(200); expect((await ok.json()).sessionConsent).toBe(true);
+    const r1 = await a.say();
+    expect(deepseekChats(s.fd).length).toBeGreaterThan(0);
+    expect(r1.knowledge?.narrative).toMatchObject({ source: 'deepseek', model: 'deepseek-flash' });
+    const b = await s.open(); // outra sessão do operador
+    const sent = deepseekChats(s.fd).length;
+    expect((await b.get()).sessionConsent).toBe(false);
+    await b.say(); expect(deepseekChats(s.fd).length).toBe(sent);
+  });
+  it('Gemini pré-selecionado com chave presente: sessão nova também não envia', async () => {
+    const s = await bootReal({ preselect: 'gemini' });
+    const a = await s.open(); await a.say();
+    expect(s.gf.calls.filter((c) => c.url.includes(':generateContent'))).toHaveLength(0);
+    expect((await a.get()).sessionConsent).toBe(false);
+  });
+  it('troca de modelo sem confirmar é recusada e não muda modelo nem consentimento; com confirmar usa o novo modelo', async () => {
+    const s = await bootReal(); const a = await s.open();
+    expect((await a.post({ chat: 'deepseek', confirmExternal: true, model: 'deepseek-flash' })).status).toBe(200);
+    await a.say(); expect(JSON.parse(deepseekChats(s.fd).at(-1)!.body).model).toBe('deepseek-flash');
+    expect((await a.post({ chat: 'deepseek', model: 'deepseek-v4-pro' })).status).toBe(400); expect(s.ds.model).toBe('deepseek-flash');
+    expect((await a.get()).sessionConsent).toBe(true); // nada mudou
+    expect((await a.post({ chat: 'deepseek', confirmExternal: true, model: 'gpt-5' })).status).toBe(400); expect(s.ds.model).toBe('deepseek-flash');
+    expect((await a.post({ chat: 'deepseek', confirmExternal: true, model: 'deepseek-v4-pro' })).status).toBe(200);
+    await a.say(); expect(JSON.parse(deepseekChats(s.fd).at(-1)!.body).model).toBe('deepseek-v4-pro');
+  });
+  it('trocar para outro provedor apaga o consentimento do anterior; voltar a um externo exige confirmar de novo', async () => {
+    const s = await bootReal(); const a = await s.open();
+    await a.post({ chat: 'deepseek', confirmExternal: true });
+    await a.post({ chat: 'gemini', confirmExternal: true });
+    expect((await a.post({ chat: 'deepseek' })).status).toBe(400);
+    const before = deepseekChats(s.fd).length;
+    await a.post({ chat: 'ollama' }); await a.say();
+    expect(deepseekChats(s.fd).length).toBe(before);
+  });
+  it('REVOGAÇÃO durante a operação pendente: a resposta tardia da DeepSeek não é exibida e nada novo sai', async () => {
+    const s = await bootReal(); const a = await s.open();
+    await a.post({ chat: 'deepseek', confirmExternal: true });
+    s.hold(true);
+    const pending = a.say();
+    await new Promise((r) => setTimeout(r, 400));
+    expect((await a.post({ chat: 'ollama' })).status).toBe(200); // revoga o consentimento no meio
+    s.hold(false); s.release();
+    const reply = await pending;
+    expect(reply.knowledge?.narrative?.source).not.toBe('deepseek');
+    expect(JSON.stringify(reply)).not.toContain('"source":"deepseek"');
+    const sent = deepseekChats(s.fd).length;
+    await a.say(); expect(deepseekChats(s.fd).length).toBe(sent);
+  });
+});
+
+describe('regressão: planejador — revogação durante a operação e fallback', () => {
+  it('consentimento revogado enquanto o provedor externo responde: resposta tardia descartada (stale_policy), sem proposta', async () => {
+    let consent = true; const d = deferred();
+    const slow: PlannerProvider = { id: 'deepseek', external: true, generate: vi.fn(async () => { await d.gate; return { text: good, model: 'deepseek-flash' }; }) };
+    const oll = pProvider('ollama', false);
+    const planner = new TechnicalPlanner({ knowledge: knowledgePort, providers: [slow, oll], policy: () => ({ enabled: true, active: true, selected: 'deepseek', externalConsent: consent, revision: consent ? 1 : 2 }) });
+    const pending = planner.plan(input());
+    await new Promise((r) => setTimeout(r, 20));
+    consent = false; d.release();
+    const r = await pending;
+    expect(r).toMatchObject({ kind: 'refusal', reason: 'stale_policy' });
+    expect(oll.generate).not.toHaveBeenCalled();
+    expect(JSON.stringify(r)).not.toContain('deepseek-flash');
+    const again = await planner.plan(input()); // novo pedido sem consentimento: o externo nem é chamado
+    expect(slow.generate).toHaveBeenCalledTimes(1); expect(again.provider.attempts[0]).toEqual({ provider: 'deepseek', status: 'not_consented' });
+  });
+  it('troca do provedor selecionado durante a operação invalida o resultado', async () => {
+    let selected = 'anthropic'; const d = deferred();
+    const slow: PlannerProvider = { id: 'anthropic', external: true, generate: vi.fn(async () => { await d.gate; return { text: good }; }) };
+    const planner = new TechnicalPlanner({ knowledge: knowledgePort, providers: [slow, pProvider('ollama', false)], policy: () => ({ enabled: true, active: true, selected, externalConsent: true, revision: selected === 'anthropic' ? 1 : 2 }) });
+    const pending = planner.plan(input()); await new Promise((r) => setTimeout(r, 20));
+    selected = 'ollama'; d.release();
+    expect(await pending).toMatchObject({ kind: 'refusal', reason: 'stale_policy' });
+  });
+});
+
+describe('regressão: embeddings externos e revogação com requisição pendente (retrieve)', () => {
+  async function embedService() {
+    const d = deferred();
+    const f = fake((c) => c.url.includes(':batchEmbedContents') ? { json: { embeddings: [{ values: new Array(DIMS).fill(0.5) }] } } : gemOk());
+    const gem = geminiClient(f); const orig = gem.embed.bind(gem);
+    let held = false;
+    gem.embed = async (t, kind) => { if (held) await d.gate; return orig(t, kind); };
+    const dir = mkdtempSync(join(tmpdir(), 'mixai-embrev-')); const store = new FileKnowledgeStore(join(dir, 'k.json')); await store.init();
+    const searchSpy = vi.spyOn(store, 'search');
+    const k = new LocalKnowledge({ store, ollama: gem, chatProviders: [fakeOllama().client], inboxDir: join(dir, 'inbox'), seedDir: join(PROJECT_ROOT, 'knowledge', 'seed', 'banda-v1_2'), maxDocumentBytes: 1024 * 1024, maxPassages: 3, narrative: false });
+    await k.importSeed();
+    return { k, f, searchSpy, hold: () => { held = true; }, release: d.release };
+  }
+  it('consentimento revogado enquanto o embedding externo é gerado: o vetor é descartado e a busca segue por palavras', async () => {
+    const { k, f, searchSpy, hold, release } = await embedService();
+    let granted = true; hold(); searchSpy.mockClear(); f.calls.length = 0;
+    const pending = k.search('microfonia no palco', { externalAllowed: () => granted });
+    await new Promise((r) => setTimeout(r, 30));
+    granted = false; release();
+    const r = await pending;
+    expect(searchSpy).toHaveBeenCalled();
+    for (const call of searchSpy.mock.calls) expect(call[1], 'o vetor externo não pode chegar à busca').toBeUndefined();
+    expect(r.reason).toMatch(/Consentimento revogado durante a consulta/);
+    expect(['keyword', 'deterministic']).toContain(r.mode);
+  });
+  it('mesma consulta com o consentimento mantido usa o vetor externo (comportamento preservado)', async () => {
+    const { k, searchSpy, hold, release } = await embedService();
+    hold(); searchSpy.mockClear();
+    const pending = k.search('microfonia no palco', { externalAllowed: () => true });
+    await new Promise((r) => setTimeout(r, 30)); release();
+    await pending;
+    expect(searchSpy.mock.calls.some((c) => Array.isArray(c[1]) && (c[1] as number[]).length === DIMS)).toBe(true);
+  });
+  it('o mesmo vale no caminho do assistente (enrich): revogado durante o embedding, nada do vetor é usado', async () => {
+    const { k, searchSpy, hold, release } = await embedService();
+    let granted = true; hold(); searchSpy.mockClear();
+    const pending = k.enrich({ text: 'O Fred está microfonando no PA', symptom: 'microfonia' }, { externalAllowed: () => granted });
+    await new Promise((r) => setTimeout(r, 30)); granted = false; release();
+    const ctx = await pending;
+    for (const call of searchSpy.mock.calls) expect(call[1]).toBeUndefined();
+    expect(ctx.reason ?? '').toMatch(/Consentimento revogado/);
+  });
+});

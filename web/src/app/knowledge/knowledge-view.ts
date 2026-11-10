@@ -32,13 +32,14 @@ const NARRATIVE_NOTES: Record<string, string> = {
   echo: 'Resumo do modelo local descartado: apenas repetia os trechos.',
   blocked: 'Resumo do modelo local descartado por segurança (continha valores, comandos ou afirmação sobre o áudio).',
   not_consented: 'Resumo do serviço externo não gerado: falta confirmar o envio nesta sessão (Base de conhecimento > Provedor do resumo).',
-  auth: 'Resumo do Gemini indisponível: a chave foi recusada.',
-  quota: 'Resumo do Gemini indisponível: limite de uso atingido.',
   refused: 'Resumo descartado: o provedor recusou o pedido por segurança. Nenhum outro modelo foi consultado.',
   recitation: 'Resumo descartado: o modelo não pôde responder sem reproduzir texto protegido.',
   withheld: 'Resumo não enviado ao serviço externo: os trechos vêm de documentos locais.',
   truncated: 'Resumo descartado: a resposta do modelo veio incompleta (parou no limite de tamanho).',
 };
+/** Falhas de serviço externo citam o provedor que de fato falhou (Gemini, DeepSeek ou Anthropic). */
+const EXTERNAL_NAME: Record<string, string> = { gemini: 'do Gemini', deepseek: 'da DeepSeek', anthropic: 'da Anthropic' };
+const EXTERNAL_NOTES: Record<string, string> = { auth: 'a chave foi recusada.', quota: 'limite de uso atingido.' };
 const FALLBACK_REASONS: Record<string, string> = {
   auth: 'recusou a chave', quota: 'atingiu o limite de uso', timeout: 'demorou demais', unavailable: 'não respondeu',
   error: 'deu erro', recitation: 'não pôde responder sem reproduzir texto protegido', withheld: 'não recebe trechos de documentos locais',
@@ -75,7 +76,7 @@ export function knowledgeView(raw: unknown): KnowledgeView | undefined {
     caseTitle: str(rec(k['caseRef'])['title'], 120),
     // Texto do modelo local só aparece se o servidor o marcou como não verificado.
     narrative: narrative['verified'] === false ? str(narrative['text'], 700) : undefined,
-    narrativeNote: narrative['verified'] === false || !status ? undefined : NARRATIVE_NOTES[status],
+    narrativeNote: narrative['verified'] === false || !status ? undefined : (EXTERNAL_NOTES[status] ? `Resumo ${EXTERNAL_NAME[str(ns['provider'], 12) ?? ''] ?? 'do serviço externo'} indisponível: ${EXTERNAL_NOTES[status]}` : NARRATIVE_NOTES[status]),
     narrativeSource: narrative['verified'] === false ? source : undefined,
     narrativeModel: narrative['verified'] === false ? str(narrative['model'], 80) : undefined,
     fallbackNote: narrative['verified'] === false && fellBack ? `Resumo gerado pelo modelo local porque ${from === 'gemini' ? 'o Gemini' : from === 'deepseek' ? 'a DeepSeek' : 'a Anthropic'} ${fellBack}.` : undefined,
