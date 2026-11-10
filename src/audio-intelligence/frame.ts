@@ -66,6 +66,8 @@ export const frameLifecycleSchema = z.strictObject({
   frameId: id, sourceId: id, generationId: id, sequence: z.number().int().nonnegative(), contextRevision: id,
   receivedAtUtc: z.string().datetime(), receivedAtMonoMs: z.number().finite().nonnegative(), clockDomainId: id,
 });
+/** Real UTF-8 size of the serialised value, not the string length (multi-byte text counts in full). */
+export const frameByteLength = (value: unknown): number => Buffer.byteLength(JSON.stringify(value), 'utf8');
 export type FrameLifecycle = z.input<typeof frameLifecycleSchema>;
 export type FrameErrorCode = 'INVALID_MEASUREMENT' | 'INVALID_LIFECYCLE' | 'ROUTE_NOT_SUPPORTED' | 'RESOURCE_LIMIT';
 export class FrameError extends Error { constructor(readonly code: FrameErrorCode) { super(code); this.name = 'FrameError'; } }
@@ -104,6 +106,6 @@ export function measurementToFrame(rawMeasurement: unknown, rawLifecycle: unknow
     limitations: x.limitations,
   };
   const parsed = spectrumFrameSchema.parse(frame);
-  if (JSON.stringify(parsed).length > FRAME_LIMITS.maxBytes) throw new FrameError('RESOURCE_LIMIT');
+  if (frameByteLength(parsed) > FRAME_LIMITS.maxBytes) throw new FrameError('RESOURCE_LIMIT');
   return parsed;
 }
