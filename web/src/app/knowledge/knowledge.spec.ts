@@ -162,6 +162,35 @@ describe('painel de administração', () => {
       expect(el.textContent).toContain('Resumo agora pelo Gemini (serviço externo).');
       expect(JSON.stringify(bodies)).not.toMatch(/AIza|key/i);
     });
+    it('DeepSeek e Anthropic: escolha manual de provedor e modelo, consentimento por sessão e envio do modelo escolhido', async () => {
+      const bodies: unknown[] = [];
+      const four = {
+        chat: { selected: 'ollama', options: [
+          { id: 'ollama', external: false, configured: true },
+          { id: 'deepseek', external: true, configured: true, model: 'deepseek-flash', models: ['deepseek-flash', 'deepseek-v4-pro'] },
+          { id: 'anthropic', external: true, configured: true, model: 'claude-opus-5-5', models: ['claude-opus-5-5', 'claude-fable-5-2'] },
+        ] },
+        embed: { id: 'ollama', external: false }, narrative: true, externalFallback: 'ollama',
+      };
+      const { f, el, svc } = boot('operator', {
+        '/api/knowledge/status': () => ({ body: withProviders(four) }),
+        '/api/knowledge/providers': (init) => { bodies.push(JSON.parse(String(init?.body))); return { body: {} }; },
+      }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      expect(radios(el).length).toBe(3);
+      radios(el)[2]!.click(); f.detectChanges();
+      expect(el.textContent).toContain('saem deste computador para a Anthropic');
+      expect(el.textContent).toContain('vale só NESTA sessão');
+      expect(el.textContent).toContain('nunca outro serviço externo');
+      expect(applyButton(el)!.disabled).toBe(true);
+      const select = el.querySelector('select[aria-label="Modelo do provedor"]') as HTMLSelectElement;
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['claude-opus-5-5', 'claude-fable-5-2']);
+      select.value = 'claude-fable-5-2'; select.dispatchEvent(new Event('change')); f.detectChanges();
+      (el.querySelector('.provider-consent input') as HTMLInputElement).click(); f.detectChanges();
+      applyButton(el)!.click(); await settle(f);
+      expect(bodies).toEqual([{ chat: 'anthropic', confirmExternal: true, model: 'claude-fable-5-2' }]);
+      expect(JSON.stringify(bodies)).not.toMatch(/key|sk-/i);
+    });
     it('voltar ao Ollama não pede consentimento nem envia confirmação', async () => {
       const bodies: unknown[] = [];
       const { f, el, svc } = boot('operator', {

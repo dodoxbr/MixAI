@@ -116,6 +116,7 @@ export async function startServer(
     core.assistant = new AssistantService(core, {
       knowledge,
       knowledgeDeadlineMs: config.knowledge.replyDeadlineMs,
+      externalConsent: core.externalConsent,
       steps: config.assistant,
       ttlMs: config.assistant.proposalTtlSec * 1000,
       channels: loaded.channels.channels,
@@ -141,8 +142,9 @@ export async function startServer(
         m1: p => core.assistant?.planningContext(p),
         eventVersion: id => records.read().soundchecks.find(e => e.id === id)?.version,
         selectedProvider: () => knowledge?.providers().chat.selected ?? config.knowledge.chatProvider,
+        externalProviders: () => knowledge?.externalTextProviders() ?? [],
         audit: (p, result) => app!.log.add({ action: 'autoconfig_advice', ok: result.outcome === 'returned', message: 'Consulta consultiva AutoConfig; sem rascunho ou autorização automática.', details: { ...result, role: p.role, actor: p.id } }),
-      }, undefined, { clock: opts.clock, fetch: opts.autoConfigPlannerFetch, geminiFetch: opts.autoConfigPlannerGeminiFetch });
+      }, core.externalConsent, { clock: opts.clock, fetch: opts.autoConfigPlannerFetch, geminiFetch: opts.autoConfigPlannerGeminiFetch });
       removeAdvisorRevoke = auth.onRevoke(id => autoConfigAdvisor?.revoke(id));
     }
     const references = mode === 'lab' && app.mixer.mode === 'lab' ? new ReferenceService(records, {

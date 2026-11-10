@@ -129,8 +129,27 @@ knowledge:
   # gemini.enabled: true E uma chave em config/secrets.yaml (geminiApiKey) ou na variável MIXAI_GEMINI_API_KEY.
   # A chave NUNCA vai neste arquivo, no config.local.yaml, no Git, no log nem na tela. O operador escolhe o
   # provedor do resumo no painel "Base de conhecimento" (com aviso e confirmação).
-  chatProvider: ollama    # ollama | gemini (provedor inicial do resumo)
+  chatProvider: ollama    # ollama | gemini | deepseek | anthropic (provedor inicial do resumo; externos exigem consentimento do operador na sessão)
   embedProvider: ollama   # ollama | gemini (gemini exige outra "collection": os vetores não são compatíveis)
+  # DeepSeek (EXTERNO; API https://api.deepseek.com): enabled + chave em config/secrets.yaml (deepseekApiKey) ou MIXAI_DEEPSEEK_API_KEY. Ver docs/lab/29-PROVEDORES-IA.md
+  deepseek:
+    enabled: false
+    chatModel: deepseek-flash   # deepseek-flash (padrão) | deepseek-v4-pro
+    maxOutputTokens: 600
+    timeoutMs: 10000
+    narrativeTimeoutMs: 30000
+  # Anthropic como provedor de TEXTO (EXTERNO): reaproveita anthropicApiKey/ANTHROPIC_API_KEY. Independente do assistente de comandos (ai.*)
+  anthropic:
+    enabled: false
+    chatModel: claude-opus-5-5  # claude-opus-5-5 | claude-fable-5-2
+    maxOutputTokens: 1024
+    timeoutMs: 10000
+    narrativeTimeoutMs: 30000
+  # Regras dos provedores externos: fallback local, teto diário de gasto (estimado) e limite por minuto
+  external:
+    fallback: ollama      # ollama | none  (nunca troca de um serviço externo para outro; nunca após recusa de segurança)
+    dailyBudgetUSD: 1
+    maxRequestsPerMinute: 10
   gemini:
     enabled: false        # desligado: nenhum dado sai deste computador
     chatModel: gemini-3.8-flash   # gemini-2.5-flash não está mais disponível para contas novas (404)

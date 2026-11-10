@@ -20,7 +20,9 @@ async function deadline(provider: PlannerProvider, prompt: string, ms: number) {
 }
 export class TechnicalPlanner implements AutoConfigPlannerPort {
   constructor(private readonly deps: { knowledge: PlannerKnowledgePort; providers?: readonly PlannerProvider[]; policy(): PlannerPolicy;
-    observations?: PlannerObservationPort; clock?: () => number; timeoutMs?: number; maxObservationAgeMs?: number }) {}
+    observations?: PlannerObservationPort; clock?: () => number; timeoutMs?: number; maxObservationAgeMs?: number;
+    /** Reserva local depois de uma falha de DISPONIBILIDADE do provedor externo. false = nenhuma. Nunca outro serviço externo; nunca após recusa. */
+    fallbackToLocal?: boolean }) {}
   async plan(raw: unknown): Promise<PlannerResult> {
     try { return await this.planSafe(raw); } catch { return this.refuse(invalidFingerprint, 'knowledge_unavailable', 'Contexto/provedor indisponível; nenhum plano válido.'); }
   }
@@ -61,12 +63,12 @@ export class TechnicalPlanner implements AutoConfigPlannerPort {
       candidates: candidates.map(c => ({ id: c.id, purpose: c.purpose, knowledge: c.procedureVersion, basis: 'public_editorial_theory' })) });
     const attempts: PlannerResult['provider']['attempts'] = [];
     const registry = this.deps.providers ?? [];
-    const chain = [registry.find(p => p.id === policy.selected), ...(policy.selected !== 'ollama' ? [registry.find(p => p.id === 'ollama')] : [])].filter((p): p is PlannerProvider => !!p).slice(0, 2);
-    let chosen = candidates[0]!, used = 'deterministic';
+    const chain = [registry.find(p => p.id === policy.selected), ...(policy.selected !== 'ollama' && this.deps.fallbackToLocal !== false ? [registry.find(p => p.id === 'ollama')] : [])].filter((p): p is PlannerProvider => !!p).slice(0, 2);
+    let chosen = candidates[0]!, used = 'deterministic', usedModel: string | undefined;
     for (const provider of chain) {
       if (!this.samePolicy(policy)) return this.refuse(hash, 'stale_policy', 'Sessão/consentimento mudou; nenhuma proposta válida.', { ...common, provider: { used: 'deterministic', attempts } });
       if (provider.external && !policy.externalConsent) { attempts.push({ provider: provider.id, status: 'not_consented' }); continue; }
-      const r = await deadline(provider, prompt, this.deps.timeoutMs ?? 5000);
+      const r = await deadline(provider, prompt, this.deps.timeoutMs ?? (provider.external ? 20_000 : 5000));
       if (!this.samePolicy(policy)) return this.refuse(hash, 'stale_policy', 'Sessão/consentimento mudou; resposta tardia descartada.', { ...common, provider: { used: 'deterministic', attempts } });
       if (r.failure) {
         attempts.push({ provider: provider.id, status: r.failure });
@@ -82,7 +84,7 @@ export class TechnicalPlanner implements AutoConfigPlannerPort {
       }
       const match = candidates.find(c => c.id === selection.candidate);
       if (!match) { attempts.push({ provider: provider.id, status: 'invalid_output' }); return this.refuse(hash, 'invalid_model_output', 'Candidato inexistente; nenhum plano.', { ...common, provider: { used: 'deterministic', attempts } }); }
-      chosen = match; used = provider.id; attempts.push({ provider: provider.id, status: 'used' }); break;
+      chosen = match; used = provider.id; usedModel = r.model; attempts.push({ provider: provider.id, status: 'used' }); break;
     }
     if (input.reference) {
       const latest = await this.observe(input);
@@ -90,7 +92,7 @@ export class TechnicalPlanner implements AutoConfigPlannerPort {
     }
     if (!this.samePolicy(policy)) return this.refuse(hash, 'stale_policy', 'Sessão mudou; refaça a consulta.');
     const previousStateAvailable = !!observation && observation.levelDB !== null && observation.mute !== null;
-    return plannerResultSchema.parse({ ...common, kind: 'proposal', provider: { used, attempts }, proposal: {
+    return plannerResultSchema.parse({ ...common, kind: 'proposal', provider: { used, ...(usedModel ? { model: usedModel } : {}), attempts }, proposal: {
       id: randomUUID(), scope: 'single_source_lab_inspection', channel: source.channel, instrument: source.instrument, role: source.role, destination: input.destination,
       knowledgeVersion: chosen.procedureVersion, evidence: [{ id: input.report.id, kind: input.report.kind, symptom: input.report.symptom, verification: 'reported_not_measured' }], observation: observation ?? null,
       suggestions: [{ candidate: chosen, kind: 'inspection', risk: input.destination === 'fones' || input.symptom === 'microfonia' ? 'high' : 'medium',

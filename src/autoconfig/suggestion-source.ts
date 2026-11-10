@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import { AutoConfigProposal, type AutoConfigSuggestionSource } from './contracts.js';
 import { ReferenceError } from '../reference/schema.js';
 import type { Principal } from '../server/auth.js';
+import { ExternalConsent } from '../server/external-consent.js';
 import type { LoadedConfig } from '../core/config.js';
 import type { ChannelMap } from '../core/channels.js';
 import { m1RequiresStop, plannerInputFromSession } from './planner/kb-adapter.js';
@@ -46,21 +47,14 @@ export interface AdvisorReadPort {
   stateRevision(): number; m1(p: Principal): { session: unknown; revision: number } | undefined;
   eventVersion(id: string): number | undefined;
   selectedProvider(): string;
+  /** Provedores externos de texto (DeepSeek/Anthropic) com controle de custo e o modelo escolhido pelo operador. */
+  externalProviders?(): NonNullable<Parameters<typeof createConfiguredPlanner>[2]['externalProviders']>;
   audit(p: Principal, result: { kind: string; provider?: string; outcome: string }): void;
 }
 /** Same provider-selection UI/endpoint, scoped to the authenticated operator, memory only.
  * Configuration/preference alone never creates an AutoConfig external grant. */
-export class PlannerConsent {
-  revision = 0;
-  private grants = new Set<string>();
-  selection(p: Principal, selected: string, confirmed: boolean) {
-    this.revision++; this.grants.clear();
-    if (selected === 'gemini' && confirmed) this.grants.add(p.id);
-  }
-  revoke(id: string) { if (this.grants.delete(id)) this.revision++; }
-  allowed(p: Principal, selected: string) { return selected === 'gemini' && this.grants.has(p.id); }
-  clear() { this.grants.clear(); this.revision++; }
-}
+/** Mesma classe do consentimento do servidor (gemini, deepseek, anthropic); mantida aqui pelo nome histórico. */
+export class PlannerConsent extends ExternalConsent {}
 interface Pending { input: PlannerInput; advice: PlannerResult; m1: string; scope?: 'PA' | 'AUX1'; eventId?: string; expiresAt: number }
 export class AutoConfigAdvisor implements AutoConfigAdvisoryPort {
   private pending = new Map<string, Pending>();
@@ -106,7 +100,7 @@ export class AutoConfigAdvisor implements AutoConfigAdvisoryPort {
     };
     const initialRevision = revision();
     const planner = createConfiguredPlanner(this.loaded, this.names, {
-      allowDeterministicWithoutKnowledge: true, fetch: this.options.fetch, geminiFetch: this.options.geminiFetch, clock: this.options.clock, timeoutMs: this.options.timeoutMs,
+      allowDeterministicWithoutKnowledge: true, externalProviders: this.read.externalProviders?.(), fetch: this.options.fetch, geminiFetch: this.options.geminiFetch, clock: this.options.clock, timeoutMs: this.options.timeoutMs,
       policy: () => ({ enabled: !this.stopped, active: this.read.active(p) && this.read.mode() === 'lab' && this.read.connected(), selected: selected(),
         externalConsent: this.consent.allowed(p, selected()), revision: revision() }),
     });
@@ -125,8 +119,8 @@ export class AutoConfigAdvisor implements AutoConfigAdvisoryPort {
       this.guard(p);
       if (revision() !== initialRevision || (request.eventId && this.read.eventVersion(request.eventId) !== eventVersion)) throw new ReferenceError('STALE_STATE');
       const used = advice.provider.used, k = this.loaded.config.knowledge;
-      const model = { selected: selectedAtStart, used, external: used === 'gemini',
-        name: used === 'ollama' ? k.ollama.chatModel : used === 'gemini' ? k.gemini.chatModel : null };
+      const model = { selected: selectedAtStart, used, external: used !== 'ollama' && used !== 'deterministic',
+        name: advice.provider.model ?? (used === 'ollama' ? k.ollama.chatModel : used === 'gemini' ? k.gemini.chatModel : null) };
       const known = advisoryKnownField.options.filter(f => input[f] !== undefined);
       const response = AdvisoryResponse.parse({ serverId: this.read.serverId, advice, proposal, numericInput: 'operator_required', createsDraft: false,
         model, context: { fromDiagnosis: !!m1, known } });

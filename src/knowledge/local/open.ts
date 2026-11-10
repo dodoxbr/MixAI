@@ -2,6 +2,7 @@ import { isAbsolute, join, resolve, sep } from 'node:path';
 import type { AppConfig, LoadedConfig } from '../../core/config.js';
 import { PROJECT_ROOT } from '../../core/config.js';
 import { GeminiClient } from './gemini.js';
+import { buildExternalProviders } from './external-providers.js';
 import { OllamaClient } from './ollama.js';
 import { readChatPreference, writeChatPreference } from './preference.js';
 import type { AiProvider, ProviderId } from './provider.js';
@@ -9,7 +10,7 @@ import { createPgClient, PgKnowledgeStore, type SqlClient } from './pg-store.js'
 import { LocalKnowledge } from './service.js';
 import { FileKnowledgeStore, type KnowledgeStore } from './store.js';
 
-export interface OpenDeps { fetch?: typeof fetch; geminiFetch?: typeof fetch; pgClient?: SqlClient; clock?: () => number; log?: (msg: string) => void }
+export interface OpenDeps { fetch?: typeof fetch; geminiFetch?: typeof fetch; externalFetch?: typeof fetch; pgClient?: SqlClient; clock?: () => number; log?: (msg: string) => void }
 
 /** Pasta de ingestão sempre dentro de data/: caminho relativo, sem "..", sem atalhos. */
 export function inboxPath(dataDir: string, rel: string): string {
@@ -43,6 +44,12 @@ export async function openLocalKnowledge(loaded: LoadedConfig, deps: OpenDeps = 
     deps.log?.('Base de conhecimento: o Gemini foi escolhido mas não está habilitado ou sem chave; usando o Ollama local.');
     chat = 'ollama';
   }
+  // DeepSeek/Anthropic: habilitados + chave + custo controlado. Escolhidos sem habilitação/chave, voltam ao Ollama. Só enviam dados com o consentimento do operador na sessão.
+  const external = buildExternalProviders(loaded, { fetch: deps.externalFetch, clock: deps.clock, log: deps.log, dataDir });
+  if ((chat === 'deepseek' || chat === 'anthropic') && !external.some((p) => p.id === chat && (p as { configured?: boolean }).configured)) {
+    deps.log?.(`Base de conhecimento: ${chat} foi escolhido mas não está habilitado ou sem chave; usando o Ollama local.`);
+    chat = 'ollama';
+  }
 
   let store: KnowledgeStore | undefined;
   let fallbackFrom: string | undefined;
@@ -69,8 +76,9 @@ export async function openLocalKnowledge(loaded: LoadedConfig, deps: OpenDeps = 
   }
   return new LocalKnowledge({
     store, ollama: embedder,
-    chatProviders: [ollama, ...(gemini ? [gemini] : [])],
+    chatProviders: [ollama, ...(gemini ? [gemini] : []), ...external],
     chat,
+    externalFallback: k.external.fallback,
     onChatProvider: (id) => { try { writeChatPreference(prefFile, id); } catch { deps.log?.('Base de conhecimento: não foi possível gravar a escolha do provedor.'); } },
     inboxDir: inboxPath(dataDir, k.inboxDir),
     seedDir: join(PROJECT_ROOT, 'knowledge', 'seed', 'banda-v1_2'),

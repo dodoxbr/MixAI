@@ -163,7 +163,7 @@ export async function buildHttp(core: ServerCore, opts: { logger?: boolean; webR
   }
 
   if (opts.knowledge) {
-    await app.register(knowledgeRoutes, { service: opts.knowledge, onProviderSelection: (p: Principal, selected: string, confirmed: boolean) => opts.autoConfigAdvisor?.consent.selection(p, selected, confirmed), origin: opts.labProxyOrigin,
+    await app.register(knowledgeRoutes, { service: opts.knowledge, onProviderSelection: (p: Principal, selected: string, confirmed: boolean) => core.externalConsent.selection(p, selected, confirmed), origin: opts.labProxyOrigin,
       principal: (req: FastifyRequest, reply: FastifyReply) => principalOf(core, req, reply),
       active: (p: Principal) => core.auth.isActive(p),
     });

@@ -6,7 +6,7 @@ import type { Principal } from './auth.js';
 const statuses = { INVALID: 400, NOT_FOUND: 404, UNAVAILABLE: 503, FORBIDDEN: 403, UNAUTHORIZED: 401, BUSY: 409 } as const;
 const searchBody = z.strictObject({ query: z.string().trim().min(2).max(300) });
 const micBody = z.strictObject({ channel: z.number().int().min(1).max(12), modelId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).nullable() });
-const providerBody = z.strictObject({ chat: z.enum(['ollama', 'gemini']), confirmExternal: z.boolean().optional() });
+const providerBody = z.strictObject({ chat: z.enum(['ollama', 'gemini', 'deepseek', 'anthropic']), confirmExternal: z.boolean().optional(), model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/).optional() });
 const idParam = z.string().regex(/^d[a-z0-9]{3,40}$/);
 
 /**
@@ -61,7 +61,7 @@ export async function knowledgeRoutes(app: FastifyInstance, opts: {
   app.get('/api/knowledge/providers', () => opts.service.providers());
   app.post('/api/knowledge/providers', { bodyLimit: 1024 }, async (req) => {
     const b = providerBody.parse(req.body);
-    const result = await opts.service.setChatProvider(b.chat, b.confirmExternal === true);
+    const result = await opts.service.setChatProvider(b.chat, b.confirmExternal === true, b.model);
     opts.onProviderSelection?.(actors.get(req)!, result.chat.selected, b.confirmExternal === true);
     return result;
   });

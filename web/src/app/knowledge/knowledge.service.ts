@@ -2,10 +2,15 @@ import { Injectable, effect, inject, signal } from '@angular/core';
 import { LiveService } from '../core/live.service';
 import { SessionService } from '../core/session.service';
 
+export type KProviderId = 'ollama' | 'gemini' | 'deepseek' | 'anthropic';
+export const PROVIDER_NAMES: Record<KProviderId, string> = { ollama: 'Ollama (local, neste computador)', gemini: 'Gemini (serviço externo do Google)', deepseek: 'DeepSeek (serviço externo)', anthropic: 'Anthropic Claude (serviço externo)' };
+export const PROVIDER_SHORT: Record<KProviderId, string> = { ollama: 'Ollama (local)', gemini: 'Gemini (externo)', deepseek: 'DeepSeek (externo)', anthropic: 'Anthropic Claude (externo)' };
+export const PROVIDER_DEST: Record<KProviderId, string> = { ollama: 'este computador', gemini: 'o Google', deepseek: 'a DeepSeek', anthropic: 'a Anthropic' };
 export interface KProviders {
-  chat: { selected: 'ollama' | 'gemini'; options: Array<{ id: 'ollama' | 'gemini'; external: boolean; configured: boolean }> };
-  embed: { id: 'ollama' | 'gemini'; external: boolean };
+  chat: { selected: KProviderId; options: Array<{ id: KProviderId; external: boolean; configured: boolean; model?: string; models?: string[] }> };
+  embed: { id: KProviderId; external: boolean };
   narrative: boolean;
+  externalFallback?: 'ollama' | 'none';
 }
 export interface KStatus {
   store: { kind: 'file' | 'postgres'; ok: boolean; detail: string; fallbackFrom?: string };
@@ -110,9 +115,9 @@ export class KnowledgeAdminService {
     return this.act(async () => { await this.call('POST', '/api/knowledge/microphones', { channel, modelId }); }, modelId ? `CH${channel}: microfone confirmado.` : `CH${channel}: confirmação removida.`);
   }
   /** Escolha do provedor do resumo. O serviço externo só entra com a confirmação do operador. */
-  setProvider(chat: 'ollama' | 'gemini', confirmExternal: boolean) {
-    return this.act(async () => { await this.call('POST', '/api/knowledge/providers', confirmExternal ? { chat, confirmExternal: true } : { chat }); },
-      chat === 'gemini' ? 'Resumo agora pelo Gemini (serviço externo).' : 'Resumo agora pelo Ollama (local).');
+  setProvider(chat: KProviderId, confirmExternal: boolean, model?: string) {
+    return this.act(async () => { await this.call('POST', '/api/knowledge/providers', { chat, ...(confirmExternal ? { confirmExternal: true } : {}), ...(model ? { model } : {}) }); },
+      chat === 'ollama' ? 'Resumo agora pelo Ollama (local).' : chat === 'gemini' ? 'Resumo agora pelo Gemini (serviço externo).' : `Resumo agora por ${PROVIDER_NAMES[chat]}${model ? ` · ${model}` : ''}. O consentimento vale só nesta sessão.`);
   }
   search(query: string) {
     return this.act(async () => { this.results.set(await this.call('POST', '/api/knowledge/search', { query })); });

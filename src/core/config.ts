@@ -185,8 +185,55 @@ const ConfigSchema = z.object({
        * exige gemini.enabled: true; a chave fica em config/secrets.yaml (geminiApiKey) ou
        * MIXAI_GEMINI_API_KEY, nunca neste arquivo. O operador também pode escolher o do resumo na tela.
        */
-      chatProvider: z.enum(['ollama', 'gemini']).default('ollama'),
+      chatProvider: z.enum(['ollama', 'gemini', 'deepseek', 'anthropic']).default('ollama'),
       embedProvider: z.enum(['ollama', 'gemini']).default('ollama'),
+      /**
+       * DeepSeek (serviço EXTERNO, API compatível com OpenAI em https://api.deepseek.com, endereço fixo no código). Só texto: não há embeddings.
+       * Exige enabled: true e chave em config/secrets.yaml (deepseekApiKey) ou MIXAI_DEEPSEEK_API_KEY; consentimento do operador POR SESSÃO.
+       */
+      deepseek: z
+        .object({
+          enabled: z.boolean().default(false),
+          chatModel: z.enum(['deepseek-flash', 'deepseek-v4-pro']).default('deepseek-flash'),
+          maxOutputTokens: z.number().int().min(64).max(4000).default(600),
+          timeoutMs: z.number().int().min(500).max(120_000).default(10_000),
+          narrativeTimeoutMs: z.number().int().min(1000).max(180_000).default(30_000),
+        })
+        .strict()
+        .prefault({}),
+      /**
+       * Anthropic como provedor de TEXTO do resumo e do planejador (serviço EXTERNO). Reaproveita a chave anthropicApiKey/ANTHROPIC_API_KEY.
+       * Independente do assistente de comandos (ai.*). Modelos: claude-opus-5-5 e claude-fable-5-2.
+       */
+      anthropic: z
+        .object({
+          enabled: z.boolean().default(false),
+          chatModel: z.enum(['claude-opus-5-5', 'claude-fable-5-2']).default('claude-opus-5-5'),
+          maxOutputTokens: z.number().int().min(256).max(8192).default(1024),
+          timeoutMs: z.number().int().min(500).max(120_000).default(10_000),
+          narrativeTimeoutMs: z.number().int().min(1000).max(180_000).default(30_000),
+        })
+        .strict()
+        .prefault({}),
+      /**
+       * Regras comuns dos provedores EXTERNOS. fallback: "ollama" (padrão) usa o Ollama local se o externo falhar por indisponibilidade;
+       * "none" não tenta nada. NUNCA há troca de um serviço externo para outro, nem fallback depois de uma recusa de segurança.
+       * Preços em USD por milhão de tokens: ESTIMATIVAS para o teto de gasto (confira nas páginas oficiais de preços).
+       */
+      external: z
+        .object({
+          fallback: z.enum(['ollama', 'none']).default('ollama'),
+          dailyBudgetUSD: z.number().min(0).max(1000).default(1),
+          maxRequestsPerMinute: z.number().int().min(1).max(600).default(10),
+          prices: z.record(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/), z.object({ inputPerMTok: z.number().min(0).max(1000), outputPerMTok: z.number().min(0).max(1000) }).strict()).default({
+            'deepseek-flash': { inputPerMTok: 0.5, outputPerMTok: 2 },
+            'deepseek-v4-pro': { inputPerMTok: 2, outputPerMTok: 8 },
+            'claude-opus-5-5': { inputPerMTok: 4, outputPerMTok: 20 },
+            'claude-fable-5-2': { inputPerMTok: 8, outputPerMTok: 40 },
+          }),
+        })
+        .strict()
+        .prefault({}),
       gemini: z
         .object({
           /** Desligado até configuração explícita: sem isto nenhum dado sai do computador. */
@@ -294,7 +341,7 @@ function readYaml(path: string): unknown {
 }
 
 /** Campos que NUNCA podem ir no config.local.yaml (segredos ficam em secrets.yaml ou no ambiente). */
-const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|geminiapikey|postgrespassword|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
+const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|geminiapikey|deepseekapikey|postgrespassword|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
@@ -319,7 +366,7 @@ function assertNoSecrets(value: unknown, file: string, path: string[] = []): voi
   for (const [k, v] of Object.entries(value)) {
     if (SECRET_KEYS.test(k)) {
       throw new Error(
-        `${file}: o campo "${[...path, k].join('.')}" é um segredo e não pode ficar aqui. PINs: "npm run pin"; chaves de API: config/secrets.yaml ou variável de ambiente (ANTHROPIC_API_KEY, MIXAI_GEMINI_API_KEY).`,
+        `${file}: o campo "${[...path, k].join('.')}" é um segredo e não pode ficar aqui. PINs: "npm run pin"; chaves de API: config/secrets.yaml ou variável de ambiente (ANTHROPIC_API_KEY, MIXAI_GEMINI_API_KEY, MIXAI_DEEPSEEK_API_KEY).`,
       );
     }
     assertNoSecrets(v, file, [...path, k]);
@@ -339,6 +386,8 @@ const SecretsSchema = z.object({
   postgresPassword: z.string().min(8).max(200).optional(),
   /** Chave da API do Gemini (opcional; ou MIXAI_GEMINI_API_KEY). Só o servidor lê; nunca vai ao navegador, ao log nem ao Git. */
   geminiApiKey: z.string().min(20).max(200).optional(),
+  /** Chave da API da DeepSeek (opcional; ou MIXAI_DEEPSEEK_API_KEY). Só o servidor lê; nunca vai ao navegador, ao log nem ao Git. */
+  deepseekApiKey: z.string().min(8).max(200).optional(),
 });
 export type Secrets = z.infer<typeof SecretsSchema>;
 
@@ -401,6 +450,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
   if (env.ANTHROPIC_API_KEY) secrets.anthropicApiKey = env.ANTHROPIC_API_KEY;
   if (env.MIXAI_PG_PASSWORD) secrets.postgresPassword = env.MIXAI_PG_PASSWORD;
   if (env.MIXAI_GEMINI_API_KEY) secrets.geminiApiKey = env.MIXAI_GEMINI_API_KEY;
+  if (env.MIXAI_DEEPSEEK_API_KEY) secrets.deepseekApiKey = env.MIXAI_DEEPSEEK_API_KEY;
   const dataDir = env.MIXAI_DATA_DIR ? resolve(env.MIXAI_DATA_DIR) : join(PROJECT_ROOT, 'data');
 
   let logDir: string | null = env.MIXAI_LOG_DIR ?? config.logs.dir;

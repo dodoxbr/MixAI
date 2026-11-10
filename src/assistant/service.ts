@@ -85,6 +85,8 @@ export class AssistantService {
       knowledge?: LocalKnowledge;
       /** Prazo máximo da consulta documental dentro da resposta (deve ficar abaixo do prazo da interface). Padrão 20 s. */
       knowledgeDeadlineMs?: number;
+      /** Consentimento por sessão para enviar resumos a DeepSeek/Anthropic. Sem ele, esses provedores não são chamados. */
+      externalConsent?: { allowed(p: Principal, providerId: string): boolean; revoke(id: string): void; readonly revision: number };
       log: ActionLog;
       clock?: () => number;
     },
@@ -92,7 +94,7 @@ export class AssistantService {
     this.builder = new ProposalBuilder(core.controller, core.policy, opts.ttlMs, opts.clock, (p, cmd) => core.authorizeMusicianCommand(p, cmd));
     this.diagnosticContexts = new DiagnosticContexts(core.controller.names, core.policy.musicianAux, { clock: opts.clock, registeredCapture: ch => (this.registeredMics.has(ch) ? 'microphone' : undefined) });
     void this.refreshMics();
-    this.removeRevokeListener = core.auth.onRevoke(id => { this.diagnosticContexts.revoke(id); this.knowledgeCache.delete(id); this.planningContexts.delete(id); });
+    this.removeRevokeListener = core.auth.onRevoke(id => { this.diagnosticContexts.revoke(id); this.knowledgeCache.delete(id); this.planningContexts.delete(id); this.opts.externalConsent?.revoke(id); });
   }
 
   aiAvailable(): boolean {
@@ -197,10 +199,11 @@ export class AssistantService {
    * Acrescenta o contexto da base local a uma resposta de diagnóstico do operador. Falha da base
    * (ou ausência dela) devolve a resposta original: o motor determinístico continua sendo a resposta.
    */
-  private async enrichWithin(k: LocalKnowledge, query: Parameters<LocalKnowledge['enrich']>[0]): Promise<KnowledgeContext> {
+  private async enrichWithin(k: LocalKnowledge, query: Parameters<LocalKnowledge['enrich']>[0], p: Principal): Promise<KnowledgeContext> {
     const ms = this.opts.knowledgeDeadlineMs ?? KNOWLEDGE_DEADLINE_MS;
     // enrich() já captura os próprios erros; a captura extra garante que uma rejeição inesperada nunca derrube a resposta.
-    const work = k.enrich(query).catch((): KnowledgeContext => ({ mode: 'deterministic', degraded: true, reason: 'Base de conhecimento indisponível.', passages: [] }));
+    const consent = this.opts.externalConsent;
+    const work = k.enrich(query, { externalAllowed: (id) => consent?.allowed(p, id) === true }).catch((): KnowledgeContext => ({ mode: 'deterministic', degraded: true, reason: 'Base de conhecimento indisponível.', passages: [] }));
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), ms); });
     try {
@@ -224,13 +227,14 @@ export class AssistantService {
     };
     // Relato ainda vago ("violão horrível"): sem sintoma, não há o que buscar. A base e o modelo local só entram depois do esclarecimento.
     if (!query.symptom) return reply;
-    const key = JSON.stringify([query.text, query.symptom, query.instrument, query.channel, query.destination]);
+    // A revisão do consentimento entra na chave: trocar/revogar o provedor externo invalida o resumo guardado.
+    const key = JSON.stringify([query.text, query.symptom, query.instrument, query.channel, query.destination, this.opts.externalConsent?.revision ?? 0, k.providers().chat.selected]);
     const hit = this.knowledgeCache.get(p.id);
     let knowledge: KnowledgeContext;
     if (hit && hit.key === key && hit.expiresAt > this.now()) knowledge = structuredClone(hit.knowledge);
     else {
       // A consulta documental (busca + resumo do modelo local) é OPCIONAL: não pode segurar a orientação determinística além do prazo da interface.
-      knowledge = await this.enrichWithin(k, query);
+      knowledge = await this.enrichWithin(k, query, p);
       // Resultado degradado (Ollama fora, tempo esgotado) não é guardado: a próxima volta tenta de novo.
       const transient = knowledge.degraded || ['timeout', 'unavailable', 'error'].includes(knowledge.narrativeStatus?.status ?? '');
       if (!transient && this.core.auth.isActive(p)) {

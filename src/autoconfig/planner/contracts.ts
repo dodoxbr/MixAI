@@ -30,7 +30,7 @@ export const plannerQuestionFieldSchema = z.enum(['channel', 'destination', 'sym
 const attemptSchema = z.strictObject({ provider: id, status: z.enum(['used', 'unavailable', 'timeout', 'error', 'empty', 'auth', 'quota', 'refused', 'recitation', 'truncated', 'invalid_output', 'not_consented']) });
 const base = { schemaVersion: z.literal(1), mode: z.literal('LAB'), inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   authorization: z.literal('not_granted'), execution: z.literal('not_executable'), realWrites: z.literal(false), measurements: z.literal('unavailable'),
-  provider: z.strictObject({ used: id, attempts: z.array(attemptSchema).max(2) }), safety: z.array(text).min(1).max(8) };
+  provider: z.strictObject({ used: id, model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/).optional(), attempts: z.array(attemptSchema).max(2) }), safety: z.array(text).min(1).max(8) };
 export const plannerQuestionSchema = z.strictObject({ ...base, kind: z.literal('question'),
   question: z.strictObject({ field: plannerQuestionFieldSchema, text, choices: z.array(z.strictObject({ label: text, value: z.union([z.string().max(100), z.number().int().min(1).max(12)]) })).max(12) }) });
 export const plannerProposalSchema = z.strictObject({ ...base, kind: z.literal('proposal'), proposal: z.strictObject({
@@ -52,7 +52,7 @@ export const modelSelectionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('proposal'), candidate: z.string().regex(/^s[1-3]$/), evidence: z.tuple([z.literal('e1')]) }),
   z.strictObject({ kind: z.literal('abstain'), reason: z.enum(['unsafe', 'insufficient_evidence']) }),
 ]);
-export interface PlannerProvider { readonly id: string; readonly external: boolean; generate(system: string, user: string): Promise<{ text?: string; failure?: 'unavailable' | 'timeout' | 'error' | 'empty' | 'auth' | 'quota' | 'refused' | 'recitation' | 'truncated' }> }
+export interface PlannerProvider { readonly id: string; readonly external: boolean; generate(system: string, user: string): Promise<{ text?: string; model?: string; failure?: 'unavailable' | 'timeout' | 'error' | 'empty' | 'auth' | 'quota' | 'refused' | 'recitation' | 'truncated' }> }
 export interface PlannerPolicy { enabled: boolean; active: boolean; selected: string; externalConsent: boolean; revision: number }
 export interface PlannerKnowledgePort { sources(): BandSource[]; candidates(input: PlannerInput): PlannerCandidate[] }
 export interface PlannerObservationPort { read(reference: NonNullable<PlannerInput['reference']>): Promise<LabObservation | undefined> }
