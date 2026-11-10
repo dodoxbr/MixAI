@@ -115,3 +115,32 @@ it.each(['constructor', 'toString'])('modelo %s não herda um preço do protóti
   const result = await f.t.http('/api/ai/models/complete', { token: f.token, body: { schemaVersion: 1, expectedRevision: 1, text: 'fixture' } });
   expect(result.json.code).toBe('PRICE_UNKNOWN'); expect(f.calls.every(c => !c.body)).toBe(true);
 });
+it.each(['gemini', 'deepseek', 'anthropic', 'openai'] as const)('%s: revogar e reconfirmar o mesmo modelo não revive uma geração anterior (#93)', async provider => {
+  const f = await boot({ deferred: true });
+  const before = f.t.controller.state.snapshot(), write = vi.spyOn(f.t.mixer, 'write'), execute = vi.spyOn(f.t.server.core, 'execute');
+  expect((await f.select(provider)).status).toBe(200);
+  const pending = f.t.http('/api/ai/models/complete', { token: f.token, body: { schemaVersion: 1, expectedRevision: 1, text: 'Relato sintético pendente.' } });
+  await f.waiting;
+  const clear = await f.t.http('/api/ai/models/selection', { method: 'DELETE', token: f.token, body: { schemaVersion: 1, expectedRevision: 1 } });
+  expect(clear.status).toBe(200); expect(clear.json.consent.granted).toBe(false);
+  const confirmed = await f.select(provider, models[0], 2);
+  expect(confirmed.status).toBe(200); expect(confirmed.json).toMatchObject({ revision: 3, consent: { granted: true } });
+  f.release();
+  const old = await pending;
+  expect(old.status).toBe(409); expect(old.json.code).toBe('STALE'); expect(JSON.stringify(old.json)).not.toContain('Texto consultivo');
+  expect(f.calls.filter(call => call.body)).toHaveLength(1); // No replay after reconsent.
+  const view = await f.t.http('/api/ai/models', { token: f.token });
+  expect(view.json).toMatchObject({ revision: 3, consent: { granted: true }, usage: { requests: 1, inputTokens: 8, outputTokens: 5, reservedUSD: 0 } });
+  expect(write).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled(); expect(f.t.controller.state.snapshot()).toEqual(before);
+});
+it('instâncias do consentimento #93 isolam dois operadores Gemini e preservam o fluxo legado', async () => {
+  const f = await boot(), other = await f.t.login(OPERATOR_PIN);
+  const legacyRevision = f.t.server.core.externalConsent.revision;
+  await f.select('gemini'); await f.select('gemini', models[1], 0, other);
+  expect((await f.t.http('/api/ai/models', { token: f.token })).json.consent.granted).toBe(true);
+  expect((await f.t.http('/api/ai/models', { token: other })).json.consent.granted).toBe(true);
+  await f.t.http('/api/ai/models/selection', { method: 'DELETE', token: f.token, body: { schemaVersion: 1, expectedRevision: 1 } });
+  const result = await f.t.http('/api/ai/models/complete', { token: other, body: { schemaVersion: 1, expectedRevision: 1, text: 'Relato sintético da outra sessão.' } });
+  expect(result.status).toBe(200); expect(result.json.selection).toMatchObject({ provider: 'gemini', model: models[1] });
+  expect(f.t.server.core.externalConsent.revision).toBe(legacyRevision);
+});

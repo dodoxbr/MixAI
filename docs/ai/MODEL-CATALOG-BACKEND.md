@@ -1,7 +1,8 @@
 # Catálogo configurável de modelos — missão B
 
 Backend opt-in, exclusivamente LAB. Branch criada de `origin/main` `fc3abb5`
-(PRs #90/#91 incorporados). Sem Angular, mixer, AutoConfig CORE, núcleo D,
+(PRs #90/#91 incorporados), atualizada com a main `a1f52da` (PR #93).
+Sem alterações próprias em Angular, mixer, AutoConfig CORE, núcleo D,
 comandos, ferramentas de modelo ou mudanças de aprovação.
 
 ## O que está funcional
@@ -180,11 +181,37 @@ revogação são registrados e removidos no encerramento.
 
 **Dependência explícita:** o assistente/RAG/planejador legados ainda não consomem esse
 port de seleção. Sua migração cabe à missão A/integração posterior, após revisão.
-Os PRs #92/#93 foram somente consultados, não incorporados. Revogar consentimento no painel
+O PR #93 foi incorporado pela atualização da branch com a main `a1f52da`; o PR #92 foi somente consultado. Revogar consentimento no painel
 legado não é uma chamada ao clear do novo catálogo; o painel C deve usar as rotas
 novas ou um adaptador explícito de revogação de A. Não afirmar consentimento global
 unificado entre fluxos sem essa integração. Não esperar outro agente para testar
 este backend; ele funciona isoladamente e não concede permissões ao fluxo legado.
+
+## Verificação após incorporar o PR #93
+
+A atualização da main para a branch de trabalho foi automática, sem conflitos.
+Não representa merge do PR #95 na main. O consentimento de A, `BudgetedProvider`,
+assistente/RAG, rotas legadas e componentes Angular foram preservados conforme a
+main integrada. No ponto comum da factory, continuam juntos o `PricedProvider`,
+o ledger canônico compartilhado e a opção `thinking` da DeepSeek introduzida por A.
+Os novos preços configurados da main são usados sem copiar tabelas para o catálogo.
+
+Testes HTTP com os adaptadores reais e HTTP falso verificam Gemini, DeepSeek,
+Anthropic e OpenAI: iniciar geração, limpar consentimento, reconfirmar o mesmo
+modelo e só então liberar a resposta antiga. Ela retorna `409 STALE`, sem texto;
+a chamada não é repetida e o consumo reportado permanece contabilizado.
+Outro teste usa dois operadores Gemini: limpar um não revoga o outro nem altera
+as concessões do fluxo legado. A suíte original continua cobrindo os cinco
+provedores, isolamento de chaves/modelos, preços desconhecidos, OpenAI Responses,
+logout e limites. O teste de port também verifica que revogação/reconfirmação
+no backend de A não revive a concessão antiga do catálogo.
+
+As regressões de #93 continuam completas: consentimento de nova sessão,
+embeddings/resumos externos, revogação em voo e proteção de resultados/cache.
+Não se enfraqueceram as guardas nem se trocaram testes de segurança por mocks
+permissivos. APIs pagas e hardware não são usados para validar esta atualização.
+Os limites de integração entre catálogo, diagnóstico/RAG e painel permanecem
+os declarados acima; incorporar #93 não cria esse consumo automaticamente.
 
 ## Orçamento e registro
 
