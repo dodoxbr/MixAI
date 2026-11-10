@@ -136,6 +136,7 @@ knowledge:
     enabled: false
     chatModel: deepseek-flash   # deepseek-flash (padrão) | deepseek-v4-pro
     maxOutputTokens: 600
+    thinking: disabled      # disabled (padrão) | default: o raciocínio da API consumiria o teto de tokens do resumo
     timeoutMs: 10000
     narrativeTimeoutMs: 30000
   # Anthropic como provedor de TEXTO (EXTERNO): reaproveita anthropicApiKey/ANTHROPIC_API_KEY. Independente do assistente de comandos (ai.*)

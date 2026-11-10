@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { modelCatalogConfigSchema } from '../ai/model-catalog/contracts.js';
 
 const SafetySchema = z.object({
   maxChannelLevelDB: z.number().max(10).default(0),
@@ -28,6 +29,7 @@ const loopbackUrl = z
   }, 'somente http em loopback, sem credenciais na URL');
 
 const ConfigSchema = z.object({
+  modelCatalog: modelCatalogConfigSchema.prefault({}),
   mixer: z
     .object({
       /** lab = laboratório persistente · mock = simulador em memória (testes) · real = Ui16 física */
@@ -196,6 +198,8 @@ const ConfigSchema = z.object({
           enabled: z.boolean().default(false),
           chatModel: z.enum(['deepseek-flash', 'deepseek-v4-pro']).default('deepseek-flash'),
           maxOutputTokens: z.number().int().min(64).max(4000).default(600),
+          /** O modo de raciocínio é o padrão da API e consumiria o teto de tokens do resumo: desligado por padrão. "default" = não enviar o campo (use se a API recusar). */
+          thinking: z.enum(['disabled', 'default']).default('disabled'),
           timeoutMs: z.number().int().min(500).max(120_000).default(10_000),
           narrativeTimeoutMs: z.number().int().min(1000).max(180_000).default(30_000),
         })
@@ -218,7 +222,7 @@ const ConfigSchema = z.object({
       /**
        * Regras comuns dos provedores EXTERNOS. fallback: "ollama" (padrão) usa o Ollama local se o externo falhar por indisponibilidade;
        * "none" não tenta nada. NUNCA há troca de um serviço externo para outro, nem fallback depois de uma recusa de segurança.
-       * Preços em USD por milhão de tokens: ESTIMATIVAS para o teto de gasto (confira nas páginas oficiais de preços).
+       * Preços em USD por milhão de tokens usados SÓ para o teto de gasto: DeepSeek = tabela oficial no horário de pico (cache miss); Anthropic = tabela de preços base. Confira nas páginas oficiais.
        */
       external: z
         .object({
@@ -226,8 +230,9 @@ const ConfigSchema = z.object({
           dailyBudgetUSD: z.number().min(0).max(1000).default(1),
           maxRequestsPerMinute: z.number().int().min(1).max(600).default(10),
           prices: z.record(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/), z.object({ inputPerMTok: z.number().min(0).max(1000), outputPerMTok: z.number().min(0).max(1000) }).strict()).default({
-            'deepseek-flash': { inputPerMTok: 0.5, outputPerMTok: 2 },
-            'deepseek-v4-pro': { inputPerMTok: 2, outputPerMTok: 8 },
+            // Tabela oficial da DeepSeek (api-docs.deepseek.com/quick_start/pricing), horário de PICO e cache miss: referência conservadora.
+            'deepseek-flash': { inputPerMTok: 0.3, outputPerMTok: 1.2 },
+            'deepseek-v4-pro': { inputPerMTok: 1.32, outputPerMTok: 3.96 },
             'claude-opus-5-5': { inputPerMTok: 4, outputPerMTok: 20 },
             'claude-fable-5-2': { inputPerMTok: 8, outputPerMTok: 40 },
           }),
@@ -341,7 +346,7 @@ function readYaml(path: string): unknown {
 }
 
 /** Campos que NUNCA podem ir no config.local.yaml (segredos ficam em secrets.yaml ou no ambiente). */
-const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|geminiapikey|deepseekapikey|postgrespassword|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
+const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|geminiapikey|deepseekapikey|openaiapikey|openai_api_key|mixai_openai_api_key|postgrespassword|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
@@ -388,6 +393,7 @@ const SecretsSchema = z.object({
   geminiApiKey: z.string().min(20).max(200).optional(),
   /** Chave da API da DeepSeek (opcional; ou MIXAI_DEEPSEEK_API_KEY). Só o servidor lê; nunca vai ao navegador, ao log nem ao Git. */
   deepseekApiKey: z.string().min(8).max(200).optional(),
+  openaiApiKey: z.string().min(8).max(300).optional(),
 });
 export type Secrets = z.infer<typeof SecretsSchema>;
 
@@ -451,6 +457,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
   if (env.MIXAI_PG_PASSWORD) secrets.postgresPassword = env.MIXAI_PG_PASSWORD;
   if (env.MIXAI_GEMINI_API_KEY) secrets.geminiApiKey = env.MIXAI_GEMINI_API_KEY;
   if (env.MIXAI_DEEPSEEK_API_KEY) secrets.deepseekApiKey = env.MIXAI_DEEPSEEK_API_KEY;
+  if (env.MIXAI_OPENAI_API_KEY || env.OPENAI_API_KEY) secrets.openaiApiKey = env.MIXAI_OPENAI_API_KEY || env.OPENAI_API_KEY;
   const dataDir = env.MIXAI_DATA_DIR ? resolve(env.MIXAI_DATA_DIR) : join(PROJECT_ROOT, 'data');
 
   let logDir: string | null = env.MIXAI_LOG_DIR ?? config.logs.dir;

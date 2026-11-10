@@ -1,3 +1,5 @@
+import { ExternalConsent } from './external-consent.js';
+import { buildModelCatalog, SessionModelConsent, type ModelCatalogService, type ModelConsentPort } from '../ai/model-catalog/index.js';
 import { AutoConfigAdvisor } from '../autoconfig/suggestion-source.js';
 import { AutoConfigService } from '../autoconfig/service.js';
 import type { AutoConfigSimulator } from '../autoconfig/contracts.js';
@@ -47,7 +49,7 @@ export interface RunningServer {
  */
 export async function startServer(
   loaded: LoadedConfig,
-  opts: { port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; autoConfigSimulator?: AutoConfigSimulator; autoConfigPlannerFetch?: typeof fetch; autoConfigPlannerGeminiFetch?: typeof fetch; referencePorts?: ReferencePorts; knowledge?: LocalKnowledge } = {},
+  opts: { modelCatalogFetch?: typeof fetch; modelCatalogConsent?: ModelConsentPort; port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; autoConfigSimulator?: AutoConfigSimulator; autoConfigPlannerFetch?: typeof fetch; autoConfigPlannerGeminiFetch?: typeof fetch; referencePorts?: ReferencePorts; knowledge?: LocalKnowledge } = {},
 ): Promise<RunningServer> {
   const { config } = loaded;
   const mode = config.mixer.mode;
@@ -62,6 +64,8 @@ export async function startServer(
   const lock = lockFile ? new OwnerLock(lockFile, 'servidor', { install: PROJECT_ROOT, equipment }).acquire() : undefined;
   let recordsLock: OwnerLock | undefined;
   let app: App | undefined;
+  let modelCatalog: ModelCatalogService | undefined;
+  let removeModelCatalogRevoke: (() => void) | undefined;
   let autoConfig: AutoConfigService | undefined;
   let autoConfigAdvisor: AutoConfigAdvisor | undefined;
   let removeAdvisorRevoke: (() => void) | undefined;
@@ -153,9 +157,15 @@ export async function startServer(
       supports: key => app!.controller.registry.has(key as never), active: p => auth.isActive(p),
     }, { ...referencePortsOf(core), ...opts.referencePorts }, opts.clock) : undefined;
 
+    if (mode === 'lab' && app.mixer.mode === 'lab' && config.modelCatalog.enabled) {
+      modelCatalog = buildModelCatalog(loaded, { active: p => auth.isActive(p as import('./auth.js').Principal), mode: () => app!.mixer.mode, consent: opts.modelCatalogConsent ?? new SessionModelConsent(() => new ExternalConsent()),
+        audit: event => app!.log.add({ action: 'model_catalog_usage', ok: event.outcome === 'success', message: 'Uso consultivo de IA; nenhuma execução.', details: { ...event } }),
+      }, { fetch: opts.modelCatalogFetch, clock: opts.clock });
+      removeModelCatalogRevoke = auth.onRevoke(id => modelCatalog?.revoke(id));
+    }
     let boundPort = port;
     for (const host of hosts) {
-      const http = await buildHttp(core, { autoConfig, autoConfigAdvisor, references, knowledge, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const http = await buildHttp(core, { modelCatalog, autoConfig, autoConfigAdvisor, references, knowledge, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(http);
       await http.listen({ host, port: boundPort });
       const addr = http.server.address();
@@ -163,7 +173,7 @@ export async function startServer(
     }
     if (proxy) {
       if (proxy.port === boundPort) throw new Error('HTTPS LAB: porta do proxy deve diferir da porta HTTP local.');
-      const ingress = await buildHttp(core, { labProxyOrigin: proxy.origin, autoConfig, autoConfigAdvisor, references, knowledge, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const ingress = await buildHttp(core, { modelCatalog, labProxyOrigin: proxy.origin, autoConfig, autoConfigAdvisor, references, knowledge, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(ingress);
       await ingress.listen({ host: '127.0.0.1', port: proxy.port });
       opts.log?.(`HTTPS LAB: entrada do proxy em 127.0.0.1:${proxy.port}; origem HTTPS privada esperada: ${proxy.origin}`);
@@ -183,7 +193,7 @@ export async function startServer(
       async close() {
         if (closed) return;
         closed = true;
-        autoConfig?.stop(); autoConfigAdvisor?.stop(); removeAdvisorRevoke?.();
+        modelCatalog?.stop(); removeModelCatalogRevoke?.(); autoConfig?.stop(); autoConfigAdvisor?.stop(); removeAdvisorRevoke?.();
         core.stop();
         await knowledge?.close().catch(() => undefined);
         for (const h of https) await h.close().catch(() => undefined);
@@ -194,7 +204,7 @@ export async function startServer(
       },
     };
   } catch (err) {
-    autoConfig?.stop(); autoConfigAdvisor?.stop(); removeAdvisorRevoke?.();
+    modelCatalog?.stop(); removeModelCatalogRevoke?.(); autoConfig?.stop(); autoConfigAdvisor?.stop(); removeAdvisorRevoke?.();
     for (const h of https) await h.close().catch(() => undefined);
     await app?.mixer.disconnect().catch(() => undefined);
     recordsLock?.release();

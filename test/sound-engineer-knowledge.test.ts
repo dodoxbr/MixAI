@@ -116,7 +116,9 @@ describe('proveniência e limites de capacidade', () => {
   });
 
   it('base continua isolada e apenas consumidores explícitos importam conhecimento em produção', () => {
-    const LOCAL_KNOWLEDGE_CONSUMERS = ['src/assistant/service.ts', 'src/server/http.ts', 'src/server/start.ts', 'src/server/knowledge-routes.ts', 'src/knowledge-cli.ts', 'src/autoconfig/planner/kb-adapter.ts', 'src/autoconfig/planner/provider-adapter.ts'];
+    const LOCAL_KNOWLEDGE_CONSUMERS = ['src/assistant/service.ts', 'src/server/http.ts', 'src/server/start.ts', 'src/server/knowledge-routes.ts', 'src/knowledge-cli.ts', 'src/autoconfig/planner/kb-adapter.ts', 'src/autoconfig/planner/provider-adapter.ts',
+      // Catalog consumes provider interfaces/clients only; the deterministic knowledge base stays isolated.
+      'src/ai/model-catalog/contracts.ts', 'src/ai/model-catalog/factory.ts', 'src/ai/model-catalog/service.ts', 'src/ai/model-catalog/openai.ts'];
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(item =>
       item.isDirectory() ? files(join(dir, item.name)) : [join(dir, item.name)]);
     for (const file of files('src').filter(f => f.endsWith('.ts'))) {

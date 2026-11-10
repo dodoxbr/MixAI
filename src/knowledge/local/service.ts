@@ -10,7 +10,7 @@ import { cleanText } from './text.js';
 import { prepareQuery, refinePassages, type RetrievalTuning } from './query.js';
 
 export class KnowledgeError extends Error {
-  constructor(readonly code: 'INVALID' | 'NOT_FOUND' | 'UNAVAILABLE', message: string) { super(message); }
+  constructor(readonly code: 'INVALID' | 'NOT_FOUND' | 'UNAVAILABLE' | 'BUSY' | 'UNAUTHORIZED', message: string) { super(message); }
 }
 
 /** Por que o resumo do modelo local foi (ou não) mostrado. Só códigos: nunca o texto do modelo. */
@@ -254,10 +254,23 @@ export class LocalKnowledge {
   importSeed() { return this.importPack(readPackFromDir(this.o.seedDir)); }
   importZip(bytes: Uint8Array) { return this.importPack(readPackFromZip(bytes)); }
 
-  async ingest(): Promise<IngestReport> {
+  async ingest(opts: { externalAllowed?: (id: ProviderId) => boolean } = {}): Promise<IngestReport> {
+    const raw = this.o.ollama;
+    // Ingestion has several batches/retries: every external batch needs the SAME valid operation lease.
+    const embedder: AiProvider | undefined = raw?.external ? {
+      id: raw.id, external: true,
+      health: () => opts.externalAllowed?.(raw.id) === true ? raw.health() : Promise.resolve({ reachable: false, embedModel: false, chatModel: false, detail: 'Sem consentimento nesta sessão.' }),
+      embed: async (texts, kind) => {
+        if (opts.externalAllowed?.(raw.id) !== true) return undefined;
+        const result = await raw.embed(texts, kind);
+        return opts.externalAllowed?.(raw.id) === true ? result : undefined;
+      },
+      generateDetailed: async () => ({ failure: 'error' }),
+    } : raw;
+
     const catalogIds = new Set((await this.o.store.listSources()).map((s) => s.id));
     return ingestInbox({
-      inbox: this.o.inboxDir, store: this.o.store, ollama: this.o.ollama, maxBytes: this.o.maxDocumentBytes, catalogIds,
+      inbox: this.o.inboxDir, store: this.o.store, ollama: embedder, maxBytes: this.o.maxDocumentBytes, catalogIds,
       makeSource: (id, file): CatalogEntry => ({ id, title: file, url: 'https://local.invalid/documento-local', description: 'Documento local ingerido pelo operador', verifiedOnline: '1970-01-01', downloaded: true }),
     });
   }
@@ -283,16 +296,16 @@ export class LocalKnowledge {
     return next;
   }
 
-  async search(query: string): Promise<{ mode: 'vector' | 'keyword' | 'deterministic'; reason?: string; passages: KnowledgeContext['passages'] }> {
+  async search(query: string, opts: { externalAllowed?: (id: ProviderId) => boolean } = {}): Promise<{ mode: 'vector' | 'keyword' | 'deterministic'; reason?: string; passages: KnowledgeContext['passages'] }> {
     const q = cleanText(query).slice(0, 300);
     if (q.length < 2) throw new KnowledgeError('INVALID', 'Escreva ao menos 2 caracteres.');
-    const r = await this.retrieve(q);
+    const r = await this.retrieve(q, undefined, undefined, opts.externalAllowed);
     return { mode: r.mode, ...(r.reason ? { reason: r.reason } : {}), passages: r.passages };
   }
 
   private get tuning(): RetrievalTuning { return { stripNames: false, disambiguate: true, expandSymptoms: true, relativeCutoff: 0, sourcePrior: 0, ...this.o.retrieval }; }
 
-  private async retrieve(rawQuery: string, limit = this.o.maxPassages, hint: { symptom?: string; instrument?: string } = {}): Promise<{ mode: KnowledgeContext['mode']; reason?: string; passages: KnowledgeContext['passages'] }> {
+  private async retrieve(rawQuery: string, limit = this.o.maxPassages, hint: { symptom?: string; instrument?: string } = {}, externalAllowed?: (id: ProviderId) => boolean): Promise<{ mode: KnowledgeContext['mode']; reason?: string; passages: KnowledgeContext['passages'] }> {
     const tuning = this.tuning;
     const prepared = prepareQuery(rawQuery, { ...hint, names: tuning.stripNames ? await this.personNames().catch(() => []) : [] }, tuning);
     const query = prepared.text;
@@ -308,10 +321,16 @@ export class LocalKnowledge {
     }));
     let embedding: number[] | undefined;
     let reason: string | undefined;
-    if (this.o.ollama) {
-      const vectors = await race(this.o.ollama.embed([query], 'query'), RETRIEVAL_DEADLINE_MS);
-      embedding = vectors?.[0];
-      if (!embedding) reason = 'Ollama indisponível: busca por palavras.';
+    if (this.o.ollama?.external && externalAllowed?.(this.o.ollama.id) !== true) {
+      // Embeddings externos (embedProvider: gemini) enviam a consulta ao serviço: só com o consentimento da sessão.
+      reason = 'Embeddings externos sem consentimento nesta sessão: busca por palavras.';
+    } else if (this.o.ollama) {
+      const embedQuery = this.o.ollama.external ? redactForExternal(query, await this.personNames()) : query;
+      const maySend = !this.o.ollama.external || externalAllowed?.(this.o.ollama.id) === true;
+      const vectors = maySend ? await race(this.o.ollama.embed([embedQuery], 'query'), RETRIEVAL_DEADLINE_MS) : undefined;
+      if (this.o.ollama.external && externalAllowed?.(this.o.ollama.id) !== true) reason = 'Consentimento revogado: vetor externo descartado; busca por palavras.';
+      else embedding = vectors?.[0];
+      if (!embedding && !reason) reason = 'Ollama indisponível: busca por palavras.';
     } else reason = 'Ollama não configurado: busca por palavras.';
     try {
       const found = refinePassages(await this.o.store.search(query, embedding, wide, { mode: this.o.search ?? 'auto', minScore: this.o.minScore }), { avoid: prepared.avoid, tuning, limit });
@@ -344,13 +363,13 @@ export class LocalKnowledge {
 
   /**
    * Ordem de tentativa do resumo: o escolhido e, se ele for externo, o Ollama local como reserva (configurável: externalFallback).
-   * NUNCA há troca de um serviço externo para outro. DeepSeek e Anthropic só entram com o consentimento do operador NA SESSÃO
-   * (`allowed`); sem ele (ou sem sessão) o envio externo não acontece. O Gemini mantém o fluxo anterior (escolha confirmada do operador).
+   * NUNCA há troca de um serviço externo para outro. Gemini, DeepSeek e Anthropic só entram com o consentimento do operador NA SESSÃO
+   * (`allowed`); sem ele (ou sem sessão) o envio externo não acontece, mesmo com preferência gravada ou chave presente.
    */
   private chatChain(allowed?: (id: ProviderId) => boolean): { chain: AiProvider[]; withheld?: ProviderId } {
     const chosen = this.chatProvider(this.chatSelected) ?? this.chatProvider('ollama');
     const local = this.chatProvider('ollama');
-    const permitted = !chosen?.external || chosen.id === 'gemini' || allowed?.(chosen.id) === true;
+    const permitted = !chosen?.external || allowed?.(chosen.id) === true;
     const fallback = chosen?.external && (this.o.externalFallback ?? 'ollama') === 'ollama' && local ? [local] : [];
     return { chain: [...(permitted ? [chosen] : []), ...fallback].filter((p): p is AiProvider => !!p), ...(chosen && !permitted ? { withheld: chosen.id } : {}) };
   }
@@ -374,24 +393,35 @@ export class LocalKnowledge {
    * Escolha do operador para o resumo. O provedor externo só entra com habilitação na configuração,
    * chave presente, confirmação explícita do operador e uma verificação de que ele responde agora.
    */
-  async setChatProvider(id: ProviderId, confirmExternal = false, model?: string): Promise<ProvidersInfo> {
+  private providerSelectionPending = false;
+  async setChatProvider(id: ProviderId, confirmExternal = false, model?: string, guard?: { begin(): void; current(): boolean }): Promise<ProvidersInfo> {
     const provider = this.chatProvider(id);
     if (!provider) throw new KnowledgeError('INVALID', id === 'ollama' ? 'Provedor desconhecido.' : `${PROVIDER_LABEL[id]} não está habilitado na configuração (knowledge.${id}.enabled).`);
     if (model !== undefined && !provider.modelOptions?.includes(model)) throw new KnowledgeError('INVALID', 'Modelo não oferecido por este provedor.');
-    const previousModel = provider.model;
-    // O modelo só muda de verdade se todas as verificações abaixo passarem.
-    if (model !== undefined) provider.selectModel?.(model);
-    try {
     if (provider.external) {
       if (!confirmExternal) throw new KnowledgeError('INVALID', 'Confirme que aceita enviar trechos de manuais públicos e a sua pergunta (sem nomes nem números sensíveis) a um serviço externo.');
       if (!this.isConfigured(provider)) throw new KnowledgeError('INVALID', KEY_MISSING[id]);
-      const h = await provider.health(true);
-      if (!h.chatModel) throw new KnowledgeError('INVALID', /recusou/.test(h.detail) ? `${PROVIDER_LABEL[id]} recusou a chave configurada.` : `${PROVIDER_LABEL[id]} não respondeu agora; tente de novo.`);
     }
-    } catch (e) { if (model !== undefined && previousModel) provider.selectModel?.(previousModel); throw e; }
-    this.chatSelected = id;
-    this.o.onChatProvider?.(id);
-    return this.providers();
+    if (this.providerSelectionPending) throw new KnowledgeError('BUSY', 'Outra seleção está em andamento. Aguarde e confirme novamente.');
+    this.providerSelectionPending = true;
+    const previousModel = provider.model, previousSelected = this.chatSelected;
+    try {
+      // Invalidate leases BEFORE mutating a shared model or waiting for its health check.
+      guard?.begin();
+      if (model !== undefined) provider.selectModel?.(model);
+      if (provider.external) {
+        const h = await provider.health(true);
+        if (!h.chatModel) throw new KnowledgeError('INVALID', /recusou/.test(h.detail) ? `${PROVIDER_LABEL[id]} recusou a chave configurada.` : `${PROVIDER_LABEL[id]} não respondeu agora; tente de novo.`);
+      }
+      if (guard && !guard.current()) throw new KnowledgeError('BUSY', 'Seleção invalidada. Confirme novamente nesta sessão.');
+      this.chatSelected = id;
+      this.o.onChatProvider?.(id);
+      return this.providers();
+    } catch (e) {
+      this.chatSelected = previousSelected;
+      if (model !== undefined && previousModel) provider.selectModel?.(previousModel);
+      throw e;
+    } finally { this.providerSelectionPending = false; }
   }
 
   /** Nomes de pessoas (músicos) que NÃO podem sair do computador junto com a pergunta. */
@@ -428,12 +458,12 @@ export class LocalKnowledge {
   }
 
   /** Nunca lança e nunca altera o diagnóstico: só acrescenta referências, ficha do microfone e texto de apoio. */
-  /** `externalAllowed`: consentimento do operador NA SESSÃO para DeepSeek/Anthropic (ausente = não consentido). */
+  /** `externalAllowed`: consentimento do operador NA SESSÃO para qualquer serviço externo (ausente = não consentido). É reavaliado a cada envio e ao receber o resultado. */
   async enrich(input: EnrichInput, opts: { externalAllowed?: (id: ProviderId) => boolean } = {}): Promise<KnowledgeContext> {
     try {
       const query = cleanText([input.symptom, input.instrument, input.text].filter(Boolean).join(' ')).slice(0, 300);
       // Busca mais trechos do que o necessário: parte pode sair pelo filtro de modelo de microfone.
-      const r = query.length >= 2 ? await this.retrieve(cleanText(input.text), this.o.maxPassages + 6, { symptom: input.symptom, instrument: input.instrument }) : { mode: 'deterministic' as const, reason: 'Consulta curta demais.', passages: [] };
+      const r = query.length >= 2 ? await this.retrieve(cleanText(input.text), this.o.maxPassages + 6, { symptom: input.symptom, instrument: input.instrument }, opts.externalAllowed) : { mode: 'deterministic' as const, reason: 'Consulta curta demais.', passages: [] };
       const ctx: KnowledgeContext = { mode: r.mode, degraded: r.mode !== 'vector', ...(r.reason ? { reason: r.reason } : {}), passages: r.passages };
 
       let own: PerceptionModel | undefined;
@@ -474,7 +504,11 @@ export class LocalKnowledge {
         const names = chain.some((p) => p.external) ? await this.personNames() : [];
         let failed: { id: ProviderId; status: NarrativeStatus } | undefined = withheld ? { id: withheld, status: 'not_consented' } : undefined;
         for (const provider of chain) {
-          const r = await this.narrate(provider, input, ctx.passages, names);
+          // Consentimento reavaliado ANTES de cada envio (revogado no meio da operação: nada novo sai).
+          if (provider.external && opts.externalAllowed?.(provider.id) !== true) { failed ??= { id: provider.id, status: 'not_consented' }; continue; }
+          let r = await this.narrate(provider, input, ctx.passages, names);
+          // ... e ao receber: se foi revogado enquanto o serviço respondia, o resultado é descartado e não é exibido.
+          if (provider.external && opts.externalAllowed?.(provider.id) !== true) r = { status: 'not_consented' };
           const noted = this.note(r.status, r.rule, r.chars, provider.id);
           ctx.narrativeStatus = { ...noted, provider: provider.id, ...(r.model ? { model: r.model } : {}), ...(r.status === 'used' && failed ? { fellBackFrom: failed.id, fallbackReason: failed.status } : {}) };
           if (r.status === 'used') { ctx.narrative = { text: r.text!, source: provider.id, ...(r.model ? { model: r.model } : {}), verified: false }; break; }
@@ -482,6 +516,7 @@ export class LocalKnowledge {
           if (!FALLBACK_STATUS.has(r.status)) break;
           failed ??= { id: provider.id, status: r.status };
         }
+        if (!ctx.narrativeStatus) ctx.narrativeStatus = { status: 'not_consented', ...(failed ? { provider: failed.id } : {}) };
       }
       return ctx;
     } catch {

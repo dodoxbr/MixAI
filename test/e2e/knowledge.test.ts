@@ -227,21 +227,19 @@ it('provedor: sem Gemini habilitado a escolha não existe; com ele o operador l�
   const { t } = await lab({ ollama: fakeOllama(), narrative: true, ingested: true, gemini: g.client });
   const { page } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
   const writes = vi.spyOn(t.mixer, 'write');
-  await open(page);
-  await page.getByRole('button', { name: 'Configurações', exact: true }).click();
-  const panel = page.getByRole('dialog', { name: 'Inteligência Artificial' });
-  await expect.poll(() => panel.getByLabel('Seleção ativa no servidor').textContent()).toContain('Ollama');
+  const panel = await open(page);
+  await panel.getByRole('radiogroup', { name: 'Provedor do resumo' }).waitFor();
+  expect(await panel.textContent()).toContain('Em uso: Ollama (local)');
   expect(g.sent).toHaveLength(0); // abrir o painel não chama o serviço externo
-  await panel.getByRole('radio', { name: /Gemini/ }).check();
-  await expect.poll(() => panel.textContent()).toContain('saem do computador para esse provedor');
-  const apply = panel.getByRole('button', { name: 'Aplicar seleção' });
+
+  await panel.getByLabel('Gemini (serviço externo do Google)').check();
+  expect(await panel.getByRole('note').textContent()).toContain('saem deste computador para o Google');
+  const apply = panel.getByRole('button', { name: 'Aplicar provedor' });
   expect(await apply.isDisabled()).toBe(true);
-  await panel.getByRole('checkbox', { name: 'Confirmo o envio externo para Gemini nesta sessão.' }).check();
+  await panel.getByLabel('Entendo e aceito enviar esses dados ao serviço externo.').check();
   await expect.poll(() => apply.isDisabled()).toBe(false);
   await apply.click();
-  await expect.poll(() => panel.getByLabel('Seleção ativa no servidor').textContent()).toContain('Gemini');
-  await panel.getByRole('button', { name: 'Fechar configurações de IA' }).click();
-  await panel.waitFor({ state: 'detached' });
+  await expect.poll(() => panel.textContent()).toContain('Em uso: Gemini (externo)');
 
   await ask(page, 'O Fred está microfonando no PA, senha 987654');
   const block = page.locator('.knowledge-block').last();
@@ -258,18 +256,36 @@ it('provedor: sem Gemini habilitado a escolha não existe; com ele o operador l�
   expect(outgoing).toContain('o músico');
   expect(await page.content()).not.toContain(KEY);
   expect(await page.evaluate(() => JSON.stringify({ ...sessionStorage, ...localStorage }))).not.toContain(KEY);
+
+  // Revoking keeps the preference but invalidates this session, its cache and in-flight work.
+  const sent = g.sent.filter(x => x.includes(':generateContent')).length;
+  await panel.getByRole('button', { name: 'Revogar envio nesta sessão', exact: true }).click();
+  await expect.poll(() => panel.textContent()).toContain('ainda não foi confirmado NESTA sessão');
+  expect(await panel.textContent()).toContain('Em uso: Gemini (externo)');
+  await ask(page, 'O Fred está microfonando no PA, senha 987654');
+  expect(g.sent.filter(x => x.includes(':generateContent'))).toHaveLength(sent);
+  await panel.getByLabel('Entendo e aceito enviar esses dados ao serviço externo.').check();
+  await panel.getByRole('button', {name:'Confirmar envio nesta sessão',exact:true}).click();
+  await expect.poll(() => panel.textContent()).not.toContain('ainda não foi confirmado NESTA sessão');
+  await ask(page, 'O Fred está microfonando no PA, senha 987654');
+  expect(g.sent.filter(x => x.includes(':generateContent')).length).toBeGreaterThan(sent);
+  const another=await enter(browser,t.base,OPERATOR_PIN,YOGA);const panelB=await open(another.page);
+  await expect.poll(()=>panelB.textContent()).toContain('ainda não foi confirmado NESTA sessão');
+  const before=g.sent.filter(x=>x.includes(':generateContent')).length;await ask(another.page,'O Fred está microfonando no PA');
+  expect(g.sent.filter(x=>x.includes(':generateContent'))).toHaveLength(before);
 });
 
 it('provedor: Gemini com cota esgotada → o modelo local assume, a tela explica e não vaza detalhes', async () => {
   const g = fakeGemini({ chat: { status: 429 } });
   const { t } = await lab({ ollama: fakeOllama({ chat: 'Pode ser que o ganho do retorno esteja alto; o operador pode conferir o posicionamento do microfone em relação às caixas.' }), narrative: true, ingested: true, gemini: g.client, chat: 'gemini' });
   const { page } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
-  await open(page);
-  await page.getByRole('button', { name: 'Configurações', exact: true }).click();
-  const panel = page.getByRole('dialog', { name: 'Inteligência Artificial' });
-  await expect.poll(() => panel.getByLabel('Seleção ativa no servidor').textContent()).toContain('Gemini');
-  await panel.getByRole('button', { name: 'Fechar configurações de IA' }).click();
-  await panel.waitFor({ state: 'detached' });
+  const panel = await open(page);
+  await expect.poll(() => panel.textContent()).toContain('Em uso: Gemini (externo)');
+  // Gemini já estava selecionado (preferência), mas o consentimento é por sessão: a tela pede a confirmação antes de qualquer envio.
+  await expect.poll(() => panel.textContent()).toContain('ainda não foi confirmado NESTA sessão');
+  await page.locator('.provider-consent input').check();
+  await page.getByRole('button', { name: 'Confirmar envio nesta sessão' }).click();
+  await expect.poll(() => panel.textContent()).not.toContain('ainda não foi confirmado');
   await ask(page, 'O Fred está microfonando no PA');
   const block = page.locator('.knowledge-block').last();
   await block.waitFor({ state: 'attached' });

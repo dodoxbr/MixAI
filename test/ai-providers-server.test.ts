@@ -108,3 +108,12 @@ describe('API de seleção de provedor', () => {
     }
   });
 });
+
+
+it('revogação de consentimento preserva autenticação e guardas de origem/papel',async()=>{
+ const {t}=await start();const op=await t.login(OPERATOR_PIN),musician=await t.login(MUSICIAN_PIN);const path='/api/knowledge/providers/consent';
+ expect((await fetch(t.base+path,{method:'DELETE'})).status).toBe(401);
+ expect((await call(t,path,musician,{method:'DELETE'})).status).toBe(403);
+ expect((await call(t,path,op,{method:'DELETE',headers:{origin:'https://foreign.invalid'}})).status).toBe(403);
+ expect((await call(t,path,op,{method:'DELETE'})).status).toBe(200);
+});
