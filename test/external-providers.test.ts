@@ -651,3 +651,47 @@ describe('regressão: planejador — revogação durante a operação e fallback
     expect(await pending).toMatchObject({ kind: 'refusal', reason: 'stale_policy' });
   });
 });
+
+describe('regressão: embeddings externos e revogação com requisição pendente (retrieve)', () => {
+  async function embedService() {
+    const d = deferred();
+    const f = fake((c) => c.url.includes(':batchEmbedContents') ? { json: { embeddings: [{ values: new Array(DIMS).fill(0.5) }] } } : gemOk());
+    const gem = geminiClient(f); const orig = gem.embed.bind(gem);
+    let held = false;
+    gem.embed = async (t, kind) => { if (held) await d.gate; return orig(t, kind); };
+    const dir = mkdtempSync(join(tmpdir(), 'mixai-embrev-')); const store = new FileKnowledgeStore(join(dir, 'k.json')); await store.init();
+    const searchSpy = vi.spyOn(store, 'search');
+    const k = new LocalKnowledge({ store, ollama: gem, chatProviders: [fakeOllama().client], inboxDir: join(dir, 'inbox'), seedDir: join(PROJECT_ROOT, 'knowledge', 'seed', 'banda-v1_2'), maxDocumentBytes: 1024 * 1024, maxPassages: 3, narrative: false });
+    await k.importSeed();
+    return { k, f, searchSpy, hold: () => { held = true; }, release: d.release };
+  }
+  it('consentimento revogado enquanto o embedding externo é gerado: o vetor é descartado e a busca segue por palavras', async () => {
+    const { k, f, searchSpy, hold, release } = await embedService();
+    let granted = true; hold(); searchSpy.mockClear(); f.calls.length = 0;
+    const pending = k.search('microfonia no palco', { externalAllowed: () => granted });
+    await new Promise((r) => setTimeout(r, 30));
+    granted = false; release();
+    const r = await pending;
+    expect(searchSpy).toHaveBeenCalled();
+    for (const call of searchSpy.mock.calls) expect(call[1], 'o vetor externo não pode chegar à busca').toBeUndefined();
+    expect(r.reason).toMatch(/Consentimento revogado durante a consulta/);
+    expect(['keyword', 'deterministic']).toContain(r.mode);
+  });
+  it('mesma consulta com o consentimento mantido usa o vetor externo (comportamento preservado)', async () => {
+    const { k, searchSpy, hold, release } = await embedService();
+    hold(); searchSpy.mockClear();
+    const pending = k.search('microfonia no palco', { externalAllowed: () => true });
+    await new Promise((r) => setTimeout(r, 30)); release();
+    await pending;
+    expect(searchSpy.mock.calls.some((c) => Array.isArray(c[1]) && (c[1] as number[]).length === DIMS)).toBe(true);
+  });
+  it('o mesmo vale no caminho do assistente (enrich): revogado durante o embedding, nada do vetor é usado', async () => {
+    const { k, searchSpy, hold, release } = await embedService();
+    let granted = true; hold(); searchSpy.mockClear();
+    const pending = k.enrich({ text: 'O Fred está microfonando no PA', symptom: 'microfonia' }, { externalAllowed: () => granted });
+    await new Promise((r) => setTimeout(r, 30)); granted = false; release();
+    const ctx = await pending;
+    for (const call of searchSpy.mock.calls) expect(call[1]).toBeUndefined();
+    expect(ctx.reason ?? '').toMatch(/Consentimento revogado/);
+  });
+});

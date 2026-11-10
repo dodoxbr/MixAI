@@ -312,9 +312,14 @@ export class LocalKnowledge {
       // Embeddings externos (embedProvider: gemini) enviam a consulta ao serviço: só com o consentimento da sessão.
       reason = 'Embeddings externos sem consentimento nesta sessão: busca por palavras.';
     } else if (this.o.ollama) {
-      const vectors = await race(this.o.ollama.embed([query], 'query'), RETRIEVAL_DEADLINE_MS);
+      const embedder = this.o.ollama;
+      const vectors = await race(embedder.embed([query], 'query'), RETRIEVAL_DEADLINE_MS);
       embedding = vectors?.[0];
-      if (!embedding) reason = 'Ollama indisponível: busca por palavras.';
+      if (embedder.external && externalAllowed?.(embedder.id) !== true) {
+        // Consentimento revogado enquanto o serviço externo respondia: o vetor recebido é descartado e a busca segue só por palavras.
+        embedding = undefined;
+        reason = 'Consentimento revogado durante a consulta: vetor externo descartado, busca por palavras.';
+      } else if (!embedding) reason = 'Ollama indisponível: busca por palavras.';
     } else reason = 'Ollama não configurado: busca por palavras.';
     try {
       const found = refinePassages(await this.o.store.search(query, embedding, wide, { mode: this.o.search ?? 'auto', minScore: this.o.minScore }), { avoid: prepared.avoid, tuning, limit });

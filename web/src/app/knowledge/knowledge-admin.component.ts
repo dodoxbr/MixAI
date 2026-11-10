@@ -57,7 +57,7 @@ const EVIDENCE: Record<string, string> = {
                 </label>
               }
               @if (isExternal(selected())) {
-                <p class="knowledge-warning" role="note">Atenção: com {{ short[selected()] }}, trechos de manuais públicos e a sua pergunta (sem nomes nem números sensíveis) saem deste computador para {{ dest[selected()] }}. Documentos locais nunca são enviados.@if (selected() !== 'gemini') { O consentimento vale só NESTA sessão. } @if (pv.externalFallback === 'none') { Se o serviço falhar, não há reserva. } @else { Se o serviço ficar indisponível, o Ollama local assume; nunca outro serviço externo. }</p>
+                <p class="knowledge-warning" role="note">Atenção: com {{ short[selected()] }}, trechos de manuais públicos e a sua pergunta (sem nomes nem números sensíveis) saem deste computador para {{ dest[selected()] }}. Documentos locais nunca são enviados.O consentimento vale só NESTA sessão. @if (pv.externalFallback === 'none') { Se o serviço falhar, não há reserva. } @else { Se o serviço ficar indisponível, o Ollama local assume; nunca outro serviço externo. }</p>
                 <label class="provider-consent"><input type="checkbox" #agree [checked]="consent()" (change)="consent.set(agree.checked)" /> Entendo e aceito enviar esses dados ao serviço externo.</label>
               }
               @if (selected() === 'anthropic' && chosenModel() === 'claude-fable-5-2') {
@@ -69,7 +69,7 @@ const EVIDENCE: Record<string, string> = {
               @if (selected() !== pv.chat.selected || needsSessionConfirm(pv)) {
                 <button type="button" class="btn" [disabled]="k.busy() || (isExternal(selected()) && !consent())" (click)="apply()">{{ selected() === pv.chat.selected ? 'Confirmar envio nesta sessão' : 'Aplicar provedor' }}</button>
               }
-              <p class="knowledge-note">Em uso: {{ short[pv.chat.selected] }}@if (modelOf(pv.chat.selected)) { · {{ modelOf(pv.chat.selected) }} }@if (!pv.narrative) { · o resumo está desligado na configuração (knowledge.ollama.narrative) }</p>
+              <p class="knowledge-note">Em uso: {{ short[pv.chat.selected] }}@if (modelOf(pv.chat.selected)) { · {{ modelOf(pv.chat.selected) }} }@if (isExternal(pv.chat.selected)) { · {{ pv.sessionConsent === false ? 'envio aguardando confirmação nesta sessão' : 'envio confirmado nesta sessão' }} }@if (!pv.narrative) { · o resumo está desligado na configuração (knowledge.ollama.narrative) }</p>
             }
           }
 
