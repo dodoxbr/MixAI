@@ -553,7 +553,8 @@ describe('regressão: servidor — consentimento, nova sessão, troca de modelo 
     const ds = deepseek(fd); const gen = ds.generateDetailed.bind(ds);
     ds.generateDetailed = async (s, u) => { if (hold) await gate.gate; return gen(s, u); };
     const gf = fake((c) => c.url.includes(':generateContent') ? gemOk() : { json: { name: 'x' } }); const gem = geminiClient(gf);
-    const knowledge = new LocalKnowledge({ store, ollama, chatProviders: [ollama, ds, gem], chat: opts.preselect, inboxDir: join(dir, 'inbox'), seedDir: join(PROJECT_ROOT, 'knowledge', 'seed', 'banda-v1_2'), maxDocumentBytes: 1024 * 1024, maxPassages: 3, narrative: true });
+    const af = fake(() => anOk()); const an = anthropic(af);
+    const knowledge = new LocalKnowledge({ store, ollama, chatProviders: [ollama, ds, gem, an], chat: opts.preselect, inboxDir: join(dir, 'inbox'), seedDir: join(PROJECT_ROOT, 'knowledge', 'seed', 'banda-v1_2'), maxDocumentBytes: 1024 * 1024, maxPassages: 3, narrative: true });
     await knowledge.importSeed(); mkdirSync(join(dir, 'inbox'), { recursive: true }); writeFileSync(join(dir, 'inbox', 'shure-live.md'), PUBLIC_DOC); await knowledge.ingest();
     const t = await startTestServer({ knowledge, dir, channels: parseChannels(parse(readFileSync(join(PROJECT_ROOT, 'config', 'channels.yaml'), 'utf8'))) }); servers.push(t);
     const open = async () => {
@@ -563,7 +564,7 @@ describe('regressão: servidor — consentimento, nova sessão, troca de modelo 
       const get = async () => (await fetch(`${t.base}/api/knowledge/providers`, { headers: { authorization: `Bearer ${token}` } })).json();
       return { token, say, post, get };
     };
-    return { t, open, fd, gf, ds, hold: (v: boolean) => { hold = v; }, release: gate.release };
+    return { t, open, fd, gf, af, ds, an, gem, hold: (v: boolean) => { hold = v; }, release: gate.release };
   }
   const deepseekChats = (fd: ReturnType<typeof fake>) => fd.calls.filter((c) => c.url.includes('chat/completions'));
 
@@ -624,6 +625,50 @@ describe('regressão: servidor — consentimento, nova sessão, troca de modelo 
     const sent = deepseekChats(s.fd).length;
     await a.say(); expect(deepseekChats(s.fd).length).toBe(sent);
   });
+  it.each(['gemini','deepseek','anthropic'] as const)('consentimento/revogação/isolamento da sessão para %s', async provider => {
+    const s = await bootReal(); const a = await s.open(); const b = await s.open();
+    expect((await a.post({ chat:provider, confirmExternal:true })).status).toBe(200);
+    expect((await a.get()).sessionConsent).toBe(true); expect((await b.get()).sessionConsent).toBe(false);
+    const revoke = await fetch(`${s.t.base}/api/knowledge/providers/consent`, {method:'DELETE',headers:{authorization:`Bearer ${a.token}`}});
+    expect(revoke.status).toBe(200); expect((await a.get()).sessionConsent).toBe(false);
+    const sent = [...s.fd.calls,...s.gf.calls,...s.af.calls].filter(c=>/generateContent|chat\/completions|\/messages/.test(c.url)).length;
+    await a.say(); expect([...s.fd.calls,...s.gf.calls,...s.af.calls].filter(c=>/generateContent|chat\/completions|\/messages/.test(c.url))).toHaveLength(sent);
+    expect((await a.post({chat:provider,confirmExternal:true})).status).toBe(200);
+    const p = s.t.server.core.auth.authenticate(a.token,'127.0.0.1')!;
+    await s.t.http('/api/logout',{token:a.token,body:{}});
+    expect(s.t.server.core.externalConsent.allowed(p,provider)).toBe(false);
+  });
+  it.each(['gemini','deepseek','anthropic'] as const)('revogar e reconfirmar %s (ABA) não ressuscita resposta antiga nem a guarda no cache', async provider => {
+    const s=await bootReal();const a=await s.open();await a.post({chat:provider,confirmExternal:true});
+    const client=provider==='deepseek'?s.ds:provider==='gemini'?s.gem:s.an;
+    const calls=()=>[...s.fd.calls,...s.gf.calls,...s.af.calls].filter(c=>/generateContent|chat\/completions|\/messages/.test(c.url)).length;
+    const began=deferred(), finish=deferred();const original=client.generateDetailed.bind(client);
+    vi.spyOn(client,'generateDetailed').mockImplementationOnce(async (sys,user)=>{const result=await original(sys,user);began.release();await finish.gate;return result;});
+    const pending=a.say();await began.gate;
+    await fetch(`${s.t.base}/api/knowledge/providers/consent`,{method:'DELETE',headers:{authorization:`Bearer ${a.token}`}});
+    expect((await a.post({chat:provider,confirmExternal:true})).status).toBe(200);
+    expect((await a.get()).sessionConsent).toBe(true);
+    finish.release();const reply=await pending;
+    expect(reply.knowledge?.narrative).toBeUndefined();expect(reply.knowledge?.narrativeStatus.status).toBe('not_consented');
+    const count=calls();await a.say();expect(calls()).toBeGreaterThan(count);
+  });
+  it('seleção pendente serializa modelos e não restaura consentimento revogado durante health',async()=>{
+    const s=await bootReal();const a=await s.open();const b=await s.open();await a.post({chat:'deepseek',confirmExternal:true});
+    const began=deferred(),finish=deferred();vi.spyOn(s.ds,'health').mockImplementationOnce(async()=>{began.release();await finish.gate;return {reachable:true,embedModel:false,chatModel:true,detail:'ok'};});
+    const pending=a.post({chat:'deepseek',model:'deepseek-v4-pro',confirmExternal:true});await began.gate;
+    expect((await a.get()).sessionConsent).toBe(false);
+    expect((await b.post({chat:'anthropic',confirmExternal:true})).status).toBe(409);
+    await fetch(`${s.t.base}/api/knowledge/providers/consent`,{method:'DELETE',headers:{authorization:`Bearer ${a.token}`}});finish.release();
+    expect((await pending).status).toBe(409);expect(s.ds.model).toBe('deepseek-flash');expect((await a.get()).sessionConsent).toBe(false);
+  });
+  it('logout durante a seleção não concede uma sessão morta nem muda o modelo',async()=>{
+    const s=await bootReal();const a=await s.open();const began=deferred(),finish=deferred();
+    vi.spyOn(s.ds,'health').mockImplementationOnce(async()=>{began.release();await finish.gate;return {reachable:true,embedModel:false,chatModel:true,detail:'ok'};});
+    const pending=a.post({chat:'deepseek',model:'deepseek-v4-pro',confirmExternal:true});await began.gate;await s.t.http('/api/logout',{token:a.token,body:{}});finish.release();
+    expect((await pending).status).toBe(401);expect(s.ds.model).toBe('deepseek-flash');const b=await s.open();expect((await b.get()).sessionConsent).toBe(true); // Ollama local, nenhuma concessão externa.
+    expect((await b.get()).chat.selected).toBe('ollama');
+  });
+
 });
 
 describe('regressão: planejador — revogação durante a operação e fallback', () => {
@@ -650,4 +695,36 @@ describe('regressão: planejador — revogação durante a operação e fallback
     selected = 'ollama'; d.release();
     expect(await pending).toMatchObject({ kind: 'refusal', reason: 'stale_policy' });
   });
+});
+
+
+describe('regressão: preços DeepSeek e estimativa conservadora UTF-8',()=>{
+ it.each(['deepseek-flash','deepseek-v4-pro'] as const)('reserva e consumo em %s usam cache miss/pico sem chamar rede paga',async model=>{
+  const price=parseConfig({}).knowledge.external.prices[model]!;const sys='é🎵'.repeat(100),user='surdo';const estimated=(Buffer.byteLength(sys)+Buffer.byteLength(user)+128)*price.inputPerMTok/1e6+600*price.outputPerMTok/1e6;
+  const f=fake(()=>dsOk(GOOD,{model}));const tracker=new UsageTracker(null);const p=new BudgetedProvider(deepseek(f,DS_KEY,model),{tracker,dailyBudgetUSD:estimated-0.0000001,maxRequestsPerMinute:10,maxOutputTokens:600,price:()=>price});
+  expect(await p.generateDetailed(sys,user)).toMatchObject({failure:'quota',reason:'budget'});expect(f.calls).toHaveLength(0);
+  const usage=new UsageTracker(null);await new BudgetedProvider(deepseek(f,DS_KEY,model),{tracker:usage,dailyBudgetUSD:1,maxRequestsPerMinute:10,maxOutputTokens:600,price:()=>price}).generateDetailed(sys,user);
+  expect(usage.current().costUSD).toBeCloseTo((120*price.inputPerMTok+40*price.outputPerMTok)/1e6,9);
+ });
+});
+
+
+describe('regressão: embeddings externos com lease revogada',()=>{
+ it('descarta vetor tardio e não usa dados pessoais no envio Gemini',async()=>{
+  const f=fake(c=>c.url.includes(':batchEmbedContents')?{json:{embeddings:[{values:new Array(DIMS).fill(0.5)}]}}:gemOk());
+  const dir=mkdtempSync(join(tmpdir(),'mixai-vector-lease-'));const store=new FileKnowledgeStore(join(dir,'k.json'));await store.init();const gem=geminiClient(f);
+  const k=new LocalKnowledge({store,ollama:gem,chatProviders:[],inboxDir:join(dir,'inbox'),seedDir:join(PROJECT_ROOT,'knowledge','seed','banda-v1_2'),maxDocumentBytes:1048576,maxPassages:3,narrative:false});await k.importSeed();
+  const search=vi.spyOn(store,'search'), began=deferred(),finish=deferred();let revision=1;const original=gem.embed.bind(gem);
+  vi.spyOn(gem,'embed').mockImplementationOnce(async(...args)=>{const result=await original(...args);began.release();await finish.gate;return result;});
+  const epoch=revision;const pending=k.search('Fred microfonia 10.10.1.1 123456',{externalAllowed:()=>revision===epoch});await began.gate;revision+=2;finish.release();const result=await pending;
+  expect(search.mock.calls.at(-1)?.[1]).toBeUndefined();expect(result.reason).toMatch(/revogado/);const body=f.calls.find(c=>c.url.includes(':batchEmbedContents'))!.body;
+  for(const secret of ['Fred','10.10.1.1','123456'])expect(body).not.toContain(secret);
+ });
+ it('revogação durante lote de ingestão não persiste vetores tardios nem reenvia lote',async()=>{
+  const f=fake(c=>c.url.includes(':batchEmbedContents')?{json:{embeddings:(JSON.parse(c.body).requests as unknown[]).map(()=>({values:new Array(DIMS).fill(0.5)}))}}:{json:{name:'x'}});
+  const dir=mkdtempSync(join(tmpdir(),'mixai-ingest-lease-'));const store=new FileKnowledgeStore(join(dir,'k.json'));await store.init();const gem=geminiClient(f);const k=new LocalKnowledge({store,ollama:gem,chatProviders:[],inboxDir:join(dir,'inbox'),seedDir:join(PROJECT_ROOT,'knowledge','seed','banda-v1_2'),maxDocumentBytes:1048576,maxPassages:3,narrative:false});await k.importSeed();mkdirSync(join(dir,'inbox'),{recursive:true});writeFileSync(join(dir,'inbox','shure-live.md'),PUBLIC_DOC);
+  const began=deferred(),finish=deferred();let allowed=true;const original=gem.embed.bind(gem);vi.spyOn(gem,'embed').mockImplementationOnce(async(...args)=>{const result=await original(...args);began.release();await finish.gate;return result;});
+  const pending=k.ingest({externalAllowed:()=>allowed});await began.gate;allowed=false;finish.release();const report=await pending;
+  expect(report.items.find(i=>i.file==='shure-live.md')?.embedded).toBe(0);expect(f.calls.filter(c=>c.url.includes(':batchEmbedContents'))).toHaveLength(1);
+ });
 });

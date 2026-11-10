@@ -10,7 +10,7 @@ import { cleanText } from './text.js';
 import { prepareQuery, refinePassages, type RetrievalTuning } from './query.js';
 
 export class KnowledgeError extends Error {
-  constructor(readonly code: 'INVALID' | 'NOT_FOUND' | 'UNAVAILABLE', message: string) { super(message); }
+  constructor(readonly code: 'INVALID' | 'NOT_FOUND' | 'UNAVAILABLE' | 'BUSY' | 'UNAUTHORIZED', message: string) { super(message); }
 }
 
 /** Por que o resumo do modelo local foi (ou não) mostrado. Só códigos: nunca o texto do modelo. */
@@ -254,10 +254,23 @@ export class LocalKnowledge {
   importSeed() { return this.importPack(readPackFromDir(this.o.seedDir)); }
   importZip(bytes: Uint8Array) { return this.importPack(readPackFromZip(bytes)); }
 
-  async ingest(): Promise<IngestReport> {
+  async ingest(opts: { externalAllowed?: (id: ProviderId) => boolean } = {}): Promise<IngestReport> {
+    const raw = this.o.ollama;
+    // Ingestion has several batches/retries: every external batch needs the SAME valid operation lease.
+    const embedder: AiProvider | undefined = raw?.external ? {
+      id: raw.id, external: true,
+      health: () => opts.externalAllowed?.(raw.id) === true ? raw.health() : Promise.resolve({ reachable: false, embedModel: false, chatModel: false, detail: 'Sem consentimento nesta sessão.' }),
+      embed: async (texts, kind) => {
+        if (opts.externalAllowed?.(raw.id) !== true) return undefined;
+        const result = await raw.embed(texts, kind);
+        return opts.externalAllowed?.(raw.id) === true ? result : undefined;
+      },
+      generateDetailed: async () => ({ failure: 'error' }),
+    } : raw;
+
     const catalogIds = new Set((await this.o.store.listSources()).map((s) => s.id));
     return ingestInbox({
-      inbox: this.o.inboxDir, store: this.o.store, ollama: this.o.ollama, maxBytes: this.o.maxDocumentBytes, catalogIds,
+      inbox: this.o.inboxDir, store: this.o.store, ollama: embedder, maxBytes: this.o.maxDocumentBytes, catalogIds,
       makeSource: (id, file): CatalogEntry => ({ id, title: file, url: 'https://local.invalid/documento-local', description: 'Documento local ingerido pelo operador', verifiedOnline: '1970-01-01', downloaded: true }),
     });
   }
@@ -312,9 +325,12 @@ export class LocalKnowledge {
       // Embeddings externos (embedProvider: gemini) enviam a consulta ao serviço: só com o consentimento da sessão.
       reason = 'Embeddings externos sem consentimento nesta sessão: busca por palavras.';
     } else if (this.o.ollama) {
-      const vectors = await race(this.o.ollama.embed([query], 'query'), RETRIEVAL_DEADLINE_MS);
-      embedding = vectors?.[0];
-      if (!embedding) reason = 'Ollama indisponível: busca por palavras.';
+      const embedQuery = this.o.ollama.external ? redactForExternal(query, await this.personNames()) : query;
+      const maySend = !this.o.ollama.external || externalAllowed?.(this.o.ollama.id) === true;
+      const vectors = maySend ? await race(this.o.ollama.embed([embedQuery], 'query'), RETRIEVAL_DEADLINE_MS) : undefined;
+      if (this.o.ollama.external && externalAllowed?.(this.o.ollama.id) !== true) reason = 'Consentimento revogado: vetor externo descartado; busca por palavras.';
+      else embedding = vectors?.[0];
+      if (!embedding && !reason) reason = 'Ollama indisponível: busca por palavras.';
     } else reason = 'Ollama não configurado: busca por palavras.';
     try {
       const found = refinePassages(await this.o.store.search(query, embedding, wide, { mode: this.o.search ?? 'auto', minScore: this.o.minScore }), { avoid: prepared.avoid, tuning, limit });
@@ -377,24 +393,35 @@ export class LocalKnowledge {
    * Escolha do operador para o resumo. O provedor externo só entra com habilitação na configuração,
    * chave presente, confirmação explícita do operador e uma verificação de que ele responde agora.
    */
-  async setChatProvider(id: ProviderId, confirmExternal = false, model?: string): Promise<ProvidersInfo> {
+  private providerSelectionPending = false;
+  async setChatProvider(id: ProviderId, confirmExternal = false, model?: string, guard?: { begin(): void; current(): boolean }): Promise<ProvidersInfo> {
     const provider = this.chatProvider(id);
     if (!provider) throw new KnowledgeError('INVALID', id === 'ollama' ? 'Provedor desconhecido.' : `${PROVIDER_LABEL[id]} não está habilitado na configuração (knowledge.${id}.enabled).`);
     if (model !== undefined && !provider.modelOptions?.includes(model)) throw new KnowledgeError('INVALID', 'Modelo não oferecido por este provedor.');
-    const previousModel = provider.model;
-    // O modelo só muda de verdade se todas as verificações abaixo passarem.
-    if (model !== undefined) provider.selectModel?.(model);
-    try {
     if (provider.external) {
       if (!confirmExternal) throw new KnowledgeError('INVALID', 'Confirme que aceita enviar trechos de manuais públicos e a sua pergunta (sem nomes nem números sensíveis) a um serviço externo.');
       if (!this.isConfigured(provider)) throw new KnowledgeError('INVALID', KEY_MISSING[id]);
-      const h = await provider.health(true);
-      if (!h.chatModel) throw new KnowledgeError('INVALID', /recusou/.test(h.detail) ? `${PROVIDER_LABEL[id]} recusou a chave configurada.` : `${PROVIDER_LABEL[id]} não respondeu agora; tente de novo.`);
     }
-    } catch (e) { if (model !== undefined && previousModel) provider.selectModel?.(previousModel); throw e; }
-    this.chatSelected = id;
-    this.o.onChatProvider?.(id);
-    return this.providers();
+    if (this.providerSelectionPending) throw new KnowledgeError('BUSY', 'Outra seleção está em andamento. Aguarde e confirme novamente.');
+    this.providerSelectionPending = true;
+    const previousModel = provider.model, previousSelected = this.chatSelected;
+    try {
+      // Invalidate leases BEFORE mutating a shared model or waiting for its health check.
+      guard?.begin();
+      if (model !== undefined) provider.selectModel?.(model);
+      if (provider.external) {
+        const h = await provider.health(true);
+        if (!h.chatModel) throw new KnowledgeError('INVALID', /recusou/.test(h.detail) ? `${PROVIDER_LABEL[id]} recusou a chave configurada.` : `${PROVIDER_LABEL[id]} não respondeu agora; tente de novo.`);
+      }
+      if (guard && !guard.current()) throw new KnowledgeError('BUSY', 'Seleção invalidada. Confirme novamente nesta sessão.');
+      this.chatSelected = id;
+      this.o.onChatProvider?.(id);
+      return this.providers();
+    } catch (e) {
+      this.chatSelected = previousSelected;
+      if (model !== undefined && previousModel) provider.selectModel?.(previousModel);
+      throw e;
+    } finally { this.providerSelectionPending = false; }
   }
 
   /** Nomes de pessoas (músicos) que NÃO podem sair do computador junto com a pergunta. */

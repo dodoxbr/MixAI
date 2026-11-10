@@ -104,7 +104,7 @@ export class ServerCore {
       musicianAccess?: MusicianAccess;
       musicianPaStepDB?: number;
     },
-  ) { this.auth.onRevoke(id => this.musicians.end(id)); }
+  ) { this.auth.onRevoke(id => { this.musicians.end(id); this.externalConsent.revoke(id); }); }
 
   /** Política de acesso em vigor (fixa durante a execução do servidor). */
   get policy(): AccessPolicy {

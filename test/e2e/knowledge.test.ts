@@ -256,6 +256,23 @@ it('provedor: sem Gemini habilitado a escolha não existe; com ele o operador l�
   expect(outgoing).toContain('o músico');
   expect(await page.content()).not.toContain(KEY);
   expect(await page.evaluate(() => JSON.stringify({ ...sessionStorage, ...localStorage }))).not.toContain(KEY);
+
+  // Revoking keeps the preference but invalidates this session, its cache and in-flight work.
+  const sent = g.sent.filter(x => x.includes(':generateContent')).length;
+  await panel.getByRole('button', { name: 'Revogar envio nesta sessão', exact: true }).click();
+  await expect.poll(() => panel.textContent()).toContain('ainda não foi confirmado NESTA sessão');
+  expect(await panel.textContent()).toContain('Em uso: Gemini (externo)');
+  await ask(page, 'O Fred está microfonando no PA, senha 987654');
+  expect(g.sent.filter(x => x.includes(':generateContent'))).toHaveLength(sent);
+  await panel.getByLabel('Entendo e aceito enviar esses dados ao serviço externo.').check();
+  await panel.getByRole('button', {name:'Confirmar envio nesta sessão',exact:true}).click();
+  await expect.poll(() => panel.textContent()).not.toContain('ainda não foi confirmado NESTA sessão');
+  await ask(page, 'O Fred está microfonando no PA, senha 987654');
+  expect(g.sent.filter(x => x.includes(':generateContent')).length).toBeGreaterThan(sent);
+  const another=await enter(browser,t.base,OPERATOR_PIN,YOGA);const panelB=await open(another.page);
+  await expect.poll(()=>panelB.textContent()).toContain('ainda não foi confirmado NESTA sessão');
+  const before=g.sent.filter(x=>x.includes(':generateContent')).length;await ask(another.page,'O Fred está microfonando no PA');
+  expect(g.sent.filter(x=>x.includes(':generateContent'))).toHaveLength(before);
 });
 
 it('provedor: Gemini com cota esgotada → o modelo local assume, a tela explica e não vaza detalhes', async () => {

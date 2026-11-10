@@ -230,6 +230,16 @@ describe('painel de administração', () => {
       expect(el.textContent).not.toContain('ainda não foi confirmado');
       expect(applyButton(el)).toBeUndefined();
     });
+    it('trocar o modelo exige novo aceite, inclusive Fable, mesmo com consentimento anterior', async()=>{
+      const {f,el,svc}=boot('operator',{'/api/knowledge/status':()=>({body:withProviders(four('anthropic',true))})});await settle(f);svc.open.set(true);f.detectChanges();
+      const box=el.querySelector('.provider-consent input') as HTMLInputElement;box.click();f.detectChanges();expect(f.componentInstance.consent()).toBe(true);
+      const select=el.querySelector('select[aria-label="Modelo do provedor"]') as HTMLSelectElement;select.value='claude-fable-5-2';select.dispatchEvent(new Event('change'));f.detectChanges();
+      expect(f.componentInstance.consent()).toBe(false);const confirm=Array.from(el.querySelectorAll('button')).find(b=>b.textContent?.includes('Confirmar envio nesta sessão')) as HTMLButtonElement;expect(confirm).toBeDefined();expect(confirm.disabled).toBe(true);expect(el.textContent).toContain('autorização expressa da Anthropic');
+    });
+    it('revoga consentimento na sessão sem trocar o provedor nem refazer o layout',async()=>{
+      let confirmed=true;const methods:string[]=[];const {f,el,svc}=boot('operator',{'/api/knowledge/status':()=>({body:withProviders(four('deepseek',confirmed))}),'/api/knowledge/providers/consent':init=>{methods.push(init?.method??'');confirmed=false;return{body:{sessionConsent:false}};}});await settle(f);svc.open.set(true);f.detectChanges();
+      const revoke=Array.from(el.querySelectorAll('button')).find(b=>b.textContent?.includes('Revogar envio nesta sessão'))!;revoke.click();await settle(f);expect(methods).toEqual(['DELETE']);expect(el.textContent).toContain('ainda não foi confirmado NESTA sessão');expect(el.textContent).toContain('Em uso: DeepSeek');
+    });
     it('voltar ao Ollama não pede consentimento nem envia confirmação', async () => {
       const bodies: unknown[] = [];
       const { f, el, svc } = boot('operator', {

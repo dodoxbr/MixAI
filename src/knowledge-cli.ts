@@ -171,7 +171,7 @@ export async function runKnowledgeCli(args: string[], write: (s: string) => void
         write(JSON.stringify(await k.importZip(new Uint8Array(readFileSync(arg))))); return 0;
       }
       if (cmd === 'ingest') {
-        const report = await k.ingest();
+        const report = await k.ingest({ externalAllowed: () => true });
         for (const i of report.items) write(`${i.status.padEnd(9)} ${i.file}${i.chunks !== undefined ? ` (${i.chunks} trechos, ${i.embedded ?? 0} com embedding)` : ''}${i.reason ? ` — ${i.reason}` : ''}`);
         write(`Embeddings: ${report.embeddings === 'available' ? 'disponíveis' : 'indisponíveis (busca por palavras)'}`);
         return report.items.some((i) => i.status === 'failed') ? 1 : 0;

@@ -11,10 +11,10 @@ export class ExternalConsent {
   private grants = new Map<string, string>();
   selection(p: Principal, selected: string, confirmed: boolean): void {
     this.revision++; this.grants.clear();
-    if (selected !== 'ollama' && confirmed) this.grants.set(p.id, selected);
+    if (p.role === 'operator' && ['gemini', 'deepseek', 'anthropic'].includes(selected) && confirmed) this.grants.set(p.id, selected);
   }
-  revoke(id: string): void { if (this.grants.delete(id)) this.revision++; }
+  revoke(id: string): void { this.grants.delete(id); this.revision++; }
   /** true somente se esta sessão confirmou ESTE provedor e ele continua sendo o selecionado. */
-  allowed(p: Principal, selected: string): boolean { return selected !== 'ollama' && this.grants.get(p.id) === selected; }
+  allowed(p: Principal, selected: string): boolean { return p.role === 'operator' && ['gemini', 'deepseek', 'anthropic'].includes(selected) && this.grants.get(p.id) === selected; }
   clear(): void { this.grants.clear(); this.revision++; }
 }

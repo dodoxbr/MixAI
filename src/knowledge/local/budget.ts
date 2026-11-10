@@ -14,7 +14,7 @@ export interface BudgetOptions {
 }
 
 /**
- * Controle de custo dos provedores EXTERNOS. Reserva o custo máximo estimado (preço do modelo × tokens) ANTES da chamada,
+ * Controle de custo dos provedores EXTERNOS. Reserva um custo conservador estimado (preço do modelo × tokens) ANTES da chamada,
  * troca pela medida real depois, e recusa localmente (sem rede) quando o teto diário ou o limite por minuto acabou.
  * É uma proteção por ESTIMATIVA com preços configurados; não substitui o painel de faturamento do provedor.
  */
@@ -35,8 +35,9 @@ export class BudgetedProvider implements AiProvider {
     const note = (what: string) => this.o.log?.(`IA externa: provedor=${this.inner.id} modelo=${model} ${what}`);
     const t = this.o.tracker;
     if (!t.takeSlot(this.o.maxRequestsPerMinute)) { note('resultado=bloqueado motivo=limite_por_minuto'); return { failure: 'quota', reason: 'rate_limit', model }; }
-    // 2 caracteres por token é conservador para português; a reserva é o MÁXIMO possível.
-    const reserved = t.reserve(cost(Math.ceil((system.length + user.length) / 2), this.o.maxOutputTokens), this.o.dailyBudgetUSD);
+    // Reserva conservadora por bytes UTF-8 + margem de envelope; não promete tokenização/fatura exatas.
+    const estimatedInputTokens = Buffer.byteLength(system, 'utf8') + Buffer.byteLength(user, 'utf8') + 128;
+    const reserved = t.reserve(cost(estimatedInputTokens, this.o.maxOutputTokens), this.o.dailyBudgetUSD);
     if (!reserved.ok) { note(`resultado=bloqueado motivo=orcamento_diario`); return { failure: 'quota', reason: 'budget', model }; }
     let result: GenerateResult;
     try { result = await this.inner.generateDetailed(system, user); } catch { result = { failure: 'error' }; }
