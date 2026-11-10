@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { safeReference } from '../assistant/diagnostic-view';
-import { KnowledgeAdminService, PROVIDER_DEST, PROVIDER_NAMES, PROVIDER_SHORT, type KProviderId } from './knowledge.service';
+import { KnowledgeAdminService } from './knowledge.service';
 
 const EVIDENCE: Record<string, string> = {
   operator_confirmed: 'confirmado na tela', operator_report: 'relato do operador', unconfirmed: 'não confirmado',
@@ -38,34 +38,7 @@ const EVIDENCE: Record<string, string> = {
           @if (k.error()) { <p class="knowledge-warning" role="alert">{{ k.error() }}</p> }
           @if (k.notice()) { <p class="knowledge-ok" role="status">{{ k.notice() }}</p> }
 
-          @if (k.status()?.providers; as pv) {
-            @if (pv.chat.options.length > 1) {
-              <h3>Provedor do resumo</h3>
-              <div class="knowledge-providers" role="radiogroup" aria-label="Provedor do resumo">
-                @for (o of pv.chat.options; track o.id) {
-                  <label class="provider-option">
-                    <input type="radio" name="chat-provider" [value]="o.id" [checked]="selected() === o.id" [disabled]="k.busy() || !o.configured" (change)="choose(o.id)" />
-                    {{ names[o.id] }}@if (!o.configured) { — falta a chave em config/secrets.yaml }
-                  </label>
-                }
-              </div>
-              @if (modelsOf(selected()); as ms) {
-                <label class="provider-option">Modelo
-                  <select [value]="chosenModel()" (change)="model.set($any($event.target).value)" aria-label="Modelo do provedor">
-                    @for (m of ms; track m) { <option [value]="m" [selected]="chosenModel() === m">{{ m }}</option> }
-                  </select>
-                </label>
-              }
-              @if (isExternal(selected())) {
-                <p class="knowledge-warning" role="note">Atenção: com {{ short[selected()] }}, trechos de manuais públicos e a sua pergunta (sem nomes nem números sensíveis) saem deste computador para {{ dest[selected()] }}. Documentos locais nunca são enviados.@if (selected() !== 'gemini') { O consentimento vale só NESTA sessão. } @if (pv.externalFallback === 'none') { Se o serviço falhar, não há reserva. } @else { Se o serviço ficar indisponível, o Ollama local assume; nunca outro serviço externo. }</p>
-                <label class="provider-consent"><input type="checkbox" #agree [checked]="consent()" (change)="consent.set(agree.checked)" /> Entendo e aceito enviar esses dados ao serviço externo.</label>
-              }
-              @if (selected() !== pv.chat.selected) {
-                <button type="button" class="btn" [disabled]="k.busy() || (isExternal(selected()) && !consent())" (click)="apply()">Aplicar provedor</button>
-              }
-              <p class="knowledge-note">Em uso: {{ short[pv.chat.selected] }}@if (modelOf(pv.chat.selected)) { · {{ modelOf(pv.chat.selected) }} }@if (!pv.narrative) { · o resumo está desligado na configuração (knowledge.ollama.narrative) }</p>
-            }
-          }
+          <p class="knowledge-note">Para escolher provedor e modelo, abra Configurações → Inteligência Artificial na barra superior.</p>
 
           <div class="knowledge-actions">
             <button type="button" class="btn" [disabled]="k.busy()" (click)="k.importSeed()">Importar pacote base</button>
@@ -141,24 +114,6 @@ const EVIDENCE: Record<string, string> = {
 export class KnowledgeAdminComponent {
   readonly k = inject(KnowledgeAdminService);
   readonly link = safeReference;
-  /** Escolha ainda não aplicada (null = a que está em uso). */
-  private readonly pending = signal<KProviderId | null>(null);
-  readonly consent = signal(false);
-  readonly names = PROVIDER_NAMES;
-  readonly short = PROVIDER_SHORT;
-  readonly dest = PROVIDER_DEST;
-  readonly model = signal<string | null>(null);
-  private option(id: KProviderId) { return this.k.status()?.providers?.chat.options.find((o) => o.id === id); }
-  isExternal(id: KProviderId): boolean { return this.option(id)?.external === true; }
-  modelsOf(id: KProviderId): string[] | undefined { return this.option(id)?.models; }
-  modelOf(id: KProviderId): string | undefined { return this.option(id)?.model; }
-  readonly chosenModel = computed(() => this.model() ?? this.modelOf(this.selected()) ?? '');
-  readonly selected = computed(() => this.pending() ?? this.k.status()?.providers?.chat.selected ?? 'ollama');
-  choose(id: KProviderId): void { this.pending.set(id); this.consent.set(false); this.model.set(null); }
-  apply(): void {
-    const id = this.selected();
-    void this.k.setProvider(id, this.isExternal(id) && this.consent(), this.modelsOf(id) ? this.chosenModel() : undefined).then(() => { if (!this.k.error()) { this.pending.set(null); this.consent.set(false); this.model.set(null); } });
-  }
   readonly modelIds = computed(() => Object.keys(this.k.mics()?.models ?? {}));
   readonly rows = computed(() =>
     Object.entries(this.k.mics()?.assignments ?? {})

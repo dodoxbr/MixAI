@@ -227,19 +227,21 @@ it('provedor: sem Gemini habilitado a escolha não existe; com ele o operador l�
   const { t } = await lab({ ollama: fakeOllama(), narrative: true, ingested: true, gemini: g.client });
   const { page } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
   const writes = vi.spyOn(t.mixer, 'write');
-  const panel = await open(page);
-  await panel.getByRole('radiogroup', { name: 'Provedor do resumo' }).waitFor();
-  expect(await panel.textContent()).toContain('Em uso: Ollama (local)');
+  await open(page);
+  await page.getByRole('button', { name: 'Configurações', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: 'Inteligência Artificial' });
+  await expect.poll(() => panel.getByLabel('Seleção ativa no servidor').textContent()).toContain('Ollama');
   expect(g.sent).toHaveLength(0); // abrir o painel não chama o serviço externo
-
-  await panel.getByLabel('Gemini (serviço externo do Google)').check();
-  expect(await panel.getByRole('note').textContent()).toContain('saem deste computador para o Google');
-  const apply = panel.getByRole('button', { name: 'Aplicar provedor' });
+  await panel.getByRole('radio', { name: /Gemini/ }).check();
+  await expect.poll(() => panel.textContent()).toContain('saem do computador para esse provedor');
+  const apply = panel.getByRole('button', { name: 'Aplicar seleção' });
   expect(await apply.isDisabled()).toBe(true);
-  await panel.getByLabel('Entendo e aceito enviar esses dados ao serviço externo.').check();
+  await panel.getByRole('checkbox', { name: 'Confirmo o envio externo para Gemini nesta sessão.' }).check();
   await expect.poll(() => apply.isDisabled()).toBe(false);
   await apply.click();
-  await expect.poll(() => panel.textContent()).toContain('Em uso: Gemini (externo)');
+  await expect.poll(() => panel.getByLabel('Seleção ativa no servidor').textContent()).toContain('Gemini');
+  await panel.getByRole('button', { name: 'Fechar configurações de IA' }).click();
+  await panel.waitFor({ state: 'detached' });
 
   await ask(page, 'O Fred está microfonando no PA, senha 987654');
   const block = page.locator('.knowledge-block').last();
@@ -262,8 +264,12 @@ it('provedor: Gemini com cota esgotada → o modelo local assume, a tela explica
   const g = fakeGemini({ chat: { status: 429 } });
   const { t } = await lab({ ollama: fakeOllama({ chat: 'Pode ser que o ganho do retorno esteja alto; o operador pode conferir o posicionamento do microfone em relação às caixas.' }), narrative: true, ingested: true, gemini: g.client, chat: 'gemini' });
   const { page } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
-  const panel = await open(page);
-  await expect.poll(() => panel.textContent()).toContain('Em uso: Gemini (externo)');
+  await open(page);
+  await page.getByRole('button', { name: 'Configurações', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: 'Inteligência Artificial' });
+  await expect.poll(() => panel.getByLabel('Seleção ativa no servidor').textContent()).toContain('Gemini');
+  await panel.getByRole('button', { name: 'Fechar configurações de IA' }).click();
+  await panel.waitFor({ state: 'detached' });
   await ask(page, 'O Fred está microfonando no PA');
   const block = page.locator('.knowledge-block').last();
   await block.waitFor({ state: 'attached' });

@@ -1,5 +1,6 @@
+import { ProviderSettingsComponent } from '../ai-settings/provider-settings.component';
 import { InstructorLauncherComponent } from '../instructor/instructor-launcher.component';
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { LiveService } from '../core/live.service';
 import { SessionService } from '../core/session.service';
 
@@ -7,7 +8,7 @@ import { SessionService } from '../core/session.service';
 @Component({
   selector: 'mx-status-bar',
   styles: [':host.mode-lab { flex-wrap:wrap; }'],
-  imports: [InstructorLauncherComponent],
+  imports: [InstructorLauncherComponent, ProviderSettingsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'mx-status-bar',
@@ -24,11 +25,19 @@ import { SessionService } from '../core/session.service';
     <div class="spacer"></div>
     <div class="role-chip">{{ session.role() === 'operator' ? 'Operador' : 'Músico' }}</div>
     <ng-content select="[status-action]" />
+    @if (session.role() === 'operator') {
+      <button type="button" class="btn btn-ghost" aria-haspopup="dialog" [attr.aria-expanded]="settingsOpen()" (click)="settingsOpen.set(true)">Configurações</button>
+    }
     <mx-instructor-launcher />
     <button type="button" class="btn btn-ghost" (click)="session.logout()">Sair</button>
+    @if (settingsOpen() && session.role() === 'operator') {
+      @defer (on immediate) { <mx-ai-provider-settings (closed)="settingsOpen.set(false)" /> }
+      @placeholder { <p role="status">Abrindo configurações de IA…</p> }
+    }
   `,
 })
 export class StatusBarComponent {
+  readonly settingsOpen = signal(false);
   readonly live = inject(LiveService);
   readonly session = inject(SessionService);
 

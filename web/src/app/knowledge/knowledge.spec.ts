@@ -120,103 +120,11 @@ describe('painel de administração', () => {
     expect(el.textContent).toContain('Base de conhecimento');
     expect(el.textContent).not.toContain('descartado(s)');
   });
-  describe('provedor do resumo', () => {
-    const providers = (gemini: { configured: boolean } | null, selected: 'ollama' | 'gemini' = 'ollama') => ({
-      chat: { selected, options: [{ id: 'ollama', external: false, configured: true }, ...(gemini ? [{ id: 'gemini', external: true, configured: gemini.configured }] : [])] },
-      embed: { id: 'ollama', external: false }, narrative: true,
-    });
-    const withProviders = (p: unknown) => ({ ...status, ollama: { ...status.ollama, narrative: true }, providers: p });
-    const radios = (el: HTMLElement) => Array.from(el.querySelectorAll('input[name=chat-provider]')) as HTMLInputElement[];
-    const applyButton = (el: HTMLElement) => Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Aplicar provedor')) as HTMLButtonElement | undefined;
-
-    it('só com o Ollama a escolha nem aparece (Gemini desligado por padrão)', async () => {
-      const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(providers(null)) }) }); await settle(f);
-      svc.open.set(true); f.detectChanges();
-      expect(radios(el).length).toBe(0);
-      expect(el.textContent).not.toContain('Provedor do resumo');
-    });
-    it('Gemini sem chave aparece desabilitado e avisa onde configurar', async () => {
-      const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(providers({ configured: false })) }) }); await settle(f);
-      svc.open.set(true); f.detectChanges();
-      const [ollama, gemini] = radios(el);
-      expect(ollama!.disabled).toBe(false);
-      expect(gemini!.disabled).toBe(true);
-      expect(el.textContent).toContain('falta a chave em config/secrets.yaml');
-    });
-    it('Gemini exige ler o aviso e marcar o consentimento; o corpo enviado leva a confirmação', async () => {
-      const bodies: unknown[] = [];
-      const { f, el, svc } = boot('operator', {
-        '/api/knowledge/status': () => ({ body: withProviders(providers({ configured: true })) }),
-        '/api/knowledge/providers': (init) => { bodies.push(JSON.parse(String(init?.body))); return { body: {} }; },
-      }); await settle(f);
-      svc.open.set(true); f.detectChanges();
-      expect(applyButton(el)).toBeUndefined(); // nada pendente
-      radios(el)[1]!.click(); f.detectChanges();
-      expect(el.textContent).toContain('saem deste computador para o Google');
-      expect(el.textContent).toContain('Documentos locais nunca são enviados');
-      expect(applyButton(el)!.disabled).toBe(true); // sem consentimento
-      (el.querySelector('.provider-consent input') as HTMLInputElement).click(); f.detectChanges();
-      expect(applyButton(el)!.disabled).toBe(false);
-      applyButton(el)!.click(); await settle(f);
-      expect(bodies).toEqual([{ chat: 'gemini', confirmExternal: true }]);
-      expect(el.textContent).toContain('Resumo agora pelo Gemini (serviço externo).');
-      expect(JSON.stringify(bodies)).not.toMatch(/AIza|key/i);
-    });
-    it('DeepSeek e Anthropic: escolha manual de provedor e modelo, consentimento por sessão e envio do modelo escolhido', async () => {
-      const bodies: unknown[] = [];
-      const four = {
-        chat: { selected: 'ollama', options: [
-          { id: 'ollama', external: false, configured: true },
-          { id: 'deepseek', external: true, configured: true, model: 'deepseek-flash', models: ['deepseek-flash', 'deepseek-v4-pro'] },
-          { id: 'anthropic', external: true, configured: true, model: 'claude-opus-5-5', models: ['claude-opus-5-5', 'claude-fable-5-2'] },
-        ] },
-        embed: { id: 'ollama', external: false }, narrative: true, externalFallback: 'ollama',
-      };
-      const { f, el, svc } = boot('operator', {
-        '/api/knowledge/status': () => ({ body: withProviders(four) }),
-        '/api/knowledge/providers': (init) => { bodies.push(JSON.parse(String(init?.body))); return { body: {} }; },
-      }); await settle(f);
-      svc.open.set(true); f.detectChanges();
-      expect(radios(el).length).toBe(3);
-      radios(el)[2]!.click(); f.detectChanges();
-      expect(el.textContent).toContain('saem deste computador para a Anthropic');
-      expect(el.textContent).toContain('vale só NESTA sessão');
-      expect(el.textContent).toContain('nunca outro serviço externo');
-      expect(applyButton(el)!.disabled).toBe(true);
-      const select = el.querySelector('select[aria-label="Modelo do provedor"]') as HTMLSelectElement;
-      expect(Array.from(select.options).map((o) => o.value)).toEqual(['claude-opus-5-5', 'claude-fable-5-2']);
-      select.value = 'claude-fable-5-2'; select.dispatchEvent(new Event('change')); f.detectChanges();
-      (el.querySelector('.provider-consent input') as HTMLInputElement).click(); f.detectChanges();
-      applyButton(el)!.click(); await settle(f);
-      expect(bodies).toEqual([{ chat: 'anthropic', confirmExternal: true, model: 'claude-fable-5-2' }]);
-      expect(JSON.stringify(bodies)).not.toMatch(/key|sk-/i);
-    });
-    it('voltar ao Ollama não pede consentimento nem envia confirmação', async () => {
-      const bodies: unknown[] = [];
-      const { f, el, svc } = boot('operator', {
-        '/api/knowledge/status': () => ({ body: withProviders(providers({ configured: true }, 'gemini')) }),
-        '/api/knowledge/providers': (init) => { bodies.push(JSON.parse(String(init?.body))); return { body: {} }; },
-      }); await settle(f);
-      svc.open.set(true); f.detectChanges();
-      expect(radios(el)[1]!.checked).toBe(true);
-      expect(el.textContent).toContain('Em uso: Gemini (externo)');
-      radios(el)[0]!.click(); f.detectChanges();
-      expect(el.textContent).not.toContain('saem deste computador');
-      applyButton(el)!.click(); await settle(f);
-      expect(bodies).toEqual([{ chat: 'ollama' }]);
-    });
-    it('recusa do servidor (ex.: chave recusada) aparece sem detalhes e a escolha não é aplicada', async () => {
-      const { f, el, svc } = boot('operator', {
-        '/api/knowledge/status': () => ({ body: withProviders(providers({ configured: true })) }),
-        '/api/knowledge/providers': () => ({ status: 400, body: { code: 'INVALID', message: 'O Gemini recusou a chave configurada.' } }),
-      }); await settle(f);
-      svc.open.set(true); f.detectChanges();
-      radios(el)[1]!.click(); f.detectChanges();
-      (el.querySelector('.provider-consent input') as HTMLInputElement).click(); f.detectChanges();
-      applyButton(el)!.click(); await settle(f);
-      expect(el.querySelector('[role=alert]')!.textContent).toMatch(/inválido|andamento/);
-      expect(el.textContent).not.toContain('recusou a chave configurada'); // a tela mostra a mensagem genérica
-    });
+  it('orienta a configurar os provedores no painel central, sem manter um segundo seletor', async () => {
+    const { f, el, svc } = boot(); await settle(f);
+    svc.open.set(true); f.detectChanges();
+    expect(el.textContent).toContain('Configurações → Inteligência Artificial');
+    expect(el.querySelector('input[name=chat-provider]')).toBeNull();
   });
   it('base desligada no servidor (404) esconde a seção sem erro', async () => {
     const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ status: 404, body: { code: 'NOT_FOUND' } }) }); await settle(f);
