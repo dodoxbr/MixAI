@@ -212,6 +212,8 @@ const ConfigSchema = z.object({
         .prefault({}),
       /** auto = vetor, depois palavras (comportamento original); hybrid = fusão dos dois (RRF). */
       search: z.enum(['auto', 'hybrid']).default('auto'),
+      /** Prazo da consulta documental dentro da resposta do assistente. Deve ficar abaixo do prazo da interface (25 s); passado isso, segue só a orientação local. */
+      replyDeadlineMs: z.number().int().min(1000).max(24_000).default(20_000),
       /**
        * Ajustes de qualidade da busca documental (docs/lab/26). Cada um pode ser desligado para comparar antes/depois
        * com "npm run knowledge -- eval --live --tune ...". Só mudam a consulta e a ordem/seleção dos trechos devolvidos.
