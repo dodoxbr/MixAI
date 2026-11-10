@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { modelCatalogConfigSchema } from '../ai/model-catalog/contracts.js';
 
 const SafetySchema = z.object({
   maxChannelLevelDB: z.number().max(10).default(0),
@@ -28,6 +29,7 @@ const loopbackUrl = z
   }, 'somente http em loopback, sem credenciais na URL');
 
 const ConfigSchema = z.object({
+  modelCatalog: modelCatalogConfigSchema.prefault({}),
   mixer: z
     .object({
       /** lab = laboratório persistente · mock = simulador em memória (testes) · real = Ui16 física */
@@ -344,7 +346,7 @@ function readYaml(path: string): unknown {
 }
 
 /** Campos que NUNCA podem ir no config.local.yaml (segredos ficam em secrets.yaml ou no ambiente). */
-const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|geminiapikey|deepseekapikey|postgrespassword|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
+const SECRET_KEYS = /^(operatorpinhash|musicianpinhash|anthropicapikey|geminiapikey|deepseekapikey|openaiapikey|openai_api_key|mixai_openai_api_key|postgrespassword|apikey|api_key|pin|pins|password|senha|token|secret)$/i;
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
@@ -391,6 +393,7 @@ const SecretsSchema = z.object({
   geminiApiKey: z.string().min(20).max(200).optional(),
   /** Chave da API da DeepSeek (opcional; ou MIXAI_DEEPSEEK_API_KEY). Só o servidor lê; nunca vai ao navegador, ao log nem ao Git. */
   deepseekApiKey: z.string().min(8).max(200).optional(),
+  openaiApiKey: z.string().min(8).max(300).optional(),
 });
 export type Secrets = z.infer<typeof SecretsSchema>;
 
@@ -454,6 +457,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
   if (env.MIXAI_PG_PASSWORD) secrets.postgresPassword = env.MIXAI_PG_PASSWORD;
   if (env.MIXAI_GEMINI_API_KEY) secrets.geminiApiKey = env.MIXAI_GEMINI_API_KEY;
   if (env.MIXAI_DEEPSEEK_API_KEY) secrets.deepseekApiKey = env.MIXAI_DEEPSEEK_API_KEY;
+  if (env.MIXAI_OPENAI_API_KEY || env.OPENAI_API_KEY) secrets.openaiApiKey = env.MIXAI_OPENAI_API_KEY || env.OPENAI_API_KEY;
   const dataDir = env.MIXAI_DATA_DIR ? resolve(env.MIXAI_DATA_DIR) : join(PROJECT_ROOT, 'data');
 
   let logDir: string | null = env.MIXAI_LOG_DIR ?? config.logs.dir;

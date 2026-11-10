@@ -1,3 +1,4 @@
+import { tokenCount } from './external.js';
 import type { AiProvider, GenerateFailure, GenerateResult, ProviderHealth } from './provider.js';
 
 /** Endereço FIXO da API: não é configurável, para que a chave e os textos só possam ir para o Google. */
@@ -127,23 +128,26 @@ export class GeminiClient implements AiProvider {
           ...((this.o.thinkingLevel ?? 'low') !== 'default' ? { thinkingConfig: { thinkingLevel: this.o.thinkingLevel ?? 'low' } } : {}),
         },
       }, this.o.generateTimeoutMs ?? this.o.timeoutMs)) as {
+        usageMetadata?: { promptTokenCount?: unknown; totalTokenCount?: unknown };
         promptFeedback?: { blockReason?: unknown };
         candidates?: Array<{ finishReason?: unknown; content?: { parts?: Array<{ text?: unknown; thought?: unknown }> } }>;
       };
-      if (data.promptFeedback?.blockReason) return { failure: 'refused' };
+      const prompt = tokenCount(data.usageMetadata?.promptTokenCount), total = tokenCount(data.usageMetadata?.totalTokenCount);
+      const meta = prompt !== undefined && total !== undefined && total >= prompt ? { usage: { inputTokens: prompt, outputTokens: total - prompt } } : {};
+      if (data.promptFeedback?.blockReason) return { failure: 'refused', ...meta };
       const c = data.candidates?.[0];
-      if (!c) return { failure: 'empty' };
+      if (!c) return { failure: 'empty', ...meta };
       // Recusas de segurança/política (não podem ser contornadas por outro provedor).
-      if (typeof c.finishReason === 'string' && SAFETY_FINISH.has(c.finishReason)) return { failure: 'refused' };
+      if (typeof c.finishReason === 'string' && SAFETY_FINISH.has(c.finishReason)) return { failure: 'refused', ...meta };
       // Recitação não é segurança: o modelo só não pôde responder com aquele texto.
-      if (c.finishReason === 'RECITATION') return { failure: 'recitation' };
+      if (c.finishReason === 'RECITATION') return { failure: 'recitation', ...meta };
       // MAX_TOKENS = o modelo parou no teto (muitas vezes porque o raciocínio consumiu o orçamento): a resposta
       // está incompleta e NÃO pode ser tratada como concluída, mesmo que haja texto parcial.
-      if (c.finishReason === 'MAX_TOKENS') return { failure: 'truncated' };
+      if (c.finishReason === 'MAX_TOKENS') return { failure: 'truncated', ...meta };
       // Qualquer outro motivo de parada que não seja o normal (STOP) também não é uma resposta concluída.
-      if (c.finishReason !== undefined && c.finishReason !== 'STOP') return { failure: 'error' };
+      if (c.finishReason !== undefined && c.finishReason !== 'STOP') return { failure: 'error', ...meta };
       const text = (c.content?.parts ?? []).map((p) => (p.thought !== true && typeof p.text === 'string' ? p.text : '')).join('').trim();
-      return text ? { text } : { failure: 'empty' };
+      return text ? { text, ...meta } : { failure: 'empty', ...meta };
     } catch (e) {
       if (e instanceof HttpFailure) { if (e.status === 401 || e.status === 403) this.cache = undefined; return { failure: failureFor(e.status) }; }
       return { failure: e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError') ? 'timeout' : 'unavailable' };
