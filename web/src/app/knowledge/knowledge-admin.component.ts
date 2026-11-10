@@ -40,7 +40,8 @@ const EVIDENCE: Record<string, string> = {
 
           @if (k.status()?.providers; as pv) {
             @if (pv.chat.options.length > 1) {
-              <h3>Provedor do resumo</h3>
+              <h3>Provedor do resumo documental</h3>
+              <p class="knowledge-note">Fluxo legado, separado do catálogo de modelos em Configurações → Inteligência Artificial. Selecionar ou revogar aqui não altera a seleção do catálogo desta sessão.</p>
               <div class="knowledge-providers" role="radiogroup" aria-label="Provedor do resumo">
                 @for (o of pv.chat.options; track o.id) {
                   <label class="provider-option">

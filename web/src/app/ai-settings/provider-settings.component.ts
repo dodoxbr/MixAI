@@ -1,36 +1,37 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, OnDestroy, ViewChild, computed, inject, output } from '@angular/core';
-import { LegacyProviderSettings } from './legacy-provider-settings';
-import { PROVIDERS, PROVIDER_LABELS, PROVIDER_SETTINGS_PORT, type BackendAmount, trustedAmount } from './provider-settings-port';
+import { CatalogProviderSettings } from './catalog-provider-settings';
+import { PROVIDERS, PROVIDER_LABELS, PROVIDER_SETTINGS_PORT } from './provider-settings-port';
 import { ProviderSettingsService } from './provider-settings.service';
-
 @Component({
   selector: 'mx-ai-provider-settings',
-  providers: [ProviderSettingsService, { provide: PROVIDER_SETTINGS_PORT, useExisting: LegacyProviderSettings }],
+  providers: [ProviderSettingsService, { provide: PROVIDER_SETTINGS_PORT, useExisting: CatalogProviderSettings }],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <dialog #dialog aria-labelledby="ai-settings-title" (cancel)="$event.preventDefault(); closed.emit()">
       <header>
-        <div><p class="eyebrow">Configurações</p><h2 id="ai-settings-title">Inteligência Artificial</h2></div>
+        <div><p class="eyebrow">Configurações · LAB</p><h2 id="ai-settings-title">Inteligência Artificial</h2></div>
         <button autofocus type="button" class="btn btn-ghost" (click)="closed.emit()" aria-label="Fechar configurações de IA">Fechar</button>
       </header>
-      <p class="muted">Escolha como gerar os resumos da base técnica. Esta configuração não executa comandos na mesa.</p>
-      <section class="active" aria-label="Seleção ativa no servidor">
-        <span class="eyebrow">Ativo no servidor</span>
+      <p class="warning" role="note">Catálogo v1 — seleção exclusiva desta sessão. Não altera o provedor do diagnóstico, RAG ou AutoConfig: esses fluxos continuam separados. O resumo documental mantém sua configuração na Base de conhecimento.</p>
+      <section class="active" aria-label="Seleção do catálogo nesta sessão">
+        <span class="eyebrow">Seleção confirmada do catálogo</span>
         @if (s.snapshot(); as pv) {
-          <strong>{{ names[pv.active.provider] }} <span class="muted">· {{ pv.active.model ?? 'Modelo não informado pela API' }}</span></strong>
-          <p>{{ pv.narrative ? 'Resumo habilitado' : 'Resumo desligado na configuração do servidor' }}</p>
-          @if (pv.active.provider !== 'ollama') { <p class="muted">Provedor selecionado no servidor. A API atual não informa se esta sessão tem autorização de envio externo.</p> }
-        } @else { <p>{{ s.busy() ? 'Consultando seleção ativa…' : 'Seleção ativa não disponível' }}</p> }
+          @if (pv.selection; as selection) {
+            <strong>{{ names[selection.provider] }} · {{ selection.model }}</strong>
+            <p>Metadados confirmados pelo provedor · revisão {{ pv.revision }}. Isso não garante capacidade/permissão de geração.</p>
+          } @else { <p>Nenhum modelo selecionado nesta sessão.</p> }
+          <p>{{ pv.consent.required ? (pv.consent.granted ? 'Servidor informa consentimento concedido nesta sessão para este modelo/revisão.' : 'Consentimento do catálogo ausente ou revogado nesta sessão.') : 'Sem concessão de envio externo no catálogo.' }}</p>
+        } @else { <p>{{ s.busy() ? 'Consultando seleção do catálogo…' : 'Seleção do catálogo não disponível' }}</p> }
       </section>
       <div aria-live="polite" aria-atomic="true">
-        @if (s.busy()) { <p role="status">{{ s.slow() ? 'Resposta lenta. Aguardando confirmação do servidor…' : 'Consultando o servidor…' }}</p> }
+        @if (s.busy()) { <p role="status">{{ s.slow() ? 'Resposta lenta. Aguardando confirmação do servidor…' : 'Consultando o catálogo…' }}</p> }
         @if (s.notice()) { <p role="status" class="success">{{ s.notice() }}</p> }
       </div>
       @if (s.error()) { <p role="alert" class="warning">{{ s.error() }}</p> }
-      @if (!s.allowed()) { <p role="alert" class="warning">Conecte-se com uma sessão de operador para configurar os provedores.</p> }
+      @if (!s.allowed()) { <p role="alert" class="warning">Conecte-se com uma sessão de operador no LAB para configurar o catálogo.</p> }
       <form (submit)="$event.preventDefault(); s.save()" [attr.aria-busy]="s.busy()">
         <fieldset [disabled]="s.busy() || !s.allowed() || !s.snapshot()">
-          <legend>Provedor de IA</legend>
+          <legend>Provedor do catálogo</legend>
           <div class="providers">
             @for (id of ids; track id) {
               <label class="provider" [class.chosen]="s.selected() === id">
@@ -44,50 +45,56 @@ import { ProviderSettingsService } from './provider-settings.service';
         @if (s.option(); as o) {
           <section class="details" aria-label="Configuração do provedor selecionado">
             <h3>{{ names[o.id] }}</h3>
-            @if (o.status === 'not_configured') { <p class="warning">Não configurado. Falta configurar a chave ou o serviço no servidor. Este painel não recebe credenciais.</p> }
-            @if (!o.selectable && o.status !== 'not_configured') { <p class="warning">Provedor indisponível nesta versão ou configuração do backend.</p> }
-            @if (o.modelMode === 'list') {
-              <label for="ai-model-list">Modelo do provedor</label>
-              <select id="ai-model-list" [value]="s.model()" (change)="s.chooseModel($any($event.target).value)" [disabled]="s.busy() || !o.selectable || !s.allowed()">
-                @if (!o.models.includes(s.model())) { <option [value]="s.model()">{{ s.model() || 'Selecione um modelo' }} — indisponível na lista</option> }
-                @for (model of o.models; track model) { <option [value]="model">{{ model }}</option> }
+            @if (!o.enabled) { <p class="warning">Provedor desabilitado no servidor.</p> }
+            @else if (!o.configured) { <p class="warning">Não configurado. Falta configurar a chave ou o serviço no servidor. Este painel não recebe credenciais.</p> }
+            @if (o.models.length) {
+              <label for="ai-model-list">Sugestões do catálogo</label>
+              <select id="ai-model-list" [value]="suggested() ? s.model() : ''" (change)="s.chooseModel($any($event.target).value)" [disabled]="s.busy() || !o.enabled || !o.configured || !s.allowed()">
+                <option value="">Informar outro ID manualmente</option>
+                @for (model of o.models; track model.id) { <option [value]="model.id">{{ model.id }}</option> }
               </select>
-              <p class="muted">Modelos oferecidos pelo servidor; a lista não garante disponibilidade na conta.</p>
-            } @else {
-              <label for="ai-model-id">ID do modelo</label>
-              <input id="ai-model-id" type="text" autocomplete="off" spellcheck="false" maxlength="160" [value]="s.model()" (input)="s.chooseModel($any($event.target).value)" [readOnly]="o.modelMode === 'server_only'" [disabled]="s.busy() || !s.allowed() || !o.selectable" aria-describedby="ai-model-help" />
-              <p id="ai-model-help" class="muted">{{ o.modelMode === 'manual' ? 'Informe o ID exato. O servidor valida a disponibilidade antes de confirmar.' : 'Listagem e edição manual não disponíveis nesta API. Será mantido o modelo configurado no servidor.' }}</p>
             }
-            @if (!s.validModel()) { <p role="alert" class="warning">Modelo indisponível ou ID inválido. Escolha um modelo oferecido ou um ID aceito pelo servidor.</p> }
-            <section class="costs" aria-label="Custos e limites">
-              <h4>Custos e limites</h4>
-              @if (budget(); as v) { <p>Limite de gasto informado: {{ money(v) }} <small>· {{ v.asOf }}</small></p> } @else { <p>Limite de gasto: não disponível.</p> }
-              @if (consumed(); as v) { <p>Consumo informado: {{ money(v) }} <small>· {{ v.asOf }}</small></p> } @else { <p>Consumo: não disponível.</p> }
+            <label for="ai-model-id">ID do modelo</label>
+            <input id="ai-model-id" type="text" autocomplete="off" spellcheck="false" [attr.maxlength]="o.external ? 80 : 128" [value]="s.model()" (input)="s.chooseModel($any($event.target).value)" [disabled]="s.busy() || !s.allowed() || !o.enabled || !o.configured" aria-describedby="ai-model-help" [attr.aria-invalid]="!s.validModel()" />
+            <p id="ai-model-help" class="muted">Sugestões não são uma lista obrigatória. Informe outro ID e valide no servidor. {{ o.external ? 'Externo: 2 a 80 letras/números, ponto, hífen ou underscore.' : 'Ollama: até 128 caracteres, incluindo namespace e tag; sem URLs, espaços, .. ou //.' }}</p>
+            @if (!s.validModel()) { <p class="warning">Informe um ID válido para este provedor.</p> }
+            @if (s.validation(); as v) {
+              <p role="status" [class.warning]="v.validation === 'unavailable'">{{ v.validation === 'provider_confirmed' ? 'Metadados do modelo confirmados pelo provedor.' : 'Modelo indisponível na consulta de metadados.' }} Esta consulta não muda a seleção.</p>
+            }
+            <section class="costs" aria-label="Custos e limites do catálogo">
+              <h4>Custos e limites informados pelo servidor</h4>
+              @if (s.snapshot(); as pv) {
+                <p>Orçamento diário compartilhado (UTC): {{ money(pv.limits.dailyBudgetUSD) }}. Registro de {{ pv.usage.day }}.</p>
+                <p>Consumo estimado agregado: {{ money(pv.usage.costUSD) }} · reservas em andamento: {{ money(pv.usage.reservedUSD) }}.</p>
+                <p>{{ pv.usage.requests }} chamadas registradas · {{ pv.usage.inputTokens }} tokens de entrada · {{ pv.usage.outputTokens }} de saída.</p>
+                <p>Limites: {{ pv.limits.maxRequestsPerMinute }} consultas/min · {{ pv.limits.maxOutputTokens }} tokens de saída · {{ pv.limits.maxInputBytes }} bytes de entrada.</p>
+                @if (pv.usage.blocked || pv.usage.paused) { <p role="alert" class="warning">Registro de consumo bloqueado ou pausado pelo servidor.</p> }
+              }
               @if (price(); as p) {
-                <p>{{ p.model }} · por milhão de tokens: entrada {{ money(p.inputPerMillion) }} / saída {{ money(p.outputPerMillion) }}.</p>
-                <small>Informado pelo servidor: entrada {{ p.inputPerMillion.asOf }}; saída {{ p.outputPerMillion.asOf }}. Não substitui o faturamento do provedor.</small>
-              } @else { <p class="muted">{{ o.external ? 'Custo desconhecido: preço deste modelo não informado pelo backend.' : 'Preço por modelo não informado. O processamento local utiliza recursos do servidor.' }}</p> }
-              @if (o.external && (!budget() || !consumed())) { <p class="muted">A ausência de valores nesta tela não significa uso gratuito ou ilimitado.</p> }
+                <p>{{ s.model() }} · preço configurado em USD por milhão de tokens: entrada {{ money(p.inputPerMTok) }} / saída {{ money(p.outputPerMTok) }}.</p>
+              } @else if (!o.external) { <p class="muted">Ollama: sem cobrança de API no catálogo, conforme política do servidor. Usa recursos locais.</p> }
+              @else if (modelInfo()) { <p class="warning">Custo desconhecido: preço não configurado para este ID. A geração paga é bloqueada pelo servidor.</p> }
+              @else { <p class="muted">Preço não disponível para este ID nesta leitura. Valide os metadados para consultar o preço; não será presumido custo zero.</p> }
+              @if (modelInfo(); as info) { <p>Geração autorizável pelo catálogo: {{ info.generationAllowed ? 'permitida nas condições consultadas' : 'bloqueada nas condições consultadas' }}; consentimento, revisão e orçamento são reavaliados no servidor.</p> }
+              <small>Estimativas configuradas, não cotação de mercado ou fatura. O registro é compartilhado com outros fluxos; não representa consumo exclusivo desta sessão. Consultar modelos pode consumir o limite de consultas.</small>
             </section>
             @if (o.external) {
               <div class="privacy" id="ai-privacy-note">
-                <h4>Envio de dados a serviço externo</h4>
-                <p>Com {{ names[o.id] }}, trechos de manuais públicos e a sua pergunta, com dados sensíveis removidos pelo servidor, saem do computador para esse provedor. Documentos locais não são enviados pelo fluxo atual de resumo.</p>
-                @if (s.snapshot()?.sessionConsent === 'legacy_gemini' && o.id === 'gemini') {
-                  <p class="warning">Limitação atual: o resumo do Gemini mantém a seleção confirmada entre sessões. Esta tela exige confirmação a cada abertura, mas não altera essa política do backend. O alinhamento por sessão depende da integração do servidor.</p>
-                }
-                <p>O aceite não é armazenado no navegador. Trocar de provedor ou modelo exige nova confirmação. Fechar esta tela não revoga um aceite já recebido pelo servidor.</p>
-                @if (s.snapshot()?.fallback === 'ollama') { <p>Em falha de disponibilidade, a reserva é o Ollama local; nunca outro serviço externo.</p> }
-                @if (s.snapshot()?.fallback === 'none') { <p>Reserva local desativada pelo servidor.</p> }
+                <h4>Consulta externa e consentimento do catálogo</h4>
+                <p>Validar ou selecionar {{ names[o.id] }} consulta o provedor externo sobre o ID informado. Este painel não envia perguntas, documentos, áudio nem estado da mesa e não oferece geração de texto.</p>
+                <p>Validar autoriza somente essa consulta; não concede consentimento para geração. Selecionar concede ao catálogo, nesta sessão, autorização vinculada ao provedor, modelo e revisão. Trocar o modelo exige nova confirmação.</p>
+                <p>Fechar ou cancelar a espera não revoga uma concessão já recebida pelo servidor. Use “Limpar seleção e revogar catálogo” para esta sessão. Isso não revoga permissões dos fluxos legados.</p>
               </div>
-              <label class="consent"><input type="checkbox" [checked]="s.consent()" (change)="s.consent.set($any($event.target).checked)" [disabled]="s.busy() || !s.allowed() || !o.selectable" aria-describedby="ai-privacy-note" /> Confirmo o envio externo para {{ names[o.id] }} nesta sessão.</label>
-            } @else { <p class="local-note">Ollama processa no servidor MixAI. Selecioná-lo não autoriza outro provedor externo.</p> }
+              <label class="consent"><input type="checkbox" [checked]="s.consent()" (change)="s.consent.set($any($event.target).checked)" [disabled]="s.busy() || !s.allowed() || !o.enabled || !o.configured" aria-describedby="ai-privacy-note" /> Confirmo esta operação externa para {{ names[o.id] }} e o ID informado nesta sessão.</label>
+            } @else { <p class="local-note">Ollama processa localmente. Selecioná-lo não autoriza outro provedor externo.</p> }
           </section>
         }
         <footer>
           <button type="button" class="btn btn-ghost" [disabled]="s.busy() || !s.allowed()" (click)="s.refresh()">Atualizar estado</button>
           @if (s.busy()) { <button type="button" class="btn" (click)="s.cancel()">Cancelar espera</button> }
-          <button type="submit" class="btn btn-primary" [disabled]="!s.canSave()">Aplicar seleção</button>
+          <button type="button" class="btn" [disabled]="!s.canClear()" (click)="s.clear()">Limpar seleção e revogar catálogo</button>
+          <button type="button" class="btn" [disabled]="!s.canSave()" (click)="s.validate()">Validar modelo</button>
+          <button type="submit" class="btn btn-primary" [disabled]="!s.canSave()">Selecionar no catálogo</button>
         </footer>
       </form>
     </dialog>
@@ -101,16 +108,16 @@ export class ProviderSettingsComponent implements AfterViewInit, OnDestroy {
   readonly closed = output<void>();
   @ViewChild('dialog', { static: true }) private dialog!: ElementRef<HTMLDialogElement>;
   private previousFocus: HTMLElement | null = null;
-  readonly budget = computed(() => trustedAmount(this.s.snapshot()?.budget ?? null));
-  readonly consumed = computed(() => trustedAmount(this.s.snapshot()?.consumed ?? null));
-  readonly price = computed(() => {
-    const p = this.s.option()?.price;
-    return p && p.model === this.s.model() && trustedAmount(p.inputPerMillion) && trustedAmount(p.outputPerMillion) ? p : null;
+  readonly suggested = computed(() => this.s.option()?.models.some(m => m.id === this.s.model()) === true);
+  readonly modelInfo = computed(() => {
+    const v = this.s.validation();
+    return v && v.provider === this.s.selected() && v.model === this.s.model() ? v : this.s.option()?.models.find(m => m.id === this.s.model());
   });
-  money(v: BackendAmount) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: v.currency, maximumFractionDigits: 6 }).format(v.value); }
+  readonly price = computed(() => this.modelInfo()?.price ?? null);
+  money(value: number) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD', maximumFractionDigits: 6 }).format(value); }
   status(id: string) {
-    const state = this.s.snapshot()?.options.find(o => o.id === id)?.status;
-    return state ? { configured: 'Configurado', not_configured: 'Não configurado', unavailable: 'Indisponível', connected: 'Conectado' }[state] : 'Estado não disponível';
+    const p = this.s.snapshot()?.providers.find(p => p.id === id);
+    return !p ? 'Estado não disponível' : !p.enabled ? 'Indisponível' : p.configured ? 'Configurado' : 'Não configurado';
   }
   ngAfterViewInit() {
     this.previousFocus = document.activeElement as HTMLElement | null;
