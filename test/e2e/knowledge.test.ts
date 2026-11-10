@@ -264,6 +264,11 @@ it('provedor: Gemini com cota esgotada → o modelo local assume, a tela explica
   const { page } = await enter(browser, t.base, OPERATOR_PIN, YOGA);
   const panel = await open(page);
   await expect.poll(() => panel.textContent()).toContain('Em uso: Gemini (externo)');
+  // Gemini já estava selecionado (preferência), mas o consentimento é por sessão: a tela pede a confirmação antes de qualquer envio.
+  await expect.poll(() => panel.textContent()).toContain('ainda não foi confirmado NESTA sessão');
+  await page.locator('.provider-consent input').check();
+  await page.getByRole('button', { name: 'Confirmar envio nesta sessão' }).click();
+  await expect.poll(() => panel.textContent()).not.toContain('ainda não foi confirmado');
   await ask(page, 'O Fred está microfonando no PA');
   const block = page.locator('.knowledge-block').last();
   await block.waitFor({ state: 'attached' });

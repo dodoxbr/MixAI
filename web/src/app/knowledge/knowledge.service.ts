@@ -11,6 +11,8 @@ export interface KProviders {
   embed: { id: KProviderId; external: boolean };
   narrative: boolean;
   externalFallback?: 'ollama' | 'none';
+  /** O envio ao provedor selecionado foi confirmado NESTA sessão? (preferência gravada ou chave presente não bastam) */
+  sessionConsent?: boolean;
 }
 export interface KStatus {
   store: { kind: 'file' | 'postgres'; ok: boolean; detail: string; fallbackFrom?: string };
