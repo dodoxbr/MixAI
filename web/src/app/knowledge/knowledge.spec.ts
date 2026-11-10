@@ -191,6 +191,55 @@ describe('painel de administração', () => {
       expect(bodies).toEqual([{ chat: 'anthropic', confirmExternal: true, model: 'claude-fable-5-2' }]);
       expect(JSON.stringify(bodies)).not.toMatch(/key|sk-/i);
     });
+    const four = (selected: string, sessionConsent: boolean) => ({
+      chat: { selected, options: [
+        { id: 'ollama', external: false, configured: true },
+        { id: 'deepseek', external: true, configured: true, model: 'deepseek-flash', models: ['deepseek-flash', 'deepseek-v4-pro'] },
+        { id: 'anthropic', external: true, configured: true, model: 'claude-opus-5-5', models: ['claude-opus-5-5', 'claude-fable-5-2'] },
+      ] },
+      embed: { id: 'ollama', external: false }, narrative: true, externalFallback: 'ollama', sessionConsent,
+    });
+    it('Claude Fable 5.2: o aviso de retenção de 30 dias aparece só com esse modelo', async () => {
+      const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(four('ollama', true)) }) }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      radios(el)[2]!.click(); f.detectChanges();
+      expect(el.textContent).not.toContain('retenção de dados por 30 dias');
+      const select = el.querySelector('select[aria-label="Modelo do provedor"]') as HTMLSelectElement;
+      select.value = 'claude-fable-5-2'; select.dispatchEvent(new Event('change')); f.detectChanges();
+      expect(el.textContent).toContain('Claude Fable 5.2 exige retenção de dados por 30 dias, conforme a política da Anthropic');
+      select.value = 'claude-opus-5-5'; select.dispatchEvent(new Event('change')); f.detectChanges();
+      expect(el.textContent).not.toContain('retenção de dados por 30 dias');
+    });
+    it('provedor já selecionado mas SEM consentimento nesta sessão: avisa e oferece confirmar; confirmado, não avisa', async () => {
+      const bodies: unknown[] = [];
+      const { f, el, svc } = boot('operator', {
+        '/api/knowledge/status': () => ({ body: withProviders(four('deepseek', false)) }),
+        '/api/knowledge/providers': (init) => { bodies.push(JSON.parse(String(init?.body))); return { body: {} }; },
+      }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      expect(el.textContent).toContain('o envio ainda não foi confirmado NESTA sessão: nada é enviado até você confirmar');
+      const confirm = () => Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Confirmar envio nesta sessão')) as HTMLButtonElement;
+      expect(confirm().disabled).toBe(true);
+      (el.querySelector('.provider-consent input') as HTMLInputElement).click(); f.detectChanges();
+      confirm().click(); await settle(f);
+      expect(bodies).toEqual([{ chat: 'deepseek', confirmExternal: true, model: 'deepseek-flash' }]);
+    });
+    it('com o consentimento da sessão confirmado, não há aviso nem botão pendente', async () => {
+      const { f, el, svc } = boot('operator', { '/api/knowledge/status': () => ({ body: withProviders(four('deepseek', true)) }) }); await settle(f);
+      svc.open.set(true); f.detectChanges();
+      expect(el.textContent).not.toContain('ainda não foi confirmado');
+      expect(applyButton(el)).toBeUndefined();
+    });
+    it('trocar o modelo exige novo aceite, inclusive Fable, mesmo com consentimento anterior', async()=>{
+      const {f,el,svc}=boot('operator',{'/api/knowledge/status':()=>({body:withProviders(four('anthropic',true))})});await settle(f);svc.open.set(true);f.detectChanges();
+      const box=el.querySelector('.provider-consent input') as HTMLInputElement;box.click();f.detectChanges();expect(f.componentInstance.consent()).toBe(true);
+      const select=el.querySelector('select[aria-label="Modelo do provedor"]') as HTMLSelectElement;select.value='claude-fable-5-2';select.dispatchEvent(new Event('change'));f.detectChanges();
+      expect(f.componentInstance.consent()).toBe(false);const confirm=Array.from(el.querySelectorAll('button')).find(b=>b.textContent?.includes('Confirmar envio nesta sessão')) as HTMLButtonElement;expect(confirm).toBeDefined();expect(confirm.disabled).toBe(true);expect(el.textContent).toContain('autorização expressa da Anthropic');
+    });
+    it('revoga consentimento na sessão sem trocar o provedor nem refazer o layout',async()=>{
+      let confirmed=true;const methods:string[]=[];const {f,el,svc}=boot('operator',{'/api/knowledge/status':()=>({body:withProviders(four('deepseek',confirmed))}),'/api/knowledge/providers/consent':init=>{methods.push(init?.method??'');confirmed=false;return{body:{sessionConsent:false}};}});await settle(f);svc.open.set(true);f.detectChanges();
+      const revoke=Array.from(el.querySelectorAll('button')).find(b=>b.textContent?.includes('Revogar envio nesta sessão'))!;revoke.click();await settle(f);expect(methods).toEqual(['DELETE']);expect(el.textContent).toContain('ainda não foi confirmado NESTA sessão');expect(el.textContent).toContain('Em uso: DeepSeek');
+    });
     it('voltar ao Ollama não pede consentimento nem envia confirmação', async () => {
       const bodies: unknown[] = [];
       const { f, el, svc } = boot('operator', {

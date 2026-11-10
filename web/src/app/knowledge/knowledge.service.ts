@@ -11,6 +11,8 @@ export interface KProviders {
   embed: { id: KProviderId; external: boolean };
   narrative: boolean;
   externalFallback?: 'ollama' | 'none';
+  /** O envio ao provedor selecionado foi confirmado NESTA sessão? (preferência gravada ou chave presente não bastam) */
+  sessionConsent?: boolean;
 }
 export interface KStatus {
   store: { kind: 'file' | 'postgres'; ok: boolean; detail: string; fallbackFrom?: string };
@@ -29,6 +31,7 @@ export interface KPassage { title: string; url: string; locator: string; excerpt
 export interface KIngestItem { file: string; status: string; chunks?: number; embedded?: number; reason?: string }
 
 const ERRORS: Record<string, string> = {
+  BUSY: 'Outra seleção está em andamento ou foi invalidada. Confirme novamente.',
   INVALID: 'Pedido inválido ou já em andamento.', NOT_FOUND: 'Item não encontrado.', FORBIDDEN: 'Somente o operador administra a base.',
   UNAUTHORIZED: 'Sessão encerrada. Entre novamente.', UNAVAILABLE: 'Base indisponível no momento. O diagnóstico segue pelo motor determinístico.',
 };
@@ -117,8 +120,9 @@ export class KnowledgeAdminService {
   /** Escolha do provedor do resumo. O serviço externo só entra com a confirmação do operador. */
   setProvider(chat: KProviderId, confirmExternal: boolean, model?: string) {
     return this.act(async () => { await this.call('POST', '/api/knowledge/providers', { chat, ...(confirmExternal ? { confirmExternal: true } : {}), ...(model ? { model } : {}) }); },
-      chat === 'ollama' ? 'Resumo agora pelo Ollama (local).' : chat === 'gemini' ? 'Resumo agora pelo Gemini (serviço externo).' : `Resumo agora por ${PROVIDER_NAMES[chat]}${model ? ` · ${model}` : ''}. O consentimento vale só nesta sessão.`);
+      chat === 'ollama' ? 'Resumo agora pelo Ollama (local).' : chat === 'gemini' ? 'Resumo agora pelo Gemini (serviço externo). O consentimento vale só nesta sessão.' : `Resumo agora por ${PROVIDER_NAMES[chat]}${model ? ` · ${model}` : ''}. O consentimento vale só nesta sessão.`);
   }
+  revokeConsent() { return this.act(async () => { await this.call('DELETE', '/api/knowledge/providers/consent'); }, 'Consentimento externo revogado nesta sessão. Respostas pendentes serão descartadas.'); }
   search(query: string) {
     return this.act(async () => { this.results.set(await this.call('POST', '/api/knowledge/search', { query })); });
   }

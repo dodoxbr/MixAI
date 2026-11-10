@@ -12,6 +12,8 @@ export interface DeepSeekOptions {
   generateTimeoutMs?: number;
   /** Teto de tokens da resposta (padrão 600). */
   maxOutputTokens?: number;
+  /** "disabled" (padrão) desliga o modo de raciocínio, que por padrão consumiria o teto de tokens; "default" não envia o campo. */
+  thinking?: 'disabled' | 'default';
 }
 
 /**
@@ -73,6 +75,7 @@ export class DeepSeekClient implements AiProvider {
       const data = (await callJson(this.fetchFn, new URL('chat/completions', DEEPSEEK_API_BASE), {
         method: 'POST', headers: this.headers(),
         body: { model: this.chat, stream: false, temperature: 0.2, max_tokens: this.o.maxOutputTokens ?? 600,
+          ...((this.o.thinking ?? 'disabled') === 'disabled' ? { thinking: { type: 'disabled' } } : {}),
           messages: [{ role: 'system', content: system }, { role: 'user', content: user }] },
       }, this.o.generateTimeoutMs ?? this.o.timeoutMs)) as {
         model?: unknown; usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
