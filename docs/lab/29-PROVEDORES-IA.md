@@ -13,7 +13,7 @@ o modelo continua sendo dado a exibir (resumo) ou apenas escolhe um candidato do
 
 Identificadores conferidos na documentação oficial em 2026-11-09: Anthropic (platform.claude.com, *Models overview*: Opus 5.5 `claude-opus-5-5`,
 US$ 4/20 por MTok; Fable 5.2 `claude-fable-5-2`, US$ 8/40) e DeepSeek (api-docs.deepseek.com: `deepseek-flash`, `deepseek-v4-pro`; erro 402 = saldo insuficiente).
-**Preços da DeepSeek não constam nas páginas consultadas**: os valores em `knowledge.external.prices` são estimativas conservadoras para o teto de gasto; confira a página oficial e ajuste.
+Preços da DeepSeek (api-docs.deepseek.com/quick_start/pricing, por milhão de tokens): `deepseek-flash` pico US$ 0,30 (entrada, cache miss) / US$ 1,20 (saída); `deepseek-v4-pro` pico US$ 1,32 / US$ 3,96 (fora do pico é metade). `knowledge.external.prices` usa os valores de **pico** como referência conservadora para o teto de gasto.
 
 ## Configurar a chave localmente sem revelá-la
 As chaves **nunca** vão em `config.yaml`, `config.local.yaml`, Git, log, tela, chat ou PR. Dois caminhos:
@@ -37,8 +37,10 @@ Reinicie o servidor. A tela mostra “falta a chave” quando a chave não está
 ## Consentimento do operador, por sessão
 - Selecionar um provedor externo exige o aviso e o aceite na tela (`confirmExternal`), e o servidor recusa sem ele (400).
 - O consentimento fica **só na memória**, vale para **quem confirmou** e para **aquele provedor**; qualquer nova seleção o apaga; sair da sessão o revoga; reiniciar o servidor o apaga.
-  Configuração, preferência gravada ou chave presente **nunca** criam consentimento (para DeepSeek e Anthropic, o assistente passa o consentimento da sessão a cada consulta; sem ele, o resumo usa o Ollama local ou nada).
-- **Gemini:** o fluxo anterior foi preservado (a escolha confirmada pelo operador persiste); o planejador do AutoConfig já exigia consentimento por sessão para ele. Alinhar o resumo do Gemini ao consentimento por sessão é uma decisão do responsável.
+  Configuração, preferência gravada (`data/knowledge/provider.json`) ou chave presente **nunca** criam consentimento. **Vale igual para Gemini, DeepSeek e Anthropic, no resumo documental, nos embeddings externos (`embedProvider: gemini`) e no planejador do AutoConfig.** Depois de reiniciar ou numa sessão nova, o provedor continua selecionado, mas nada é enviado até o operador confirmar na tela (a tela avisa: “selecionado, mas o envio ainda não foi confirmado nesta sessão”); sem consentimento o resumo usa o Ollama local (ou nada, com `fallback: none`).
+- **Revogação durante uma operação:** o consentimento é reavaliado antes de cada envio e de novo ao receber o resultado. Se foi revogado (nova seleção, voltar ao Ollama, sair da sessão) enquanto o serviço respondia, o resultado é descartado, não é exibido nem guardado em cache, e nada novo é enviado. No planejador, a mudança de consentimento/seleção durante a chamada vira `stale_policy` e a resposta tardia é descartada.
+- **Fable 5.2:** o modelo exige retenção de dados por 30 dias e não está disponível com retenção zero, conforme a documentação da Anthropic; a tela exibe esse aviso ao escolher `claude-fable-5-2`.
+- Terminal do operador (`npm run knowledge -- search/eval`) é ação explícita e usa os provedores configurados sem a tela.
 - Para o externo só vão trechos de fontes públicas e a pergunta, com nomes e números sensíveis removidos; documentos locais nunca saem.
 
 ## Fallback e recusas
@@ -61,7 +63,6 @@ Planejador: `provider.{used,model}` no resultado e `model.name` na resposta cons
 
 ## Limites e riscos
 - Nenhuma chamada paga foi feita nos testes (provedores simulados). Os comportamentos reais de `deepseek-v4-pro` e dos modelos Claude 5.x (raciocínio adaptativo consome o teto de tokens; `truncated` descarta) dependem de validação com uma chave real, sob sua autorização.
-- Parâmetros opcionais de raciocínio não foram enviados (não confirmados na documentação consultada); só `message.content` / blocos `text` são usados.
+- DeepSeek: a API usa raciocínio por padrão, o que consumiria o teto de tokens do resumo; por isso o cliente envia `thinking: {type: "disabled"}` (formato do exemplo da documentação; `knowledge.deepseek.thinking: default` não envia o campo, caso a API recuse). Esse parâmetro só foi validado com provedor simulado. Só `message.content` / blocos `text` são usados.
 - Privacidade: texto enviado a serviço externo sai do computador; o consentimento é do operador.
 - Esta entrega não altera o núcleo D, as aprovações, a interface do AutoConfig, nem habilita escrita REAL.
-- Depende do hotfix #90 (prazo da consulta documental) — este PR está empilhado nele.
