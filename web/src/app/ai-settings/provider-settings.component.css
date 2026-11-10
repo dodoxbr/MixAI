@@ -1,0 +1,33 @@
+:host { display: contents; }
+dialog { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius); width: min(880px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 24px; overflow: auto; overscroll-behavior: contain; }
+dialog::backdrop { background: rgb(0 0 0 / 75%); }
+header, footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+header { border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+h2, h3, h4, p { margin: 0 0 12px; }
+h2 { font-size: 1.6rem; }
+h3 { margin-top: 12px; }
+small, .muted { color: var(--muted); }
+small { display: block; overflow-wrap: anywhere; }
+.eyebrow { color: var(--brass-hi); font-size: .85rem; letter-spacing: .08em; text-transform: uppercase; }
+.active, .privacy, .costs { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); margin: 16px 0; }
+.active strong { display: block; margin-top: 8px; overflow-wrap: anywhere; }
+.active p { margin: 8px 0 0; }
+fieldset { border: 0; padding: 0; margin: 20px 0; min-width: 0; }
+legend { font-weight: 700; margin-bottom: 12px; }
+.providers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.provider { display: flex; align-items: center; gap: 10px; min-height: 76px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); cursor: pointer; }
+.provider.chosen { border-color: var(--brass); box-shadow: inset 3px 0 var(--brass); }
+.provider:focus-within { outline: 3px solid var(--brass-hi); outline-offset: 2px; }
+.state { margin-left: auto; font-size: .85rem; text-align: right; }
+input[type=radio], input[type=checkbox] { width: 22px; height: 22px; flex-shrink: 0; accent-color: var(--brass); }
+input[type=text], select { display: block; min-height: var(--tap); width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 10px; font: inherit; margin: 8px 0; }
+.warning { color: var(--warn); }
+.success, .local-note { color: var(--ok); }
+.consent { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; min-height: var(--tap); }
+footer { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 20px; }
+@media (max-width: 600px) {
+  dialog { padding: 16px; }
+  .providers { grid-template-columns: 1fr; }
+  h2 { font-size: 1.35rem; }
+  footer .btn { flex: 1 1 100%; }
+}
