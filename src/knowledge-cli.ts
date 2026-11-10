@@ -92,8 +92,8 @@ async function runLiveSweep(args: string[], write: (s: string) => void): Promise
     if (!live) { write('knowledge.enabled está desligado.'); return 1; }
     try {
       const search = via === 'enrich'
-        ? async (c: { query: string; symptom?: string; instrument?: string }) => (await live.enrich({ text: c.query, symptom: c.symptom, instrument: c.instrument })).passages
-        : async (c: { query: string }) => (await live.search(c.query)).passages;
+        ? async (c: { query: string; symptom?: string; instrument?: string }) => (await live.enrich({ text: c.query, symptom: c.symptom, instrument: c.instrument }, { externalAllowed: () => true })).passages
+        : async (c: { query: string }) => (await live.search(c.query, { externalAllowed: () => true })).passages; // terminal do operador: ação explícita
       const m = await evalLiveCases(search, cases, k);
       const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(4);
       rows.push(`  limiar ${minScore.toFixed(2)} | Acerto@k ${pct(m.hitK)} | Hit@1 ${pct(m.hit1)} | Hit@3 ${pct(m.hit3)} | MRR ${m.mrr.toFixed(2)} | Prec@k ${pct(m.precisionK)} | intrusos ${pct(m.intrusion)} | trechos/pergunta ${m.avgResults.toFixed(1)} | sem resposta ${pct(m.emptyRate)} | sem acerto: ${m.misses.join(',') || '—'}`);
@@ -117,7 +117,7 @@ async function runEvalCommand(args: string[], write: (s: string) => void): Promi
     const live = await openLocalKnowledge(loaded, { log: write });
     if (!live) { write('knowledge.enabled está desligado.'); return 1; }
     try {
-      const m = await evalLive(async (q) => (await live.search(q)).passages, cases, k);
+      const m = await evalLive(async (q) => (await live.search(q, { externalAllowed: () => true })).passages, cases, k);
       write(`Base REAL em uso (${(await live.status()).chunks} trechos; julgado pelo trecho exibido)`);
       printMethod(write, m);
       write('  Acerto@k por tema: ' + Object.entries(m.byTopic).map(([t, v]) => `${t} ${v.hitK}/${v.cases}`).join(' · '));
@@ -171,13 +171,13 @@ export async function runKnowledgeCli(args: string[], write: (s: string) => void
         write(JSON.stringify(await k.importZip(new Uint8Array(readFileSync(arg))))); return 0;
       }
       if (cmd === 'ingest') {
-        const report = await k.ingest();
+        const report = await k.ingest({ externalAllowed: () => true });
         for (const i of report.items) write(`${i.status.padEnd(9)} ${i.file}${i.chunks !== undefined ? ` (${i.chunks} trechos, ${i.embedded ?? 0} com embedding)` : ''}${i.reason ? ` — ${i.reason}` : ''}`);
         write(`Embeddings: ${report.embeddings === 'available' ? 'disponíveis' : 'indisponíveis (busca por palavras)'}`);
         return report.items.some((i) => i.status === 'failed') ? 1 : 0;
       }
       if (cmd === 'search') {
-        const r = await k.search(args.slice(1).join(' '));
+        const r = await k.search(args.slice(1).join(' '), { externalAllowed: () => true });
         write(`modo: ${r.mode}${r.reason ? ` — ${r.reason}` : ''}`);
         for (const p of r.passages) write(`- [${p.title} ${p.locator}] ${p.excerpt}`);
         return 0;

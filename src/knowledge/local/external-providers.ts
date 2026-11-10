@@ -29,7 +29,7 @@ export function buildExternalProviders(loaded: LoadedConfig, deps: { fetch?: typ
     price: (model) => e.prices[model],
   }, model => Object.hasOwn(e.prices, model) && [e.prices[model].inputPerMTok, e.prices[model].outputPerMTok].every(n => Number.isFinite(n) && n >= 0));
   const out: AiProvider[] = [];
-  if (k.deepseek.enabled) out.push(wrap(new DeepSeekClient({ chatModel: k.deepseek.chatModel, timeoutMs: k.deepseek.timeoutMs, generateTimeoutMs: k.deepseek.narrativeTimeoutMs, maxOutputTokens: k.deepseek.maxOutputTokens }, loaded.secrets?.deepseekApiKey, deps.fetch ?? fetch, deps.clock), k.deepseek.maxOutputTokens));
+  if (k.deepseek.enabled) out.push(wrap(new DeepSeekClient({ chatModel: k.deepseek.chatModel, timeoutMs: k.deepseek.timeoutMs, generateTimeoutMs: k.deepseek.narrativeTimeoutMs, maxOutputTokens: k.deepseek.maxOutputTokens, thinking: k.deepseek.thinking }, loaded.secrets?.deepseekApiKey, deps.fetch ?? fetch, deps.clock), k.deepseek.maxOutputTokens));
   if (k.anthropic.enabled) out.push(wrap(new AnthropicClient({ chatModel: k.anthropic.chatModel, timeoutMs: k.anthropic.timeoutMs, generateTimeoutMs: k.anthropic.narrativeTimeoutMs, maxOutputTokens: k.anthropic.maxOutputTokens }, loaded.secrets?.anthropicApiKey, deps.fetch ?? fetch, deps.clock), k.anthropic.maxOutputTokens));
   return out;
 }

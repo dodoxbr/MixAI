@@ -203,7 +203,8 @@ export class AssistantService {
     const ms = this.opts.knowledgeDeadlineMs ?? KNOWLEDGE_DEADLINE_MS;
     // enrich() já captura os próprios erros; a captura extra garante que uma rejeição inesperada nunca derrube a resposta.
     const consent = this.opts.externalConsent;
-    const work = k.enrich(query, { externalAllowed: (id) => consent?.allowed(p, id) === true }).catch((): KnowledgeContext => ({ mode: 'deterministic', degraded: true, reason: 'Base de conhecimento indisponível.', passages: [] }));
+    const consentRevision = consent?.revision;
+    const work = k.enrich(query, { externalAllowed: (id) => this.core.auth.isActive(p) && consent?.revision === consentRevision && consent?.allowed(p, id) === true }).catch((): KnowledgeContext => ({ mode: 'deterministic', degraded: true, reason: 'Base de conhecimento indisponível.', passages: [] }));
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), ms); });
     try {
@@ -234,7 +235,13 @@ export class AssistantService {
     if (hit && hit.key === key && hit.expiresAt > this.now()) knowledge = structuredClone(hit.knowledge);
     else {
       // A consulta documental (busca + resumo do modelo local) é OPCIONAL: não pode segurar a orientação determinística além do prazo da interface.
+      const consentAtStart = this.opts.externalConsent?.revision ?? 0;
       knowledge = await this.enrichWithin(k, query, p);
+      // Consentimento mudou durante a consulta: o resultado pode ter vindo de um envio já revogado. O LocalKnowledge já descarta o
+      // resumo externo; aqui garantimos que nada dessa rodada fica em cache.
+      if ((this.opts.externalConsent?.revision ?? 0) !== consentAtStart) {
+        knowledge = { mode: 'deterministic', degraded: true, reason: 'Consentimento alterado durante a consulta; resposta descartada.', passages: [], narrativeStatus: { status: 'not_consented' } };
+      }
       // Resultado degradado (Ollama fora, tempo esgotado) não é guardado: a próxima volta tenta de novo.
       const transient = knowledge.degraded || ['timeout', 'unavailable', 'error'].includes(knowledge.narrativeStatus?.status ?? '');
       if (!transient && this.core.auth.isActive(p)) {

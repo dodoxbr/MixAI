@@ -16,6 +16,11 @@ const idParam = z.string().regex(/^d[a-z0-9]{3,40}$/);
 export async function knowledgeRoutes(app: FastifyInstance, opts: {
   service: LocalKnowledge; origin?: string;
   onProviderSelection?: (p: Principal, selected: string, confirmed: boolean) => void;
+  /** O operador desta sessão confirmou o envio ao provedor selecionado? (memória; nunca vem de preferência ou chave) */
+  consented?: (p: Principal, selected: string) => boolean;
+  consentRevision?: () => number;
+  onProviderSelectionStart?: () => void;
+  onConsentRevocation?: (p: Principal) => void;
   principal(req: FastifyRequest, reply: FastifyReply): Principal | undefined;
   active(p: Principal): boolean;
 }) {
@@ -57,21 +62,32 @@ export async function knowledgeRoutes(app: FastifyInstance, opts: {
 
   app.get('/api/knowledge/procedures', () => ({ procedures: opts.service.technicalProcedures() }));
   app.post('/api/knowledge/procedures/query', { bodyLimit: 16_384 }, req => opts.service.technicalGuidance(req.body));
-  app.get('/api/knowledge/status', () => opts.service.status());
-  app.get('/api/knowledge/providers', () => opts.service.providers());
+  const sessionConsent = (req: FastifyRequest, selected: string) => selected === 'ollama' ? true : opts.consented?.(actors.get(req)!, selected) === true;
+  app.get('/api/knowledge/status', async (req) => { const s = await opts.service.status(); return { ...s, providers: { ...s.providers, sessionConsent: sessionConsent(req, s.providers.chat.selected) } }; });
+  app.get('/api/knowledge/providers', (req) => { const p = opts.service.providers(); return { ...p, sessionConsent: sessionConsent(req, p.chat.selected) }; });
   app.post('/api/knowledge/providers', { bodyLimit: 1024 }, async (req) => {
     const b = providerBody.parse(req.body);
-    const result = await opts.service.setChatProvider(b.chat, b.confirmExternal === true, b.model);
-    opts.onProviderSelection?.(actors.get(req)!, result.chat.selected, b.confirmExternal === true);
-    return result;
+    const p = actors.get(req)!; let revision: number | undefined;
+    const current = () => opts.active(p) && revision === opts.consentRevision?.();
+    const result = await opts.service.setChatProvider(b.chat, b.confirmExternal === true, b.model, { begin: () => { opts.onProviderSelectionStart?.(); revision = opts.consentRevision?.(); }, current });
+    if (!current()) throw new KnowledgeError('UNAUTHORIZED', 'Sessão encerrada ou seleção invalidada.');
+    opts.onProviderSelection?.(p, result.chat.selected, b.confirmExternal === true);
+    return { ...result, sessionConsent: sessionConsent(req, result.chat.selected) };
   });
+  app.delete('/api/knowledge/providers/consent', (req) => { opts.onConsentRevocation?.(actors.get(req)!); return { ...opts.service.providers(), sessionConsent: false }; });
   app.get('/api/knowledge/sources', async () => ({ sources: await opts.service.sources() }));
   app.get('/api/knowledge/documents', async () => ({ documents: await opts.service.documents() }));
   app.get('/api/knowledge/cases', async () => ({ cases: await opts.service.cases() }));
   app.get('/api/knowledge/microphones', () => opts.service.microphones());
   app.post('/api/knowledge/import-seed', { bodyLimit: 1024 }, () => exclusive(() => opts.service.importSeed()));
-  app.post('/api/knowledge/ingest', { bodyLimit: 1024 }, () => exclusive(() => opts.service.ingest()));
-  app.post('/api/knowledge/search', { bodyLimit: 2048 }, (req) => opts.service.search(searchBody.parse(req.body).query));
+  app.post('/api/knowledge/ingest', { bodyLimit: 1024 }, req => {
+    const p = actors.get(req)!; const revision = opts.consentRevision?.();
+    return exclusive(() => opts.service.ingest({ externalAllowed: id => opts.active(p) && revision === opts.consentRevision?.() && opts.consented?.(p, id) === true }));
+  });
+  app.post('/api/knowledge/search', { bodyLimit: 2048 }, (req) => {
+    const p = actors.get(req)!; const revision = opts.consentRevision?.();
+    return opts.service.search(searchBody.parse(req.body).query, { externalAllowed: (id) => opts.active(p) && revision === opts.consentRevision?.() && opts.consented?.(p, id) === true });
+  });
   app.post('/api/knowledge/microphones', { bodyLimit: 1024 }, async (req) => {
     const b = micBody.parse(req.body);
     return { assignment: await opts.service.assignMicrophone(b.channel, b.modelId) };

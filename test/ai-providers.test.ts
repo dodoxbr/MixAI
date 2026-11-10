@@ -80,7 +80,8 @@ async function service(opts: { ollama?: OllamaClient; gemini?: GeminiClient; cha
   await k.ingest();
   return { k, dir, store };
 }
-const ask = (k: LocalKnowledge, text = 'O Fred está microfonando no PA') => k.enrich({ text, symptom: 'microfonia' });
+/** Consentimento da sessão concedido (Gemini, como DeepSeek e Anthropic, só envia com ele). */
+const ask = (k: LocalKnowledge, text = 'O Fred está microfonando no PA') => k.enrich({ text, symptom: 'microfonia' }, { externalAllowed: () => true });
 const generateCalls = (calls: Call[]) => calls.filter((c) => c.url.includes(':generateContent'));
 
 describe('GeminiClient: segredo, rede e erros', () => {
@@ -380,7 +381,10 @@ describe('o que sai do computador', () => {
     mkdirSync(join(dir, 'inbox'), { recursive: true });
     writeFileSync(join(dir, 'inbox', 'shure-live.md'), PUBLIC_DOC);
     writeFileSync(join(dir, 'inbox', 'roteiro-privado.md'), PRIVATE_DOC);
-    const report = await k.ingest();
+    const denied = await k.ingest();
+    expect(g.calls.filter(c => c.url.includes(':batchEmbedContents'))).toHaveLength(0);
+    expect(denied.items.find(i => i.file === 'shure-live.md')?.embedded).toBe(0);
+    const report = await k.ingest({ externalAllowed: () => true });
     expect(report.items.find((i) => i.file === 'roteiro-privado.md')).toMatchObject({ status: 'skipped', reason: 'documento local não é enviado a provedor externo' });
     expect(report.items.find((i) => i.file === 'shure-live.md')!.status).toBe('ingested');
     const all = g.calls.map((c) => c.body).join('\n');
