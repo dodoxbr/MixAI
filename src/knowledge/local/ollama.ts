@@ -1,7 +1,8 @@
+import { tokenCount } from './external.js';
 import type { AiProvider, GenerateFailure, GenerateResult, ProviderHealth } from './provider.js';
 export type { GenerateFailure, GenerateResult } from './provider.js';
 
-export interface OllamaOptions { url: string; embedModel: string; chatModel: string; embedDimensions: number; timeoutMs: number; /** Geração é bem mais lenta que embedding em CPU: tempo próprio. */ generateTimeoutMs?: number; /** Prefixos que alguns modelos exigem (ex.: nomic: "search_query: " / "search_document: "). */ queryPrefix?: string; documentPrefix?: string }
+export interface OllamaOptions { maxOutputTokens?: number; url: string; embedModel: string; chatModel: string; embedDimensions: number; timeoutMs: number; /** Geração é bem mais lenta que embedding em CPU: tempo próprio. */ generateTimeoutMs?: number; /** Prefixos que alguns modelos exigem (ex.: nomic: "search_query: " / "search_document: "). */ queryPrefix?: string; documentPrefix?: string }
 export type OllamaHealth = ProviderHealth;
 
 const MAX_BODY = 4 * 1024 * 1024;
@@ -86,13 +87,15 @@ export class OllamaClient implements AiProvider {
         // Mantém o modelo na GPU entre perguntas (carga a frio do 8B levou ~30 s, o mesmo do tempo limite do resumo).
         // É por requisição: não altera a configuração global do Ollama nem os modelos de outros projetos.
         keep_alive: '30m',
-        options: { temperature: 0.2, num_predict: 260 },
+        options: { temperature: 0.2, num_predict: this.o.maxOutputTokens ?? 260 },
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      }, this.o.generateTimeoutMs ?? this.o.timeoutMs)) as { message?: { content?: unknown }; done_reason?: unknown };
+      }, this.o.generateTimeoutMs ?? this.o.timeoutMs)) as { message?: { content?: unknown }; done_reason?: unknown; prompt_eval_count?: unknown; eval_count?: unknown };
       // done_reason "length" = parou em num_predict: texto incompleto, não é uma resposta concluída.
-      if (data.done_reason === 'length') return { failure: 'truncated' };
+      const input = tokenCount(data.prompt_eval_count), output = tokenCount(data.eval_count);
+      const meta = input === undefined || output === undefined ? {} : { usage: { inputTokens: input, outputTokens: output } };
+      if (data.done_reason === 'length') return { failure: 'truncated', ...meta };
       const out = data.message?.content;
-      return typeof out === 'string' && out.trim() ? { text: out } : { failure: 'empty' };
+      return typeof out === 'string' && out.trim() ? { text: out, ...meta } : { failure: 'empty', ...meta };
     } catch (err) {
       this.cache = undefined;
       return { failure: err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError') ? 'timeout' : 'error' };

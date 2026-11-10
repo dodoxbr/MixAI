@@ -6,8 +6,8 @@ export interface BudgetOptions {
   tracker: UsageTracker;
   dailyBudgetUSD: number;
   maxRequestsPerMinute: number;
-  /** Preço por modelo (USD por milhão de tokens). Modelo sem preço configurado usa `fallback`. */
-  price(model: string): ModelPrice;
+  /** Explicit configured estimate only. Missing prices block generation; never guess a fallback price. */
+  price(model: string): ModelPrice | undefined;
   maxOutputTokens: number;
   /** Só provedor, modelo, tokens e custo estimado: nunca chave, pergunta ou resposta. */
   log?: (msg: string) => void;
@@ -31,6 +31,10 @@ export class BudgetedProvider implements AiProvider {
 
   async generateDetailed(system: string, user: string): Promise<GenerateResult> {
     const model = this.inner.model ?? 'desconhecido', price = this.o.price(model);
+    if (!price || ![price.inputPerMTok, price.outputPerMTok].every(n => Number.isFinite(n) && n >= 0)) {
+      this.o.log?.(`IA externa: provedor=${this.inner.id} modelo=${model} resultado=bloqueado motivo=preco_desconhecido`);
+      return { failure: 'quota', reason: 'budget', model };
+    }
     const cost = (inTok: number, outTok: number) => (inTok * price.inputPerMTok + outTok * price.outputPerMTok) / 1e6;
     const note = (what: string) => this.o.log?.(`IA externa: provedor=${this.inner.id} modelo=${model} ${what}`);
     const t = this.o.tracker;
