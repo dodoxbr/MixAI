@@ -46,7 +46,7 @@ for(const [name,device]of [['desktop',{viewport:{width:1440,height:960}}],['yoga
     const legacyBefore=(await t.http('/api/knowledge/providers',{token})).json;
     const panel=await open(page);expect(await panel.getByRole('radio').count()).toBe(5);
     expect(await panel.locator('.state').allTextContents()).toEqual(['Configurado','Configurado','Não configurado','Indisponível','Configurado']);
-    expect(await panel.textContent()).toContain('Não altera o provedor do diagnóstico');
+    expect(await panel.textContent()).toContain('responde ao resumo do diagnóstico/RAG e ao planejador do AutoConfig');
     await panel.getByRole('radio',{name:/OpenAI/}).check();await panel.getByLabel('ID do modelo',{exact:true}).fill('manual-model');
     const save=panel.getByRole('button',{name:'Selecionar no catálogo'}),validate=panel.getByRole('button',{name:'Validar modelo'});
     await expect.poll(()=>save.isDisabled()).toBe(true);await panel.getByRole('checkbox').check();await validate.click();

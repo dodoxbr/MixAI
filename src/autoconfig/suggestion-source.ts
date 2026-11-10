@@ -49,6 +49,8 @@ export interface AdvisorReadPort {
   selectedProvider(): string;
   /** Provedores externos de texto (DeepSeek/Anthropic) com controle de custo e o modelo escolhido pelo operador. */
   externalProviders?(): NonNullable<Parameters<typeof createConfiguredPlanner>[2]['externalProviders']>;
+  /** Roteador central: modelo escolhido pelo operador NESTA sessão (catálogo), ou undefined (vale o seletor legado). */
+  route?(p: Principal): { readonly provider: NonNullable<Parameters<typeof createConfiguredPlanner>[2]['routed']>; readonly key: string; allowed(): boolean; live(): string } | undefined;
   audit(p: Principal, result: { kind: string; provider?: string; outcome: string }): void;
 }
 /** Same provider-selection UI/endpoint, scoped to the authenticated operator, memory only.
@@ -93,16 +95,18 @@ export class AutoConfigAdvisor implements AutoConfigAdvisoryPort {
       try { input = answerPlannerQuestion(existing.input, existing.advice, request.answer.value); } catch { throw new ReferenceError('INVALID'); }
     } else if (same) input = existing.input;
     if (!existing && this.pending.size >= 128) throw new ReferenceError('CAPACITY');
-    const selected = () => this.read.selectedProvider();
+    // Rota capturada UMA vez, no início: trocar o modelo, revogar ou sair no meio invalida a consulta (stale_policy / 409), nunca a redireciona.
+    const route = this.read.route?.(p);
+    const selected = () => route ? route.provider.id : this.read.selectedProvider();
     const revision = () => {
       const currentM1 = this.read.m1(p), event = request.eventId ? this.read.eventVersion(request.eventId) : undefined;
-      return Number.parseInt(createHash('sha256').update(JSON.stringify([currentM1?.revision, event, this.read.stateRevision(), this.read.connected(), this.consent.revision, selected()])).digest('hex').slice(0, 12), 16);
+      return Number.parseInt(createHash('sha256').update(JSON.stringify([currentM1?.revision, event, this.read.stateRevision(), this.read.connected(), this.consent.revision, selected(), route ? route.live() : 'legado'])).digest('hex').slice(0, 12), 16);
     };
     const initialRevision = revision();
     const planner = createConfiguredPlanner(this.loaded, this.names, {
-      allowDeterministicWithoutKnowledge: true, externalProviders: this.read.externalProviders?.(), fetch: this.options.fetch, geminiFetch: this.options.geminiFetch, clock: this.options.clock, timeoutMs: this.options.timeoutMs,
+      allowDeterministicWithoutKnowledge: true, externalProviders: this.read.externalProviders?.(), ...(route ? { routed: route.provider } : {}), fetch: this.options.fetch, geminiFetch: this.options.geminiFetch, clock: this.options.clock, timeoutMs: this.options.timeoutMs,
       policy: () => ({ enabled: !this.stopped, active: this.read.active(p) && this.read.mode() === 'lab' && this.read.connected(), selected: selected(),
-        externalConsent: this.consent.allowed(p, selected()), revision: revision() }),
+        externalConsent: route ? route.allowed() : this.consent.allowed(p, selected()), revision: revision() }),
     });
     // Placeholder scope only matters once the planner has a destination (it asks for it first).
     const scope = scopeOf(input.destination) ?? 'PA', selectedAtStart = selected();

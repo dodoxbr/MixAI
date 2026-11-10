@@ -15,7 +15,7 @@ export interface KnowledgeView {
   /** Por que não há resumo do modelo (só quando o servidor tentou e descartou). */
   narrativeNote?: string;
   /** Quem escreveu o resumo: o modelo local ou o Gemini (serviço externo). */
-  narrativeSource?: 'ollama' | 'gemini' | 'deepseek' | 'anthropic';
+  narrativeSource?: 'ollama' | 'gemini' | 'deepseek' | 'anthropic' | 'openai';
   /** Modelo que de fato respondeu (informado pelo servidor). */
   narrativeModel?: string;
   /** Resumo feito pelo modelo local porque o Gemini falhou. */
@@ -65,8 +65,8 @@ export function knowledgeView(raw: unknown): KnowledgeView | undefined {
   const excluded = typeof filter['excluded'] === 'number' && filter['excluded'] > 0 ? Math.min(99, Math.floor(filter['excluded'])) : 0;
   const filterModel = str(filter['model'], 6);
   const ns = rec(k['narrativeStatus']);
-  const source = (['gemini', 'ollama', 'deepseek', 'anthropic'] as const).find((s) => s === narrative['source']);
-  const from = (['gemini', 'deepseek', 'anthropic'] as const).find((s) => s === str(ns['fellBackFrom'], 12));
+  const source = (['gemini', 'ollama', 'deepseek', 'anthropic', 'openai'] as const).find((s) => s === narrative['source']);
+  const from = (['gemini', 'deepseek', 'anthropic', 'openai'] as const).find((s) => s === str(ns['fellBackFrom'], 12));
   const fellBack = from ? FALLBACK_REASONS[str(ns['fallbackReason'], 20) ?? ''] : undefined;
   return {
     mode, degraded: k['degraded'] === true,
@@ -78,7 +78,7 @@ export function knowledgeView(raw: unknown): KnowledgeView | undefined {
     narrativeNote: narrative['verified'] === false || !status ? undefined : NARRATIVE_NOTES[status],
     narrativeSource: narrative['verified'] === false ? source : undefined,
     narrativeModel: narrative['verified'] === false ? str(narrative['model'], 80) : undefined,
-    fallbackNote: narrative['verified'] === false && fellBack ? `Resumo gerado pelo modelo local porque ${from === 'gemini' ? 'o Gemini' : from === 'deepseek' ? 'a DeepSeek' : 'a Anthropic'} ${fellBack}.` : undefined,
+    fallbackNote: narrative['verified'] === false && fellBack ? `Resumo gerado pelo modelo local porque ${from === 'gemini' ? 'o Gemini' : from === 'deepseek' ? 'a DeepSeek' : from === 'openai' ? 'a OpenAI' : 'a Anthropic'} ${fellBack}.` : undefined,
     modelNote: excluded && filterModel ? `${excluded} trecho(s) que só descrevem outros modelos de microfone foram ocultados (este canal usa o ${filterModel}).` : undefined,
   };
 }

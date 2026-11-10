@@ -60,7 +60,7 @@ describe('painel catálogo',()=>{
   it('mostra seleção vazia real, cinco provedores, configurações e agregado UTC sem confundir fluxos',async()=>{
     const {f,s,el}=boot();await settle(f);
     expect(el.querySelectorAll('input[type=radio]').length).toBe(5);
-    expect(el.textContent).toContain('Nenhum modelo selecionado');expect(el.textContent).toContain('Não altera o provedor do diagnóstico');
+    expect(el.textContent).toContain('Nenhum modelo selecionado');expect(el.textContent).toContain('responde ao resumo do diagnóstico/RAG e ao planejador do AutoConfig');
     expect(el.textContent).toContain('compartilhado (UTC)');expect(el.textContent).toContain('reservas em andamento');
     s.choose('deepseek');f.detectChanges();expect(el.textContent).toContain('Falta configurar a chave');expect(s.canSave()).toBe(false);
     s.choose('anthropic');f.detectChanges();expect(el.textContent).toContain('Provedor desabilitado');

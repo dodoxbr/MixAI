@@ -78,7 +78,9 @@ describe('knowledgeView (validação do que o servidor envia)', () => {
     const fb = knowledgeView({ ...base, narrative: { text: 'Resumo.', source: 'ollama', verified: false }, narrativeStatus: { status: 'used', provider: 'ollama', fellBackFrom: 'gemini', fallbackReason: 'quota' } })!;
     expect(fb.narrativeSource).toBe('ollama');
     expect(fb.fallbackNote).toBe('Resumo gerado pelo modelo local porque o Gemini atingiu o limite de uso.');
-    expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'openai', verified: false } })!.narrativeSource).toBeUndefined();
+    expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'openai', verified: false, model: 'm1' } })!).toMatchObject({ narrativeSource: 'openai', narrativeModel: 'm1' });
+    expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'desconhecido', verified: false } })!.narrativeSource).toBeUndefined();
+    expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'ollama', verified: false }, narrativeStatus: { status: 'used', provider: 'ollama', fellBackFrom: 'openai', fallbackReason: 'timeout' } })!.fallbackNote).toContain('a OpenAI');
     expect(knowledgeView({ ...base, narrative: { text: 'x', source: 'gemini', verified: true } })!.narrativeSource).toBeUndefined();
     for (const [status, text] of [['auth', /chave foi recusada/], ['quota', /limite de uso/], ['refused', /recusou o pedido por segurança/], ['recitation', /reproduzir texto protegido/], ['withheld', /documentos locais/]] as const) {
       expect(knowledgeView({ ...base, narrativeStatus: { status } })!.narrativeNote, status).toMatch(text);

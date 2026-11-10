@@ -32,7 +32,7 @@ export interface ModelCatalogOptions {
   config: ModelCatalogConfig; providers: CatalogProviderDefinition[]; tracker: UsageTracker;
   dailyBudgetUSD: number; maxRequestsPerMinute: number; mode(): string; active(actor: CatalogActor): boolean;
   consent?: ModelConsentPort;
-  audit?(event: { provider: CatalogProviderId; model: string; responseModel: string; outcome: string; inputTokens?: number; outputTokens?: number; estimatedUSD?: number }): void;
+  audit?(event: { flow?: string; provider: CatalogProviderId; model: string; responseModel: string; outcome: string; inputTokens?: number; outputTokens?: number; estimatedUSD?: number }): void;
 }
 /** Isolated catalog generation lane. Does not mutate the legacy global knowledge selection or AutoConfig. */
 export class ModelCatalogService {
@@ -118,7 +118,7 @@ export class ModelCatalogService {
   revoke(id: string) { this.consent.revoke({ id, role: 'operator' }); this.sessions.delete(id); }
   stop() { this.stopped = true; for (const id of this.sessions.keys()) this.revoke(id); }
   /** Trusted backend port for mission A. No tools or model-driven execution. Revision is checked before AND after await. */
-  async generate(actor: CatalogActor, system: string, user: string, expectedRevision: number) {
+  async generate(actor: CatalogActor, system: string, user: string, expectedRevision: number, flow?: string) {
     this.guard(actor); this.checkRevision(actor, expectedRevision);
     if (typeof system !== 'string' || typeof user !== 'string' || !user.trim() || Buffer.byteLength(system + user, 'utf8') > this.o.config.maxInputBytes) throw new ModelCatalogError('INVALID');
     const state = this.sessions.get(actor.id), selection = state?.selection, client = state?.client;
@@ -144,7 +144,7 @@ export class ModelCatalogService {
       else if (result.failure === 'auth' || result.failure === 'quota') { estimatedUSD = 0; this.o.tracker.release(reserved.id); }
       else estimatedUSD = this.o.tracker.chargeReserved(reserved.id);
       const responseModel = result.model && validModel(selection.provider, result.model) ? result.model : selection.model;
-      this.o.audit?.({ provider: selection.provider, model: selection.model, responseModel, outcome: result.failure ?? 'success', ...(validUsage ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : {}), estimatedUSD });
+      this.o.audit?.({ ...(flow ? { flow } : {}), provider: selection.provider, model: selection.model, responseModel, outcome: result.failure ?? 'success', ...(validUsage ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : {}), estimatedUSD });
       this.guard(actor);
       if (this.sessions.get(actor.id) !== state || (selection.external && !this.consent.allowed(actor, selection))) throw new ModelCatalogError('STALE');
       return { schemaVersion: 1 as const, mode: 'LAB' as const, selection: { ...selection }, result: { model: responseModel, ...(result.text && !result.failure ? { text: result.text } : {}), ...(result.failure ? { failure: result.failure } : {}), ...(result.reason ? { reason: result.reason } : {}), ...(validUsage ? { usage } : {}) },

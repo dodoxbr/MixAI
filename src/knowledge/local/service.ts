@@ -4,7 +4,7 @@ import { ingestInbox, type IngestReport } from './ingest.js';
 import { modelKeyOf, scopeOf, type PerceptionModel } from './models.js';
 import { readPackFromDir, readPackFromZip, type Assignment, type CatalogEntry, type KnowledgePack } from './pack.js';
 import { isPublicSource, redactForExternal } from './privacy.js';
-import type { AiProvider, GenerateFailure, ProviderId } from './provider.js';
+import type { AiProvider, ChatRoute, GenerateFailure, ProviderId } from './provider.js';
 import type { KnowledgeStore, MicrophoneState, Passage, SearchMode } from './store.js';
 import { cleanText } from './text.js';
 import { prepareQuery, refinePassages, type RetrievalTuning } from './query.js';
@@ -60,8 +60,8 @@ export interface KnowledgeContext {
 const CASE_FOR_SYMPTOM: Record<string, string> = { abafado: 'voz_abafada', embolado: 'grave_embolado', estridente: 'som_estridente', microfonia: 'microfonia' };
 const RETRIEVAL_DEADLINE_MS = 3000;
 const NARRATIVE_MAX_CHARS = 700;
-const PROVIDER_LABEL: Record<ProviderId, string> = { ollama: 'O Ollama', gemini: 'O Gemini', deepseek: 'A DeepSeek', anthropic: 'A Anthropic' };
-const KEY_MISSING: Record<ProviderId, string> = { ollama: '', gemini: 'Falta a chave do Gemini (config/secrets.yaml ou MIXAI_GEMINI_API_KEY).', deepseek: 'Falta a chave da DeepSeek (config/secrets.yaml ou MIXAI_DEEPSEEK_API_KEY).', anthropic: 'Falta a chave da Anthropic (config/secrets.yaml ou ANTHROPIC_API_KEY).' };
+const PROVIDER_LABEL: Record<ProviderId, string> = { ollama: 'O Ollama', gemini: 'O Gemini', deepseek: 'A DeepSeek', anthropic: 'A Anthropic', openai: 'A OpenAI' };
+const KEY_MISSING: Record<ProviderId, string> = { ollama: '', gemini: 'Falta a chave do Gemini (config/secrets.yaml ou MIXAI_GEMINI_API_KEY).', deepseek: 'Falta a chave da DeepSeek (config/secrets.yaml ou MIXAI_DEEPSEEK_API_KEY).', anthropic: 'Falta a chave da Anthropic (config/secrets.yaml ou ANTHROPIC_API_KEY).', openai: 'Falta a chave da OpenAI (config/secrets.yaml ou MIXAI_OPENAI_API_KEY).' };
 
 const NARRATIVE_SYSTEM = [
   'Você explica, em português do Brasil, para um operador de mesa de som, o que os trechos de manual dizem sobre o problema descrito.',
@@ -374,6 +374,17 @@ export class LocalKnowledge {
     return { chain: [...(permitted ? [chosen] : []), ...fallback].filter((p): p is AiProvider => !!p), ...(chosen && !permitted ? { withheld: chosen.id } : {}) };
   }
 
+  /**
+   * Cadeia do resumo quando o roteador central resolveu o modelo desta sessão: o escolhido no catálogo e, se for externo e a política
+   * `externalFallback` for 'ollama', o Ollama LOCAL como reserva. Nunca externo -> externo. O consentimento vem da própria rota (catálogo).
+   */
+  private routedChain(route: ChatRoute): { chain: AiProvider[]; withheld?: ProviderId } {
+    const local = this.chatProvider('ollama'), chosen = route.provider;
+    const permitted = !chosen.external || route.allowed();
+    const fallback = chosen.external && (this.o.externalFallback ?? 'ollama') === 'ollama' && local ? [local] : [];
+    return { chain: [...(permitted ? [chosen] : []), ...fallback], ...(!permitted ? { withheld: chosen.id } : {}) };
+  }
+
   /** Provedores EXTERNOS de texto (DeepSeek/Anthropic) já com controle de custo, para o planejador usar as mesmas instâncias e o modelo escolhido. */
   externalTextProviders(): AiProvider[] { return this.chatList().filter((p) => p.external && p.id !== 'gemini'); }
 
@@ -459,7 +470,7 @@ export class LocalKnowledge {
 
   /** Nunca lança e nunca altera o diagnóstico: só acrescenta referências, ficha do microfone e texto de apoio. */
   /** `externalAllowed`: consentimento do operador NA SESSÃO para qualquer serviço externo (ausente = não consentido). É reavaliado a cada envio e ao receber o resultado. */
-  async enrich(input: EnrichInput, opts: { externalAllowed?: (id: ProviderId) => boolean } = {}): Promise<KnowledgeContext> {
+  async enrich(input: EnrichInput, opts: { externalAllowed?: (id: ProviderId) => boolean; chat?: ChatRoute } = {}): Promise<KnowledgeContext> {
     try {
       const query = cleanText([input.symptom, input.instrument, input.text].filter(Boolean).join(' ')).slice(0, 300);
       // Busca mais trechos do que o necessário: parte pode sair pelo filtro de modelo de microfone.
@@ -496,7 +507,10 @@ export class LocalKnowledge {
         if (c) ctx.caseRef = { id: c.id, title: c.title };
       }
 
-      const { chain, withheld } = this.chatChain(opts.externalAllowed);
+      const route = opts.chat;
+      const { chain, withheld } = route ? this.routedChain(route) : this.chatChain(opts.externalAllowed);
+      // Consentimento do envio: a rota do catálogo decide o que ela escolheu; o resto (embedder externo etc.) segue a regra legada.
+      const sendOk = (p: AiProvider) => !p.external || (route && p === route.provider ? route.allowed() : opts.externalAllowed?.(p.id) === true);
       if (!this.o.narrative || (!chain.length && !withheld)) ctx.narrativeStatus = { status: 'disabled' };
       else if (!ctx.passages.length) ctx.narrativeStatus = { status: 'no_passages' };
       else if (!chain.length) ctx.narrativeStatus = { status: 'not_consented', provider: withheld };
@@ -505,10 +519,11 @@ export class LocalKnowledge {
         let failed: { id: ProviderId; status: NarrativeStatus } | undefined = withheld ? { id: withheld, status: 'not_consented' } : undefined;
         for (const provider of chain) {
           // Consentimento reavaliado ANTES de cada envio (revogado no meio da operação: nada novo sai).
-          if (provider.external && opts.externalAllowed?.(provider.id) !== true) { failed ??= { id: provider.id, status: 'not_consented' }; continue; }
+          if (!sendOk(provider)) { failed ??= { id: provider.id, status: 'not_consented' }; continue; }
           let r = await this.narrate(provider, input, ctx.passages, names);
           // ... e ao receber: se foi revogado enquanto o serviço respondia, o resultado é descartado e não é exibido.
-          if (provider.external && opts.externalAllowed?.(provider.id) !== true) r = { status: 'not_consented' };
+          if (!sendOk(provider)) r = { status: 'not_consented' };
+          else if (route && provider === route.provider && !route.allowed()) r = { status: 'not_consented', rule: 'selecao_alterada' };
           const noted = this.note(r.status, r.rule, r.chars, provider.id);
           ctx.narrativeStatus = { ...noted, provider: provider.id, ...(r.model ? { model: r.model } : {}), ...(r.status === 'used' && failed ? { fellBackFrom: failed.id, fallbackReason: failed.status } : {}) };
           if (r.status === 'used') { ctx.narrative = { text: r.text!, source: provider.id, ...(r.model ? { model: r.model } : {}), verified: false }; break; }

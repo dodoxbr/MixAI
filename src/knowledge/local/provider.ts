@@ -3,7 +3,7 @@
  * mesma língua; o motor determinístico é o fallback de todos e não passa por aqui. Nenhum provedor
  * conhece a mesa, o controlador ou a fila: só recebem texto de apoio e devolvem texto/vetores.
  */
-export type ProviderId = 'ollama' | 'gemini' | 'deepseek' | 'anthropic';
+export type ProviderId = 'ollama' | 'gemini' | 'deepseek' | 'anthropic' | 'openai';
 /** Provedores externos exigem consentimento do operador por sessão antes de qualquer envio (Gemini mantém o fluxo anterior). */
 export const PROVIDER_IDS = ['ollama', 'gemini', 'deepseek', 'anthropic'] as const;
 
@@ -25,8 +25,15 @@ export interface GenerateResult {
   model?: string;
   usage?: ProviderUsage;
   /** Detalhe de uma falha para o registro (sem texto do servidor): saldo esgotado, orçamento diário local, limite por minuto. */
-  reason?: 'insufficient_balance' | 'budget' | 'rate_limit';
+  reason?: 'insufficient_balance' | 'budget' | 'rate_limit' | 'price_unknown';
 }
+
+/**
+ * Rota de conversa resolvida pelo roteador central (src/ai/routing) para UMA sessão autenticada: o provedor/modelo que o operador
+ * escolheu no catálogo, já ligado a essa sessão e à revisão da seleção. `allowed()` é avaliada de novo a cada envio e ao receber
+ * a resposta: seleção trocada, consentimento revogado ou logout a tornam falsa, e o resultado é descartado.
+ */
+export interface ChatRoute { readonly provider: AiProvider; readonly key: string; allowed(): boolean; live(): string }
 
 export interface AiProvider {
   readonly id: ProviderId;
