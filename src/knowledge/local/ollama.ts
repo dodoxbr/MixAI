@@ -15,6 +15,7 @@ const DOCUMENT_EMBED_TIMEOUT_MS = 60_000;
 export class OllamaClient implements AiProvider {
   readonly id = 'ollama' as const;
   readonly external = false;
+  get model(): string { return this.o.chatModel; }
   private cache?: { at: number; value: OllamaHealth };
   constructor(private readonly o: OllamaOptions, private readonly fetchFn: typeof fetch = fetch, private readonly clock: () => number = Date.now) {}
 

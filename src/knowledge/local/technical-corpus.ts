@@ -21,7 +21,7 @@ export interface TechnicalImportReport {
   chunks: number; embedded: number; pending: number;
   /** complete = todos os trechos têm vetor; partial/pending = há trechos só com busca por palavras (rode de novo); none = sem provedor. */
   embeddings: 'complete' | 'partial' | 'pending' | 'none';
-  provider?: 'ollama' | 'gemini'; skippedExternal?: boolean;
+  provider?: import('./provider.js').ProviderId; skippedExternal?: boolean;
 }
 
 /**

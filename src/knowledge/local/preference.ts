@@ -8,7 +8,7 @@ import type { ProviderId } from './provider.js';
  * Guarda só o nome do provedor: nunca chave, URL ou texto. Arquivo corrompido é ignorado (vale o
  * padrão da configuração) e nunca derruba o servidor.
  */
-const schema = z.strictObject({ version: z.literal(1), chat: z.enum(['ollama', 'gemini']) });
+const schema = z.strictObject({ version: z.literal(1), chat: z.enum(['ollama', 'gemini', 'deepseek', 'anthropic']) });
 
 export function readChatPreference(path: string): ProviderId | undefined {
   try {

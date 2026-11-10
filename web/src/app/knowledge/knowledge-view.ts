@@ -15,7 +15,9 @@ export interface KnowledgeView {
   /** Por que não há resumo do modelo (só quando o servidor tentou e descartou). */
   narrativeNote?: string;
   /** Quem escreveu o resumo: o modelo local ou o Gemini (serviço externo). */
-  narrativeSource?: 'ollama' | 'gemini';
+  narrativeSource?: 'ollama' | 'gemini' | 'deepseek' | 'anthropic';
+  /** Modelo que de fato respondeu (informado pelo servidor). */
+  narrativeModel?: string;
   /** Resumo feito pelo modelo local porque o Gemini falhou. */
   fallbackNote?: string;
   /** Trechos de outros modelos de microfone deixados de fora. */
@@ -29,6 +31,7 @@ const NARRATIVE_NOTES: Record<string, string> = {
   empty: 'Resumo do modelo: sem base suficiente nos trechos para responder com segurança. Descreva o problema com mais detalhes ou consulte o operador.',
   echo: 'Resumo do modelo local descartado: apenas repetia os trechos.',
   blocked: 'Resumo do modelo local descartado por segurança (continha valores, comandos ou afirmação sobre o áudio).',
+  not_consented: 'Resumo do serviço externo não gerado: falta confirmar o envio nesta sessão (Base de conhecimento > Provedor do resumo).',
   auth: 'Resumo do Gemini indisponível: a chave foi recusada.',
   quota: 'Resumo do Gemini indisponível: limite de uso atingido.',
   refused: 'Resumo descartado: o provedor recusou o pedido por segurança. Nenhum outro modelo foi consultado.',
@@ -39,7 +42,7 @@ const NARRATIVE_NOTES: Record<string, string> = {
 const FALLBACK_REASONS: Record<string, string> = {
   auth: 'recusou a chave', quota: 'atingiu o limite de uso', timeout: 'demorou demais', unavailable: 'não respondeu',
   error: 'deu erro', recitation: 'não pôde responder sem reproduzir texto protegido', withheld: 'não recebe trechos de documentos locais',
-  truncated: 'devolveu a resposta incompleta',
+  truncated: 'devolveu a resposta incompleta', not_consented: 'não tinha o seu consentimento nesta sessão',
 };
 const str = (v: unknown, max: number): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -62,8 +65,9 @@ export function knowledgeView(raw: unknown): KnowledgeView | undefined {
   const excluded = typeof filter['excluded'] === 'number' && filter['excluded'] > 0 ? Math.min(99, Math.floor(filter['excluded'])) : 0;
   const filterModel = str(filter['model'], 6);
   const ns = rec(k['narrativeStatus']);
-  const source = narrative['source'] === 'gemini' ? 'gemini' : narrative['source'] === 'ollama' ? 'ollama' : undefined;
-  const fellBack = str(ns['fellBackFrom'], 10) === 'gemini' ? FALLBACK_REASONS[str(ns['fallbackReason'], 20) ?? ''] : undefined;
+  const source = (['gemini', 'ollama', 'deepseek', 'anthropic'] as const).find((s) => s === narrative['source']);
+  const from = (['gemini', 'deepseek', 'anthropic'] as const).find((s) => s === str(ns['fellBackFrom'], 12));
+  const fellBack = from ? FALLBACK_REASONS[str(ns['fallbackReason'], 20) ?? ''] : undefined;
   return {
     mode, degraded: k['degraded'] === true,
     reason: str(k['reason'], 160), passages,
@@ -73,7 +77,8 @@ export function knowledgeView(raw: unknown): KnowledgeView | undefined {
     narrative: narrative['verified'] === false ? str(narrative['text'], 700) : undefined,
     narrativeNote: narrative['verified'] === false || !status ? undefined : NARRATIVE_NOTES[status],
     narrativeSource: narrative['verified'] === false ? source : undefined,
-    fallbackNote: narrative['verified'] === false && fellBack ? `Resumo gerado pelo modelo local porque o Gemini ${fellBack}.` : undefined,
+    narrativeModel: narrative['verified'] === false ? str(narrative['model'], 80) : undefined,
+    fallbackNote: narrative['verified'] === false && fellBack ? `Resumo gerado pelo modelo local porque ${from === 'gemini' ? 'o Gemini' : from === 'deepseek' ? 'a DeepSeek' : 'a Anthropic'} ${fellBack}.` : undefined,
     modelNote: excluded && filterModel ? `${excluded} trecho(s) que só descrevem outros modelos de microfone foram ocultados (este canal usa o ${filterModel}).` : undefined,
   };
 }

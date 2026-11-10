@@ -6,6 +6,7 @@ import type { ParamKey } from '../core/revisions.js';
 import { eventToWire, snapshotToWire, type StateEvent, type WireEvent, type WireSnapshot } from '../core/state.js';
 import type { MixerAdapter } from '../mixer/types.js';
 import type { Auth, Principal, Role } from './auth.js';
+import { ExternalConsent } from './external-consent.js';
 import { authorizeCommand, CommandSchema, describeCommand, dispatch, isSceneCommand, visibleKey, type Command } from './commands.js';
 import type { ScenesService } from './scenes.js';
 import { actorOf, DEFAULT_POLICY, MUSICIAN_PA_STEP_MAX_DB, stepLimitFor, type AccessPolicy, type MusicianAccess } from './policy.js';
@@ -81,6 +82,8 @@ export class ServerCore {
   private requests = new Map<string, { at: number; response: Promise<CommandResponse> }>();
   private noticeListeners = new Set<(n: Notice, audience: { roles: Role[]; principalId?: string }) => void>();
   private sweepTimer: NodeJS.Timeout | undefined;
+  /** Consentimento de envio a serviços externos de IA: por sessão, só na memória. */
+  readonly externalConsent = new ExternalConsent();
   /** Assistente de texto (E4). Montado em start.ts. */
   assistant: AssistantService | undefined;
   /** Cenas do MixAI (E5). */
