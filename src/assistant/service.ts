@@ -8,6 +8,7 @@ import { paramKey } from '../core/revisions.js';
 import { auxBus, MASTER } from '../mixer/types.js';
 import type { Principal } from '../server/auth.js';
 import type { KnowledgeContext, LocalKnowledge } from '../knowledge/local/index.js';
+import type { ChatRoute } from '../knowledge/local/provider.js';
 import { musicianHasPA } from '../server/policy.js';
 import type { ServerCore } from '../server/core.js';
 import type { ClarifyOption, ParseOutcome } from './intent.js';
@@ -87,6 +88,8 @@ export class AssistantService {
       knowledgeDeadlineMs?: number;
       /** Consentimento por sessão para enviar resumos a DeepSeek/Anthropic. Sem ele, esses provedores não são chamados. */
       externalConsent?: { allowed(p: Principal, providerId: string): boolean; revoke(id: string): void; readonly revision: number };
+      /** Roteador central: provedor/modelo escolhido pelo operador NESTA sessão (catálogo). Sem seleção, devolve undefined e vale o caminho anterior. */
+      chatRoute?: (p: Principal) => ChatRoute | undefined;
       log: ActionLog;
       clock?: () => number;
     },
@@ -199,12 +202,12 @@ export class AssistantService {
    * Acrescenta o contexto da base local a uma resposta de diagnóstico do operador. Falha da base
    * (ou ausência dela) devolve a resposta original: o motor determinístico continua sendo a resposta.
    */
-  private async enrichWithin(k: LocalKnowledge, query: Parameters<LocalKnowledge['enrich']>[0], p: Principal): Promise<KnowledgeContext> {
+  private async enrichWithin(k: LocalKnowledge, query: Parameters<LocalKnowledge['enrich']>[0], p: Principal, route?: ChatRoute): Promise<KnowledgeContext> {
     const ms = this.opts.knowledgeDeadlineMs ?? KNOWLEDGE_DEADLINE_MS;
     // enrich() já captura os próprios erros; a captura extra garante que uma rejeição inesperada nunca derrube a resposta.
     const consent = this.opts.externalConsent;
     const consentRevision = consent?.revision;
-    const work = k.enrich(query, { externalAllowed: (id) => this.core.auth.isActive(p) && consent?.revision === consentRevision && consent?.allowed(p, id) === true }).catch((): KnowledgeContext => ({ mode: 'deterministic', degraded: true, reason: 'Base de conhecimento indisponível.', passages: [] }));
+    const work = k.enrich(query, { ...(route ? { chat: route } : {}), externalAllowed: (id) => this.core.auth.isActive(p) && consent?.revision === consentRevision && consent?.allowed(p, id) === true }).catch((): KnowledgeContext => ({ mode: 'deterministic', degraded: true, reason: 'Base de conhecimento indisponível.', passages: [] }));
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), ms); });
     try {
@@ -229,18 +232,24 @@ export class AssistantService {
     // Relato ainda vago ("violão horrível"): sem sintoma, não há o que buscar. A base e o modelo local só entram depois do esclarecimento.
     if (!query.symptom) return reply;
     // A revisão do consentimento entra na chave: trocar/revogar o provedor externo invalida o resumo guardado.
-    const key = JSON.stringify([query.text, query.symptom, query.instrument, query.channel, query.destination, this.opts.externalConsent?.revision ?? 0, k.providers().chat.selected]);
+    const route = this.opts.chatRoute?.(p);
+    const key = JSON.stringify([query.text, query.symptom, query.instrument, query.channel, query.destination, this.opts.externalConsent?.revision ?? 0, k.providers().chat.selected, route?.key ?? 'legado']);
     const hit = this.knowledgeCache.get(p.id);
     let knowledge: KnowledgeContext;
     if (hit && hit.key === key && hit.expiresAt > this.now()) knowledge = structuredClone(hit.knowledge);
     else {
       // A consulta documental (busca + resumo do modelo local) é OPCIONAL: não pode segurar a orientação determinística além do prazo da interface.
       const consentAtStart = this.opts.externalConsent?.revision ?? 0;
-      knowledge = await this.enrichWithin(k, query, p);
+      knowledge = await this.enrichWithin(k, query, p, route);
       // Consentimento mudou durante a consulta: o resultado pode ter vindo de um envio já revogado. O LocalKnowledge já descarta o
       // resumo externo; aqui garantimos que nada dessa rodada fica em cache.
-      if ((this.opts.externalConsent?.revision ?? 0) !== consentAtStart) {
+      // (Com rota do catálogo o consentimento é o do catálogo, avaliado abaixo: a seleção legada de outra sessão não interfere.)
+      if (!route && (this.opts.externalConsent?.revision ?? 0) !== consentAtStart) {
         knowledge = { mode: 'deterministic', degraded: true, reason: 'Consentimento alterado durante a consulta; resposta descartada.', passages: [], narrativeStatus: { status: 'not_consented' } };
+      }
+      // Seleção/consentimento do catálogo mudou (ou a sessão acabou) durante a consulta: a resposta é da seleção ANTIGA e é descartada.
+      if (route && !route.allowed()) {
+        knowledge = { mode: 'deterministic', degraded: true, reason: 'Seleção de modelo ou consentimento alterado durante a consulta; resposta descartada.', passages: [], narrativeStatus: { status: 'not_consented', rule: 'selecao_alterada' } };
       }
       // Resultado degradado (Ollama fora, tempo esgotado) não é guardado: a próxima volta tenta de novo.
       const transient = knowledge.degraded || ['timeout', 'unavailable', 'error'].includes(knowledge.narrativeStatus?.status ?? '');

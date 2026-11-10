@@ -12,7 +12,7 @@ import { ProviderSettingsService } from './provider-settings.service';
         <div><p class="eyebrow">Configurações · LAB</p><h2 id="ai-settings-title">Inteligência Artificial</h2></div>
         <button autofocus type="button" class="btn btn-ghost" (click)="closed.emit()" aria-label="Fechar configurações de IA">Fechar</button>
       </header>
-      <p class="warning" role="note">Catálogo v1 — seleção exclusiva desta sessão. Não altera o provedor do diagnóstico, RAG ou AutoConfig: esses fluxos continuam separados. O resumo documental mantém sua configuração na Base de conhecimento.</p>
+      <p class="warning" role="note">Catálogo v1 — seleção exclusiva desta sessão. O modelo escolhido aqui responde ao resumo do diagnóstico/RAG e ao planejador do AutoConfig desta sessão, com consentimento por sessão e por modelo. Embeddings continuam independentes. Sem seleção, valem as configurações da Base de conhecimento. Nada é executado na mesa.</p>
       <section class="active" aria-label="Seleção do catálogo nesta sessão">
         <span class="eyebrow">Seleção confirmada do catálogo</span>
         @if (s.snapshot(); as pv) {

@@ -1,4 +1,5 @@
 import { ExternalConsent } from './external-consent.js';
+import { AiRouter } from '../ai/routing/index.js';
 import { buildModelCatalog, SessionModelConsent, type ModelCatalogService, type ModelConsentPort } from '../ai/model-catalog/index.js';
 import { AutoConfigAdvisor } from '../autoconfig/suggestion-source.js';
 import { AutoConfigService } from '../autoconfig/service.js';
@@ -111,6 +112,7 @@ export async function startServer(
       { mode, policy: () => core.policy, clock: opts.clock },
     );
     // Base de conhecimento local (opcional, desligada por padrão). Falha dela nunca impede o início.
+    let router: AiRouter | undefined;
     let knowledge: LocalKnowledge | undefined = opts.knowledge;
     try {
       knowledge ??= await openLocalKnowledge(loaded, { log: opts.log });
@@ -121,6 +123,7 @@ export async function startServer(
       knowledge,
       knowledgeDeadlineMs: config.knowledge.replyDeadlineMs,
       externalConsent: core.externalConsent,
+      chatRoute: p => router?.route(p, 'knowledge'),
       steps: config.assistant,
       ttlMs: config.assistant.proposalTtlSec * 1000,
       channels: loaded.channels.channels,
@@ -147,6 +150,7 @@ export async function startServer(
         eventVersion: id => records.read().soundchecks.find(e => e.id === id)?.version,
         selectedProvider: () => knowledge?.providers().chat.selected ?? config.knowledge.chatProvider,
         externalProviders: () => knowledge?.externalTextProviders() ?? [],
+        route: p => router?.route(p, 'autoconfig'),
         audit: (p, result) => app!.log.add({ action: 'autoconfig_advice', ok: result.outcome === 'returned', message: 'Consulta consultiva AutoConfig; sem rascunho ou autorização automática.', details: { ...result, role: p.role, actor: p.id } }),
       }, core.externalConsent, { clock: opts.clock, fetch: opts.autoConfigPlannerFetch, geminiFetch: opts.autoConfigPlannerGeminiFetch });
       removeAdvisorRevoke = auth.onRevoke(id => autoConfigAdvisor?.revoke(id));
@@ -162,6 +166,7 @@ export async function startServer(
         audit: event => app!.log.add({ action: 'model_catalog_usage', ok: event.outcome === 'success', message: 'Uso consultivo de IA; nenhuma execução.', details: { ...event } }),
       }, { fetch: opts.modelCatalogFetch, clock: opts.clock });
       removeModelCatalogRevoke = auth.onRevoke(id => modelCatalog?.revoke(id));
+      router = new AiRouter(modelCatalog);
     }
     let boundPort = port;
     for (const host of hosts) {

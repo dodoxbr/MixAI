@@ -24,13 +24,16 @@ export function createConfiguredPlanner(loaded: LoadedConfig, names: ChannelMap,
   fetch?: typeof fetch; geminiFetch?: typeof fetch; clock?: () => number; timeoutMs?: number;
   /** DeepSeek/Anthropic já construídos pela base de conhecimento (com controle de custo e o modelo escolhido pelo operador). */
   externalProviders?: readonly AiProvider[];
+  /** Rota do catálogo desta sessão (roteador central): quando presente, é o ÚNICO provedor de conversa além do Ollama local de reserva. */
+  routed?: AiProvider;
 }) {
   const k = loaded.config.knowledge, providers: PlannerProvider[] = [];
+  if (deps.routed) providers.push(textProviderAdapter(deps.routed));
   if (k.enabled && k.ollama.narrative) {
-    if (loopback(k.ollama.url)) providers.push(textProviderAdapter(new OllamaClient({ ...k.ollama, generateTimeoutMs: k.ollama.narrativeTimeoutMs }, deps.fetch ?? fetch, deps.clock)));
-    if (k.gemini.enabled) providers.push(textProviderAdapter(new GeminiClient({ ...k.gemini, generateTimeoutMs: k.gemini.narrativeTimeoutMs }, loaded.secrets?.geminiApiKey, deps.geminiFetch ?? fetch, deps.clock)));
+    if (loopback(k.ollama.url) && !(deps.routed?.id === 'ollama')) providers.push(textProviderAdapter(new OllamaClient({ ...k.ollama, generateTimeoutMs: k.ollama.narrativeTimeoutMs }, deps.fetch ?? fetch, deps.clock)));
+    if (k.gemini.enabled && !deps.routed) providers.push(textProviderAdapter(new GeminiClient({ ...k.gemini, generateTimeoutMs: k.gemini.narrativeTimeoutMs }, loaded.secrets?.geminiApiKey, deps.geminiFetch ?? fetch, deps.clock)));
   }
-  if (k.enabled && k.ollama.narrative) for (const p of deps.externalProviders ?? []) providers.push(textProviderAdapter(p));
+  if (k.enabled && k.ollama.narrative && !deps.routed) for (const p of deps.externalProviders ?? []) providers.push(textProviderAdapter(p));
   return new TechnicalPlanner({ knowledge: bandKnowledgeAdapter(names, deps.microphones), providers, fallbackToLocal: k.external.fallback === 'ollama', observations: deps.observations, clock: deps.clock, timeoutMs: deps.timeoutMs,
     policy: () => { const p = deps.policy(); return { ...p, enabled: (k.enabled || !!deps.allowDeterministicWithoutKnowledge) && loaded.config.mixer.mode === 'lab' && p.enabled }; } });
 }
