@@ -129,6 +129,26 @@ describe('summarizeFrame: resolução, escala e qualidade', () => {
     expect(e.peaks).toMatchObject({ state: 'omitted', omissionReason: 'quality_insufficient' });
     expect(e.bands.some(b => b.state === 'resolved_level')).toBe(true);
   });
+  it('confiança insuficiente por qualquer motivo (não só clipping) torna a evidência insuficiente e omite picos', () => {
+    for (const reasons of [['declared_not_verified'], [], ['unresolved_band'], ['outro_motivo']]) {
+      const f = clone(frameOf(pcm(tones([[1500, 0.5]])))); f.quality.confidence = 'insufficient'; f.quality.reasons = reasons;
+      const e = summarizeFrame(f);
+      expect(e.availability, reasons.join()).toEqual({ state: 'insufficient_evidence', reasons: ['quality_insufficient'] });
+      expect(e.peaks).toMatchObject({ state: 'omitted', omissionReason: 'quality_insufficient', items: [] });
+      expect(e.quality.frameConfidence).toBe('insufficient');
+      expect(e.bands.some(b => b.state === 'resolved_level')).toBe(true);
+    }
+  });
+  it('confiança limitada com energia continua disponível; silêncio mantém apenas no_energy (sem duplicar motivo)', () => {
+    expect(summarizeFrame(frameOf(pcm(tones([[1500, 0.5]])))).availability).toEqual({ state: 'available' });
+    const f = clone(frameOf(pcm(new Float64Array(4096)))); expect(f.quality.confidence).toBe('insufficient');
+    expect(summarizeFrame(f).availability).toEqual({ state: 'insufficient_evidence', reasons: ['no_energy'] });
+    f.quality.reasons = []; expect(summarizeFrame(f).availability).toEqual({ state: 'insufficient_evidence', reasons: ['no_energy'] });
+  });
+  it('clipping informado pelo quadro vem da fração, não de um texto de motivo', () => {
+    const f = clone(frameOf(pcm(tones([[1500, 1.5]])))); f.quality.reasons = [];
+    expect(summarizeFrame(f).quality.clippingPossible).toBe(true);
+  });
   it('clipping indisponível (escala desconhecida) não vira "sem clipping"', () => {
     const e = summarizeFrame(frameOf({ ...pcm(tones([[1500, 0.5]])), fullScale: null } as PcmInput));
     expect(e.quality.clippingPossible).toBeNull(); expect(e.quality.clippingFraction).toBeNull();
@@ -173,6 +193,22 @@ describe('summarizeFrame: proveniência e rota', () => {
     expect(e.frameRef).toEqual({ frameId: 'f1', sourceId: 'src_lab', generationId: 'g1', sequence: 3, contextRevision: 'ctx1', frameVersion: 'spectrum-frame-r1' });
     expect(JSON.stringify(e)).not.toContain('99887');
     expect(e.id).toMatch(/^ev_[0-9a-f]{32}$/);
+  });
+  it('id: determinístico; muda com o conteúdo do quadro, com a referência e com a configuração (sem colisão por referência reutilizada)', () => {
+    const a = frameOf(pcm(tones([[1500, 0.5]])));
+    const b = frameOf(pcm(tones([[3000, 0.5]]))); // mesma referência de ciclo de vida (life), conteúdo diferente
+    expect(a.id).toBe(b.id); expect(a.generationId).toBe(b.generationId); expect(a.sequence).toBe(b.sequence);
+    const ids = new Set([summarizeFrame(a).id, summarizeFrame(b).id, summarizeFrame(a, { floorDbfs: -100 }).id, summarizeFrame(measurementToFrame(analyzePcm(pcm(tones([[1500, 0.5]]))), { ...life, sequence: 4 })).id,
+      summarizeFrame(measurementToFrame(analyzePcm(pcm(tones([[1500, 0.5]]))), { ...life, generationId: 'g2' })).id, summarizeFrame(measurementToFrame(analyzePcm(pcm(tones([[1500, 0.5]]))), { ...life, contextRevision: 'ctx2' })).id]);
+    expect(ids.size).toBe(6);
+    expect(summarizeFrame(a).id).toBe(summarizeFrame(structuredClone(a)).id);
+    const tiny = clone(a); tiny.spectrum.grid.levels[0] = (tiny.spectrum.grid.levels[0] ?? 0) + 1e-9;
+    expect(summarizeFrame(tiny).id).not.toBe(summarizeFrame(a).id);
+  });
+  it('id: 200 quadros distintos com a mesma referência produzem 200 ids distintos', () => {
+    const ids = new Set<string>();
+    for (let i = 0; i < 200; i++) ids.add(summarizeFrame(frameOf(pcm(tones([[200 + i * 37.3, 0.4]])))).id);
+    expect(ids.size).toBe(200);
   });
   it('nunca afirma diagnóstico, microfonia, corte ou número de EQ', () => {
     const e = summarizeFrame(frameOf(pcm(tones([[1500, 0.5]]), { origin: pilotOrigins.cavaco })));

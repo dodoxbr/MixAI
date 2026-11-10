@@ -168,7 +168,7 @@ export function summarizeFrame(rawFrame: unknown, rawConfig: unknown = {}): Spec
       levelDb: b.level, displayLevelDb: below ? bandFloor : b.level, fractionOfTotalPower: b.fractionOfTotalPower };
   });
 
-  const noEnergy = aboveFloor === 0 && belowFloor === 0, qualityBad = f.quality.confidence === 'insufficient' && f.quality.reasons.includes('clipping_possible');
+  const noEnergy = aboveFloor === 0 && belowFloor === 0, qualityBad = f.quality.confidence === 'insufficient' && !noEnergy; // exact silence is already explained by `no_energy`
   const reasons: z.infer<typeof insufficientReasonSchema>[] = [];
   if (noEnergy) reasons.push('no_energy');
   if (qualityBad) reasons.push('quality_insufficient');
@@ -198,7 +198,8 @@ export function summarizeFrame(rawFrame: unknown, rawConfig: unknown = {}): Spec
   if (bands.some(b => b.state === 'unresolved')) notices.push('unresolved_bands_present');
 
   const frameRef = { frameId: f.id, sourceId: f.sourceId, generationId: f.generationId, sequence: f.sequence, contextRevision: f.contextRevision, frameVersion: f.frameVersion };
-  const evId = 'ev_' + createHash('sha256').update(JSON.stringify([EVIDENCE_VERSION, frameRef, c])).digest('hex').slice(0, 32);
+  // The id binds the evidence to the frame CONTENT, not only to the lifecycle reference: a source that reuses a reference for different data still gets distinct ids.
+  const evId = 'ev_' + createHash('sha256').update(JSON.stringify([EVIDENCE_VERSION, SUMMARY_ALGORITHM, f, c])).digest('hex').slice(0, 32);
   const clip = f.quality.digitalClippingEstimate;
   return spectrumEvidenceSchema.parse({
     kind: 'spectrum_evidence', schemaVersion: 1, evidenceVersion: EVIDENCE_VERSION, summaryAlgorithm: SUMMARY_ALGORITHM, id: evId, frameRef,
@@ -209,7 +210,7 @@ export function summarizeFrame(rawFrame: unknown, rawConfig: unknown = {}): Spec
     presentation: { config: c, floorApplied: digital }, bands,
     levels: { totalBins: s.grid.levels.length, aboveFloor, belowFloor, exactZero },
     peaks: { meaning: 'local_spectral_maximum', state: items.length ? 'reported' : 'omitted', omissionReason: items.length ? null : omission, items },
-    quality: { frameConfidence: f.quality.confidence, clippingPossible: clip === null ? null : f.quality.reasons.includes('clipping_possible'), clippingFraction: clip?.fraction ?? null, reasons: f.quality.reasons },
+    quality: { frameConfidence: f.quality.confidence, clippingPossible: clip === null ? null : clip.fraction > 0, clippingFraction: clip?.fraction ?? null, reasons: f.quality.reasons },
     notices, limitations: f.limitations,
     guards: { diagnosis: 'none', eqRecommendation: 'none', authorization: 'not_granted', execution: 'not_executable', realWrites: false },
   });

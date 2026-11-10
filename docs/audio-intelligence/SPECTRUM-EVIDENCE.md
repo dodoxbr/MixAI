@@ -17,7 +17,7 @@ SpectrumMeasurement (#84)  →  SpectrumFrame r1 (#88)  →  SpectrumEvidence r1
 
 `summarizeFrame(frame, config?)` valida o quadro, resume por bandas, classifica níveis, aplica um piso **somente de apresentação**
 e destaca picos por critério explícito. Não há relógio, I/O, aleatoriedade, rede, modelo, hardware nem estado entre chamadas.
-O `id` da evidência é `ev_` + SHA-256 truncado de (versão, referência do quadro, configuração): mesma entrada, mesmo `id`.
+O `id` da evidência é `ev_` + SHA-256 (128 bits) de (versões, **conteúdo completo do quadro**, configuração): mesma entrada, mesmo `id`; quadros distintos que reutilizam a mesma referência de ciclo de vida (`frameId`/`generationId`/`sequence`) recebem ids distintos (testado com 200 quadros). Não se confia na unicidade da referência fornecida pela fonte.
 Erros: `EvidenceError` com `INVALID_FRAME`, `INVALID_CONFIG` ou `RESOURCE_LIMIT` (sem amostras nem níveis na mensagem).
 
 ## 2. Contrato (`spectrumEvidenceSchema`, Zod estrito)
@@ -61,7 +61,8 @@ quantização e o ruído numérico de ponto flutuante (≈ −300 dBFS num tom p
 Como o nível de banda é a **soma** das potências dos bins, o piso de uma banda sobe `10·log10(binCount)`. Escala sem referência (`relative_unknown`):
 sem piso, sem picos.
 
-**Disponibilidade.** `available` exige confiança do quadro sem clipping digital possível e ao menos uma banda `resolved_level`. Caso contrário,
+**Disponibilidade.** `available` exige confiança do quadro `limited` e ao menos uma banda `resolved_level`. Confiança `insufficient` por **qualquer** motivo
+(clipping ou outro) ⇒ `quality_insufficient`; silêncio exato ⇒ somente `no_energy` (sem motivo duplicado). Caso contrário,
 `insufficient_evidence` com motivos; as bandas continuam descritas, os picos são omitidos.
 
 **Picos — critério de proeminência.** Candidato: máximo local interno (maior que o vizinho esquerdo e ≥ ao direito) com nível ≥ piso + `minProminenceDb`.
