@@ -120,7 +120,9 @@ describe('proveniência e limites de capacidade', () => {
       // Catalog consumes provider interfaces/clients only; the deterministic knowledge base stays isolated.
       'src/ai/model-catalog/contracts.ts', 'src/ai/model-catalog/factory.ts', 'src/ai/model-catalog/service.ts', 'src/ai/model-catalog/openai.ts',
       // Roteador central: só tipos/interfaces de provedor (ChatRoute, AiProvider); nada da base determinística.
-      'src/ai/routing/router.ts', 'src/ai/routing/routed-provider.ts'];
+      'src/ai/routing/router.ts', 'src/ai/routing/routed-provider.ts',
+      // Operational interpreter only consumes the routed text-provider contract.
+      'src/assistant/mixer-operator/interpreter.ts'];
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(item =>
       item.isDirectory() ? files(join(dir, item.name)) : [join(dir, item.name)]);
     for (const file of files('src').filter(f => f.endsWith('.ts'))) {

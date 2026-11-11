@@ -7,8 +7,8 @@ export type Destination = 'pa' | 'fones';
  * pelas travas e pela fila da E2.
  */
 export type Intent =
-  | { type: 'level'; channel: number; dest: Destination; deltaDB?: number; db?: number; reason?: string }
-  | { type: 'mute'; channels: number[]; dest: Destination; muted: boolean; reason?: string }
+  | { type: 'level'; channel: number; dest: Destination; aux?: number; deltaDB?: number; db?: number; reason?: string }
+  | { type: 'mute'; channels: number[]; dest: Destination; aux?: number; muted: boolean; reason?: string }
   | { type: 'master'; deltaDB?: number; db?: number; reason?: string }
   | { type: 'undo'; reason?: string };
 
@@ -23,4 +23,5 @@ export type ParseOutcome =
   | { kind: 'intents'; intents: Intent[] }
   | { kind: 'clarify'; question: string; options: ClarifyOption[] }
   | { kind: 'answer'; text: string }
+  | { kind: 'query'; channel: number; dest: Destination; aux?: number; parameter: 'level' | 'mute' | 'configuration' }
   | { kind: 'unknown' };

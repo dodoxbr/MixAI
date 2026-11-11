@@ -124,6 +124,8 @@ export async function startServer(
       knowledgeDeadlineMs: config.knowledge.replyDeadlineMs,
       externalConsent: core.externalConsent,
       chatRoute: p => router?.route(p, 'knowledge'),
+      mixerRoute: p => router?.route(p, 'mixer_operator'),
+      usesModelCatalog: config.modelCatalog.enabled,
       steps: config.assistant,
       ttlMs: config.assistant.proposalTtlSec * 1000,
       channels: loaded.channels.channels,

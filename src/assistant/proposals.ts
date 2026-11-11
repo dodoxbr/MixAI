@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { MixController } from '../core/controller.js';
 import { paramKey, type ParamKey } from '../core/revisions.js';
+import { encodeValue } from '../core/state.js';
 import { auxBus, MASTER } from '../mixer/types.js';
 import type { Principal } from '../server/auth.js';
 import { authorizeCommand, type Command } from '../server/commands.js';
@@ -21,6 +22,8 @@ export interface ProposalCard {
   reason?: string;
   /** true = depois de Aplicar ainda vai para o cartão de aprovação do operador (E2). */
   needsApproval: boolean;
+  bus?: { kind: 'master' } | { kind: 'aux'; aux: number };
+  parameters?: Array<{ key: ParamKey; previous: number | boolean | '-inf'; target: number | boolean | '-inf'; revision: number }>;
   expiresAt: string;
 }
 
@@ -69,8 +72,18 @@ export class ProposalBuilder {
     const id = randomBytes(6).toString('hex');
     const expiresAtMs = this.clock() + this.ttlMs;
     const base = { id, source, reason: intent.reason, expiresAt: new Date(expiresAtMs).toISOString() };
-    const aux = (dest: 'pa' | 'fones') => (dest === 'fones' ? this.policy.musicianAux : undefined);
-    const destName = (dest: 'pa' | 'fones') => (dest === 'fones' ? 'FONES' : 'PA');
+    if (intent.type === 'level' || intent.type === 'master') {
+      if ((intent.deltaDB !== undefined && (!Number.isFinite(intent.deltaDB) || intent.deltaDB < -40 || intent.deltaDB > 20)) || (intent.db !== undefined && (!Number.isFinite(intent.db) || intent.db < -100 || intent.db > 10))) return { ok: false, code: 'INVALID', message: 'Valor ou passo fora da faixa permitida pelo motor de comandos.' };
+    }
+    const requestedAux = (intent.type === 'level' || intent.type === 'mute') ? intent.aux : undefined;
+    if (requestedAux !== undefined) {
+      if (intent.type !== 'level' && intent.type !== 'mute') return { ok: false, code: 'INVALID', message: 'Destino inválido.' };
+      if (intent.dest !== 'fones' || !Number.isInteger(requestedAux)) return { ok: false, code: 'INVALID', message: 'AUX inválido.' };
+      try { this.controller.names.auxBus(requestedAux); } catch { return { ok: false, code: 'INVALID', message: 'AUX não disponível no cadastro atual.' }; }
+    }
+    const aux = (dest: 'pa' | 'fones') => (dest === 'fones' ? requestedAux ?? this.policy.musicianAux : undefined);
+    const destName = (dest: 'pa' | 'fones'): 'FONES' | 'PA' => (dest === 'fones' ? 'FONES' : 'PA');
+    const busLabel = (dest: 'pa' | 'fones') => requestedAux !== undefined ? `AUX ${requestedAux}` : dest === 'fones' ? 'Fones' : 'PA';
     const check = (command: Command): BuildResult | undefined => {
       if (!this.channelAccess(p, command)) return { ok: false, code: 'FORBIDDEN', message: 'Canal não vinculado a esta sessão no LAB. Peça ao operador.' };
       const auth = authorizeCommand(p.role, command, names, this.policy);
@@ -99,9 +112,11 @@ export class ProposalBuilder {
           proposal: {
             card: {
               ...base,
-              title: `${intent.dest === 'fones' ? 'Fones' : 'PA'}: ${name}`,
+              title: `${busLabel(intent.dest)}: ${name}`,
               channel: name,
               destination: destName(intent.dest),
+              bus: a ? auxBus(a) : MASTER,
+              parameters: [{ key, previous: encodeValue(current), target: encodeValue(target), revision: st.revision }],
               current: fmtDb(current),
               change: intent.db !== undefined ? `para ${fmtDb(intent.db)}` : fmtDelta(intent.deltaDB ?? 0),
               result: fmtDb(target) + (clamped ? ' (teto)' : ''),
@@ -113,7 +128,7 @@ export class ProposalBuilder {
             command,
             bound: [[key, st.revision]],
             expiresAtMs,
-            revert: { type: 'level', channel: intent.channel, dest: intent.dest, db: Number.isFinite(current) ? current : -100, reason: 'voltar ao valor anterior' },
+            revert: { type: 'level', channel: intent.channel, dest: intent.dest, ...(a ? { aux: a } : {}), db: Number.isFinite(current) ? current : -100, reason: 'voltar ao valor anterior' },
           },
         };
       }
@@ -137,9 +152,11 @@ export class ProposalBuilder {
           proposal: {
             card: {
               ...base,
-              title: `${intent.dest === 'fones' ? 'Fones' : 'PA'}: ${intent.muted ? 'mutar' : 'abrir'} ${names}`,
+              title: `${busLabel(intent.dest)}: ${intent.muted ? 'mutar' : 'abrir'} ${names}`,
               channel: names,
               destination: destName(intent.dest),
+              bus: a ? auxBus(a) : MASTER,
+              parameters: keys.map((key, i) => ({ key, previous: encodeValue((states[i].value as { value: boolean }).value), target: intent.muted, revision: states[i].revision })),
               current: list.map((c, i) => `${c.name}: ${(states[i]!.value as { value: boolean }).value ? 'mutado' : 'aberto'}`).join(' · '),
               change: intent.muted ? 'mutar' : 'abrir (tirar o mute)',
               result: intent.muted ? 'mutado' : 'aberto',
@@ -150,7 +167,7 @@ export class ProposalBuilder {
             command,
             bound: keys.map((k, i) => [k, states[i]!.revision]),
             expiresAtMs,
-            revert: { type: 'mute', channels: changing.map((c) => c.n), dest: intent.dest, muted: !intent.muted, reason: 'voltar como estava' },
+            revert: { type: 'mute', channels: changing.map((c) => c.n), dest: intent.dest, ...(a ? { aux: a } : {}), muted: !intent.muted, reason: 'voltar como estava' },
           },
         };
       }
@@ -170,6 +187,8 @@ export class ProposalBuilder {
             card: {
               ...base,
               title: 'MASTER (som geral)',
+              bus: MASTER,
+              parameters: [{ key, previous: encodeValue(current), target: encodeValue(target), revision: st.revision }],
               channel: 'Master',
               destination: 'MASTER',
               current: fmtDb(current),
@@ -193,12 +212,15 @@ export class ProposalBuilder {
         const top = this.controller.peekUndo();
         if (!top) return { ok: false, code: 'NOTHING', message: 'Não há nada para desfazer.' };
         const states = top.keys.map(read);
+        const unavailable = states.find(state => state.value.status !== 'known');
+        if (unavailable) return unknown('Desfazer', unavailable.value.status);
         return {
           ok: true,
           proposal: {
             card: {
               ...base,
               title: 'Desfazer o último ajuste',
+              parameters: top.targets.map((item, i) => ({ key: item.key, previous: encodeValue((states[i].value as { value: number | boolean }).value), target: encodeValue(item.before), revision: states[i].revision })),
               channel: top.description.split(':')[0] ?? '',
               destination: 'DESFAZER',
               current: top.description,

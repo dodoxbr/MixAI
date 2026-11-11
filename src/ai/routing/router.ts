@@ -4,7 +4,7 @@ import type { ModelCatalogService } from '../model-catalog/service.js';
 import { RoutedProvider } from './routed-provider.js';
 
 /** Fluxo que pediu a geração (registro/auditoria). Nenhum deles executa comandos. */
-export type RoutedFlow = 'knowledge' | 'autoconfig' | 'complete';
+export type RoutedFlow = 'knowledge' | 'autoconfig' | 'complete' | 'mixer_operator';
 export interface RouteSnapshot { provider: CatalogProviderId; model: string; revision: number; external: boolean; consented: boolean; key: string }
 
 /**
