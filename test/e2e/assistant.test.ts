@@ -58,20 +58,20 @@ describe('assistente na tela (LAB, navegador real)', () => {
     await lastCard(yoga).waitFor();
     expect(await lastCard(yoga).textContent()).toContain('FONES');
     expect(v(l, paramKey.level(1, auxBus(1)))).toBe(-20);
-    await lastCard(yoga).getByRole('button', { name: 'Aplicar' }).click();
+    await lastCard(yoga).getByRole('button', { name: 'Confirmar ajuste' }).click();
     await expect.poll(() => v(l, paramKey.level(1, auxBus(1)))).toBe(-18);
     await expect.poll(() => phone.getByTestId('fones-value-1').textContent()).toContain('−18.0 dB'); // o celular viu
 
     // Músico, no celular: "sobe o surdo" → FONES (o único destino dele) → Yoga acompanha
     await say(phone, 'sobe o surdo');
-    await lastCard(phone).getByRole('button', { name: 'Aplicar' }).click();
+    await lastCard(phone).getByRole('button', { name: 'Confirmar ajuste' }).click();
     await expect.poll(() => v(l, paramKey.level(9, auxBus(1)))).toBe(-18);
     await yoga.getByRole('tab', { name: 'FONES' }).click();
     await expect.poll(() => yoga.locator('.strips .strip-value').nth(8).textContent()).toContain('−18.0 dB');
 
     // "Melhorou? Não, voltar" no celular → nova proposta → volta ao valor anterior
     await phone.getByRole('button', { name: 'Não, voltar' }).click();
-    await lastCard(phone).getByRole('button', { name: 'Aplicar' }).click();
+    await lastCard(phone).getByRole('button', { name: 'Confirmar ajuste' }).click();
     await expect.poll(() => v(l, paramKey.level(9, auxBus(1)))).toBe(-20);
     await expect.poll(() => yoga.locator('.strips .strip-value').nth(8).textContent()).toContain('−20.0 dB');
   });
@@ -90,7 +90,7 @@ describe('assistente na tela (LAB, navegador real)', () => {
     const l = await lab();
     const yoga = await open(l, OPERATOR_PIN);
     await say(yoga, 'abaixa o master 2 db');
-    await lastCard(yoga).getByRole('button', { name: 'Aplicar' }).click();
+    await lastCard(yoga).getByRole('button', { name: 'Confirmar ajuste' }).click();
     const approval = yoga.locator('mx-pending-cards .card');
     await approval.waitFor();
     expect(v(l, paramKey.master())).toBe(-6);

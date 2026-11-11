@@ -9,9 +9,12 @@ import { MeterComponent } from './meter.component';
   selector: 'mx-strip',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FaderComponent, MeterComponent],
-  host: { class: 'mx-strip', '[class.is-master]': 'master()', '[class.is-muted]': 'muted()' },
+  styles: [':host.is-selected { outline:2px solid var(--brass); outline-offset:-2px; } .strip-select { min-height:48px; background:none; border:0; padding:0; color:inherit; cursor:pointer; border-radius:4px; }'],
+  host: { class: 'mx-strip', '[class.is-master]': 'master()', '[class.is-muted]': 'muted()', '[class.is-selected]': 'selected()' },
   template: `
-    <div class="strip-name" [title]="name()">{{ name() }}</div>
+    @if (selectable()) {
+      <button type="button" class="strip-name strip-select" [title]="name()" [attr.aria-label]="'Selecionar CH' + number() + ' — ' + name()" [attr.aria-pressed]="selected()" (click)="chosen.emit()">{{ name() }}</button>
+    } @else { <div class="strip-name" [title]="name()">{{ name() }}</div> }
     <div class="strip-number">{{ master() ? 'PA' : 'CH ' + number() }}</div>
     <div class="strip-body">
       @if (showMeter()) {
@@ -38,6 +41,9 @@ import { MeterComponent } from './meter.component';
 })
 export class StripComponent {
   readonly name = input.required<string>();
+  readonly selectable = input(false);
+  readonly selected = input(false);
+  readonly chosen = output<void>();
   readonly number = input(0);
   readonly where = input('no PA');
   readonly level = input<StateValue>({ status: 'unknown' });

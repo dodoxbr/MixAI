@@ -30,7 +30,7 @@ describe('Sound Engineer no chat — consulta offline', () => {
     expect(await answer.textContent()).toContain('Não ouvi o som');
     expect(await page.locator('.technical-references a').count()).toBeGreaterThan(0);
     expect(await page.locator('.proposal').count()).toBe(0);
-    expect(await page.getByRole('button', { name: 'Aplicar', exact: true }).count()).toBe(0);
+    expect(await page.getByRole('button', { name: 'Confirmar ajuste', exact: true }).count()).toBe(0);
     expect(await page.locator('mx-pending-cards .card').count()).toBe(0);
     expect(lab.controller.state.snapshot()).toEqual(before);
     expect(write).not.toHaveBeenCalled();

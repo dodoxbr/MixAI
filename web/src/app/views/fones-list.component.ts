@@ -25,10 +25,12 @@ const STEP_DB = 2;
         <span class="dest dest-PA">PA</span> <strong>Som do público.</strong> Passos de {{ step }} dB; mudanças maiores pedem o operador. O MASTER é só do operador.
       </div>
     } @else {
+      @if (aux() === 1) {
       <div class="shared-warning big" role="note">
         <span class="dest dest-FONES">FONES</span> <strong>{{ auxName() }} (AUX {{ aux() }}{{ aux() === 1 ? ' — HA800' : '' }})</strong>: é um só retorno para todos. <strong>Isto muda o fone de TODOS.</strong>
         <span class="fones-note">MUTE aqui silencia o canal só nos fones; o som do público (PA) não muda.</span>
       </div>
+      } @else { <p class="shared-warning big" role="note">AUX {{ aux() }} — {{ auxName() }}. Destino do servidor; roteamento físico não validado.</p> }
     }
     <ng-content />
     <ul class="fones-rows" [attr.aria-label]="target() === 'pa' ? 'Canais no PA' : 'Canais nos fones'">
@@ -51,7 +53,7 @@ const STEP_DB = 2;
             (click)="toggleMute(row.number, row.muted)"
           >
             <span class="mute-word">{{ actions.isBusy(key(row.number)) ? '…' : row.muted ? 'ABRIR' : 'MUTE' }}</span>
-            <small class="mute-dest">{{ target() === 'pa' ? 'PA' : 'FONES' }}</small>
+            <small class="mute-dest">{{ target() === 'pa' ? 'PA' : aux() === 1 ? 'FONES' : 'AUX ' + aux() }}</small>
           </button>
           <button
             type="button"
@@ -81,14 +83,15 @@ export class FonesListComponent {
   readonly live = inject(LiveService);
   readonly actions = inject(ActionsService);
   readonly target = input<'fones' | 'pa'>('fones');
+  readonly auxOverride = input<number | null>(null);
   get step() { return Math.min(STEP_DB, this.live.hello()?.musicianPaStepDB ?? 3); }
 
-  readonly aux = computed(() => this.live.hello()?.musicianAux ?? 1);
+  readonly aux = computed(() => this.live.hello()?.role === 'operator' && this.live.hello()?.mode !== 'real' && this.auxOverride() !== null ? this.auxOverride()! : this.live.hello()?.musicianAux ?? 1);
   readonly auxName = computed(() => this.live.auxes().find((a) => a.number === this.aux())?.name ?? `AUX ${this.aux()}`);
-  readonly where = computed(() => (this.target() === 'pa' ? 'no PA' : 'no fone'));
+  readonly where = computed(() => (this.target() === 'pa' ? 'no PA' : this.aux() === 1 ? 'no fone' : 'no AUX ' + this.aux()));
   readonly testId = computed(() => (this.target() === 'pa' ? 'pa-value-' : 'fones-value-'));
   readonly rows = computed(() => {
-    const params = this.live.state()?.params ?? {};
+    const params = this.live.connection() === 'online' && !this.live.synchronizing() && this.live.state()?.available ? this.live.state()?.params ?? {} : {};
     const aux = this.target() === 'pa' ? undefined : this.aux();
     return this.live.channels().filter(ch => this.live.hello()?.role !== 'musician' || this.live.musicianBinding()?.channels.includes(ch.number)).map((ch) => {
       const level = params[keys.level(ch.number, aux)]?.value;

@@ -107,6 +107,8 @@ com `server.musicianAccess: pa_without_master`, as abas **FONES** e **PA** (cana
 Celulares: configure `server.lan` (no `config.local.yaml`) e abra `http://<ip-do-wi-fi-do-notebook>:8790`.
 Detalhes, capturas e testes: `docs/lab/07-E3-INTERFACE.md`.
 
+[Operação ao vivo](docs/live-ux/README.md): resumo do canal selecionado, destinos PA/AUX, sincronização, retornos das propostas e verificações técnicas guiadas, com capturas desktop/Yoga/celular e limites de integração.
+
 ![Mesa no Yoga](docs/lab/img/e3-yoga-mesa-pa.png)
 
 ## Celular (deitado e retrato)
