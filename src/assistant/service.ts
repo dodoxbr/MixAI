@@ -156,7 +156,8 @@ export class AssistantService {
     const consultation = parseConsultation(text, this.core.controller.names);
     if (consultation) {
       const destination = resolveDestination(text, this.core.controller.names);
-      if (destination.problem || (destination.aux !== undefined && destination.aux !== 1)) {
+      const unsupportedAux = [...text.matchAll(/\baux\s*(\d+)\b/gi)].some(match => Number(match[1]) !== 1);
+      if (destination.problemCode === 'unknown_return' || unsupportedAux || (destination.aux !== undefined && destination.aux !== 1)) {
         this.diagnosticContexts.clear(p.id); this.planningContexts.delete(p.id);
         return { kind: 'answer', source: 'local', code: 'DIAGNOSIS_DESTINATION_UNSUPPORTED', diagnosticContext: null, text: destination.problem ?? 'O diagnóstico técnico atual contempla PA e FONES/AUX1. Não vou tratar esse AUX como AUX1. Consulte os controles desse destino ou descreva uma queixa no PA/AUX1; nenhuma alteração foi preparada.' };
       }

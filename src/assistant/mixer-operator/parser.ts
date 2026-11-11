@@ -2,7 +2,7 @@ import { words, type ChannelMap } from '../../core/channels.js';
 import type { ParseOutcome } from '../intent.js';
 import { parseRequest, isExplicitMixRequest, type ParseContext } from '../nl-parser.js';
 
-export interface ResolvedDestination { dest?: 'pa' | 'fones'; aux?: number; sourceText: string; problem?: string }
+export interface ResolvedDestination { dest?: 'pa' | 'fones'; aux?: number; sourceText: string; problem?: string; problemCode?: 'ambiguous' | 'unavailable_aux' | 'unknown_return' }
 const normalized = (text: string) => words(text).join(' ').replace(/\b(ch|canal|aux)(\d+)\b/g, '$1 $2');
 /** Destination names are resolved separately so "retorno do Lucius" cannot become a second input channel. */
 export function resolveDestination(raw: string, names: ChannelMap): ResolvedDestination {
@@ -11,19 +11,19 @@ export function resolveDestination(raw: string, names: ChannelMap): ResolvedDest
   if (numbered.length) {
     const ids = [...new Set(numbered.map(m => Number(m[1])))];
     const sourceText = text.replace(/\baux\s*\d+\b/g, '').trim();
-    if (ids.length !== 1 || pa) return { sourceText, problem: 'Escolha um destino de cada vez: PA ou um AUX.' };
+    if (ids.length !== 1 || pa) return { sourceText, problemCode: 'ambiguous', problem: 'Escolha um destino de cada vez: PA ou um AUX.' };
     try { return { sourceText, dest: 'fones', aux: names.auxBus(ids[0]).number }; }
-    catch { return { sourceText, problem: `AUX ${ids[0]} não está disponível no cadastro/limites atuais. Peça ao operador para conferir o destino.` }; }
+    catch { return { sourceText, problemCode: 'unavailable_aux', problem: `AUX ${ids[0]} não está disponível no cadastro/limites atuais. Peça ao operador para conferir o destino.` }; }
   }
   const named = /\b(?:no|nos|na|nas|pro|para)\s+((?:retorno|monitor|fone|fones)\b.*)$/.exec(text);
   if (named) {
     const phrase = named[1].replace(/\s+(?:em|para|pra)?\s*[+-]?\d+(?:[.,]\d+)?\s*db\b.*$/, '').trim();
     const sourceText = text.replace(phrase, '').trim();
-    if (pa) return { sourceText, problem: 'Escolha um destino de cada vez: PA ou um AUX.' };
+    if (pa) return { sourceText, problemCode: 'ambiguous', problem: 'Escolha um destino de cada vez: PA ou um AUX.' };
     // Unqualified FONES/retorno keeps the existing shared-AUX policy, not a musician-specific monitor.
     if (/^(retorno|retornos|fone|fones|monitor)$/.test(phrase)) return { sourceText, dest: 'fones' };
     try { return { sourceText, dest: 'fones', aux: names.auxBus(phrase).number }; }
-    catch { return { sourceText, problem: 'Esse retorno não tem vínculo inequívoco no cadastro. Qual PA/AUX você quer consultar ou ajustar?' }; }
+    catch { return { sourceText, problemCode: 'unknown_return', problem: 'Esse retorno não tem vínculo inequívoco no cadastro. Qual PA/AUX você quer consultar ou ajustar?' }; }
   }
   if (pa) return { sourceText: text.replace(/\b(pa|publico|plateia|main)\b/g, ''), dest: 'pa' };
   if (/\b(fone|fones|retorno|retornos|monitor)\b/.test(text)) return { sourceText: text, dest: 'fones' };
