@@ -6,8 +6,8 @@ interface Subscribable<T> {
 }
 
 // Único lugar que conhece a API da biblioteca para cada parâmetro do MixAI.
-// EQ/HPF/bypass já existem no modelo (E1), mas só são traduzidos aqui quando forem
-// verificados na mesa física; até lá, qualquer tentativa é recusada explicitamente.
+// Leitura EQ/HPF/bypass usa streams verificados na biblioteca, sem promover capacidades de escrita.
+// HPF slope Ui16 é indisponível (somente Ui24R); todos os setters de EQ/HPF continuam bloqueados.
 
 /** Parâmetros que ainda não são enviados à mesa real (EQ/HPF chegam numa etapa futura). */
 export class UnsupportedOnRealMixerError extends Error {
@@ -19,6 +19,12 @@ export class UnsupportedOnRealMixerError extends Error {
 export function observeParam(ui: SoundcraftUI, key: ParamKey): Subscribable<ParamValue> {
   const p = parseKey(key);
   if (p.kind === 'master') return ui.master.faderLevelDB$;
+  if (p.kind === 'eq') {
+    const band = ui.master.input(p.channel).eq.band(p.band);
+    return p.param === 'freq' ? band.frequency$ : p.param === 'q' ? band.q$ : band.gainDB$;
+  }
+  if (p.kind === 'hpf' && p.param === 'freq') return ui.master.input(p.channel).eq.hpf.frequency$;
+  if (p.kind === 'eqBypass') return ui.master.input(p.channel).eq.bypass$;
   if (p.kind !== 'channel') throw new UnsupportedOnRealMixerError(key);
   const ch = p.aux ? ui.aux(p.aux).input(p.channel) : ui.master.input(p.channel);
   return p.param === 'level' ? ch.faderLevelDB$ : ch.mute$;
