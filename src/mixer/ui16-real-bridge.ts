@@ -243,11 +243,7 @@ export class Ui16RealBridge extends RealMixer {
   }
   override link(): LinkState {
     this.checkSilence();
-    return this.fault
-      ? 'STOPPED'
-      : this.quarantined
-        ? 'DEGRADED_READ_ONLY'
-        : super.link();
+    return this.fault ? 'STOPPED' : this.quarantined ? 'SYNCING' : super.link();
   }
   private announce() {
     const state = this.link();
@@ -309,7 +305,7 @@ export class Ui16RealBridge extends RealMixer {
         : { ...base, state: 'unavailable', reason: 'disconnected' };
     this.checkSilence();
     const seen = this.received.get(key);
-    if (this.quarantined && (!seen || seen.sequence < this.fence))
+    if (this.fence !== -Infinity && (!seen || seen.sequence < this.fence))
       return {
         ...base,
         state: lastObserved ? 'stale' : 'unavailable',

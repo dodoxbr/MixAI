@@ -8,6 +8,7 @@ import {
 import { createApp } from '../src/core/app.js';
 import { MixController } from '../src/core/controller.js';
 import { ChannelMap } from '../src/core/channels.js';
+import { applyStateEvent } from '../src/core/state.js';
 import { ActionLog } from '../src/core/log.js';
 import { fixtureChannels } from './helpers.js';
 import { parseConfig } from '../src/core/config.js';
@@ -134,16 +135,22 @@ describe('Ui16 read bridge (synthetic protocol, no network)', () => {
     });
     await b.connect();
     await waitFor(() => b.link() === 'READY');
+    f.last().deliver(`SETD^i.1.eq.b1.gain^${eqGainDBToFaderValue(-3)}`);
+    expect(b.read('ch.2.eq.b1.gain')).toEqual({ known: true, value: -3 });
     now = 21;
-    expect(b.link()).toBe('DEGRADED_READ_ONLY');
+    expect(b.link()).toBe('SYNCING');
     expect(b.reading('ch.2.main.level').state).toBe('stale');
     f.last().deliver('ALIVE');
     expect(b.read('ch.2.main.level')).toEqual({ known: false });
     f.last().deliver(`SETD^i.1.mix^${DBToFaderValue(-11)}`);
     expect(b.read('ch.2.main.level')).toEqual({ known: true, value: -11 });
-    expect(b.link()).toBe('DEGRADED_READ_ONLY');
+    expect(b.link()).toBe('SYNCING');
     f.last().deliver(...stateMessages({ channels: [2], aux: [1] }));
     expect(b.link()).toBe('READY');
+    expect(b.reading('ch.2.eq.b1.gain').state).toBe('stale');
+    expect(b.read('ch.2.eq.b1.gain')).toEqual({ known: false });
+    f.last().deliver(`SETD^i.1.eq.b1.gain^${eqGainDBToFaderValue(-3)}`);
+    expect(b.read('ch.2.eq.b1.gain')).toEqual({ known: true, value: -3 });
   });
   it.each([
     'SETD^i.1.mix^NaN',
@@ -196,5 +203,34 @@ describe('Ui16 read bridge (synthetic protocol, no network)', () => {
     ]);
     expect(b.read('ch.2.aux.1.level')).toEqual({ known: true, value: -20 });
     expect(f.last().commands()).toEqual([]);
+  });
+  it('invalidates existing HTTP/WS state mirrors on silence, then demands a fresh snapshot', async () => {
+    let now = 0;
+    const { bridge: b, fake: f } = setup({
+      clock: () => now,
+      inboundSilenceMs: 20,
+    });
+    await b.connect();
+    await waitFor(() => b.link() === 'READY');
+    const c = new MixController(
+      b,
+      parseConfig({}).safety,
+      new ChannelMap(fixtureChannels(), b.capabilities()),
+      new ActionLog(null),
+    );
+    const mirror = c.state.snapshot(required);
+    const outcomes: string[] = [];
+    c.state.subscribe((event) => outcomes.push(applyStateEvent(mirror, event)));
+    now = 21;
+    await waitFor(() => mirror.available === false);
+    expect(mirror.params['ch.2.aux.1.level']?.value).toEqual({
+      status: 'unavailable',
+    });
+    expect(c.state.snapshot(required).available).toBe(false);
+    f.last().deliver(...stateMessages({ channels: [2], aux: [1] }));
+    await waitFor(() => outcomes.includes('gap'));
+    expect(
+      c.state.snapshot(required).params['ch.2.aux.1.level']?.value,
+    ).toEqual({ status: 'known', value: -20 });
   });
 });

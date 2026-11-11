@@ -74,7 +74,9 @@ estáticas da configuração. Nenhuma captura bruta, IP privado, SSID ou credenc
 - `stale`: queda ou silêncio; valor anterior só existe em `lastObserved` com timestamp
   monotônico e geração. O getter legado não o oferece como atual.
 - `unavailable`: sem amostra anterior, campo não suportado ou sessão selada.
-- Silêncio de entrada (30 s por padrão) põe o link em DEGRADED_READ_ONLY. Heartbeat
+- Silêncio de entrada (30 s por padrão) põe o link em SYNCING (indisponível no contrato legado de estado).
+  Isso invalida valores nos espelhos HTTP/WS já conectados e exige novo snapshot ao voltar;
+  apenas marcar DEGRADED_READ_ONLY deixaria o contrato legado preservar cache antigo. Heartbeat
   isolado não revalida parâmetros. Requer novos frames dos campos obrigatórios para
   recuperar READY; cada campo opcional precisa de sua própria amostra fresca. O protocolo
   não contém sequência/timestamp por parâmetro: não é possível ordenar dois valores
