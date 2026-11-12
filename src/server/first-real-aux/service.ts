@@ -77,14 +77,14 @@ export class FirstRealAuxService {
     const bridge = this.bridge();
     const names = this.core.controller.names;
     const gate = bridge?.auxHandshake.gate;
-    const available = !!bridge?.auxHandshake.available();
+    const available = !!bridge?.auxHandshake.available('ch.1.aux.1.level');
     let observed: number | '-inf' | null = null;
     const registered =
       Number.isInteger(query.channel) && Number.isInteger(query.aux) &&
       names.inputs.configured().includes(query.channel!) && names.aux.configured().includes(query.aux!);
     if (registered && bridge) {
       const sample = bridge.auxHandshake.current(`ch.${query.channel}.aux.${query.aux}.level` as ParamKey);
-      if (sample) observed = sample.value === -Infinity ? '-inf' : sample.value;
+      if (sample && typeof sample.value === 'number') observed = sample.value === -Infinity ? '-inf' : sample.value;
     }
     return {
       serverId: this.core.serverId,

@@ -200,3 +200,9 @@ it('even all enabled categories cannot send a second/different frame during a on
   expect((await pending).confirmation.status).toBe('unconfirmed');
   expect(s.fake.sockets.flatMap(socket => socket.commands())).toEqual([scenarios[0].wire]);
 });
+it('the #101 supervised AUX screen/status stays disabled when only a PA capability is granted', async () => {
+  const s = await setup({ categories: ['pa_level'] }), app = await buildHttp(s.core); close.push(() => app.close());
+  const status = (await app.inject({ method: 'GET', url: '/api/ui16/aux/status?channel=2&aux=1', headers: { authorization: `Bearer ${s.token}` } })).json();
+  expect(status.feature).toMatchObject({ gate: false, available: false, state: 'disabled' }); expect(status.observed).toBeNull();
+  expect(s.preview(scenarios[0].intent).proposal).toBeDefined(); expect(s.preview(scenarios[2].intent).proposal).toBeUndefined(); expect(s.fake.last().commands()).toEqual([]);
+});

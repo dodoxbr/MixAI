@@ -1,6 +1,6 @@
 # Ui16 — volumes e mutes por capacidade
 
-Base: main `03baf75130fb3c2dc766c37f6c016177c0fd4fbe` (PR #100). Nenhuma mesa física foi acessada nesta entrega. O bootstrap normal e o F0 continuam somente leitura. Código + fixture não constituem validação física.
+Base inicial: main `03baf75130fb3c2dc766c37f6c016177c0fd4fbe` (PR #100); integrada também main `5857a8d` (PR #101, tela/CLI AUX). Nenhuma mesa física foi acessada nesta entrega. O bootstrap normal e o F0 continuam somente leitura. Código + fixture não constituem validação física.
 
 ## Protocolo verificado em código
 
@@ -33,7 +33,7 @@ Cada gate conserva os requisitos do PR #100: modelo relatado Ui16, conexão READ
 - `simulated_transport` exige construtor WebSocket injetado e é usado somente em testes com socket falso. O integrador é responsável por não injetar um socket nativo como fixture.
 - `supervised_protocol` exige referência administrativa sanitizada e verificador de rota. A referência atesta uma decisão humana; não comprova firmware automaticamente. Cada categoria exige sua evidência e decisão específicas.
 - `readOnly:true` na fábrica remove **todos** os gates, inclusive o legado. `readOnly:false`, YAML, variável de ambiente, HTTP ou texto do modelo não habilitam categorias.
-- Nenhum entrypoint CLI/serve desta entrega fornece gates. Não se deve editar o bootstrap para executar a validação automatizada em hardware.
+- Nenhum entrypoint habilita as novas categorias PA/mute. A CLI supervisionada AUX do PR #101 continua limitada ao gate legado `aux_level`, exigindo o registro administrativo e as verificações originais. Esse registro não habilita PA/mute/master. Não se deve executar a validação automatizada em hardware.
 - `master_level` admite apenas a declaração reservada `{ enabled: false }`. O backend, handshake e transporte recusam sua escrita, mesmo com gates de todos os canais. Antes de futura habilitação é preciso plano separado que integre aprovação crítica E2, limite e evidência física específica; não se contorna a aprovação do master.
 
 ## Observação, confirmação e desfazer
@@ -64,7 +64,7 @@ Rotas existem somente no servidor REAL e exigem o operador/sessão/PIN já exist
   ```json
   {"targetMode":"real","serverId":"<instância atual>","requestId":"operacao-unica","humanConfirmed":true}
   ```
-  Não aceita canal, destino, valor, ferramentas ou aprovação da IA no corpo da confirmação. O servidor conserva o comando exato da prévia. A rota AUX antiga continua restrita a AUX level e não confirma propostas de outras categorias.
+  Não aceita canal, destino, valor, ferramentas ou aprovação da IA no corpo da confirmação. O servidor conserva o comando exato da prévia. A rota AUX antiga continua restrita a AUX level e não confirma propostas de outras categorias. O status `/api/ui16/aux/status` da tela #101 consulta apenas a capacidade AUX level: habilitar somente PA não faz a tela AUX indicar disponibilidade.
 
 No assistente, “Sobe 0,5 dB do violão no PA”, “Muta o canal 7 no PA”, “Desmuta o violão nos fones” e “Desfaz o último ajuste” passam pelo parser/cadastro existentes e geram **apenas prévias** quando a categoria estiver habilitada. Sem destino inequívoco, pergunta; passos configurados maiores que o limite REAL são recusados, sem reduzir silenciosamente o pedido. O mapa de produção continua violão CH2/Fred CH3. “Quanto está o master?” retorna leitura conhecida, -∞ ou indisponível, sem proposta.
 
