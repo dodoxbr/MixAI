@@ -1,3 +1,4 @@
+import type { Ui16ControlGates } from '../mixer/ui16-controls.js';
 import type { FirstRealAuxGate } from '../mixer/ui16-aux-write.js';
 import { ExternalConsent } from './external-consent.js';
 import { AiRouter } from '../ai/routing/index.js';
@@ -51,7 +52,7 @@ export interface RunningServer {
  */
 export async function startServer(
   loaded: LoadedConfig,
-  opts: { firstRealAux?: FirstRealAuxGate; modelCatalogFetch?: typeof fetch; modelCatalogConsent?: ModelConsentPort; port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; autoConfigSimulator?: AutoConfigSimulator; autoConfigPlannerFetch?: typeof fetch; autoConfigPlannerGeminiFetch?: typeof fetch; referencePorts?: ReferencePorts; knowledge?: LocalKnowledge } = {},
+  opts: { realControls?: Ui16ControlGates; firstRealAux?: FirstRealAuxGate; modelCatalogFetch?: typeof fetch; modelCatalogConsent?: ModelConsentPort; port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; autoConfigSimulator?: AutoConfigSimulator; autoConfigPlannerFetch?: typeof fetch; autoConfigPlannerGeminiFetch?: typeof fetch; referencePorts?: ReferencePorts; knowledge?: LocalKnowledge } = {},
 ): Promise<RunningServer> {
   const { config } = loaded;
   const mode = config.mixer.mode;
@@ -75,7 +76,7 @@ export async function startServer(
   const tokenFile = agentTokenFile(dataDir, mode);
   try {
     if (mode === 'lab' || mode === 'mock') recordsLock = new OwnerLock(ownerLockFile('lab', join(dataDir, 'mix-reference-requests.json'))!, 'servidor', { install: PROJECT_ROOT, equipment: 'registros locais LAB/MOCK' }).acquire();
-    app = opts.app ?? (await createApp(loaded,{firstRealAux:opts.firstRealAux}));
+    app = opts.app ?? (await createApp(loaded,{firstRealAux:opts.firstRealAux,realControls:opts.realControls}));
     const agentToken = randomBytes(32).toString('base64url');
     const auth = new Auth({
       operatorPinHash: loaded.secrets?.operatorPinHash,
@@ -120,7 +121,9 @@ export async function startServer(
     } catch (err) {
       opts.log?.(`Base de conhecimento desativada: ${(err as Error).message.slice(0, 120).replace(/[\r\n\t]+/g, ' ')}`);
     }
+    const realControls = mode === 'real' ? (await import('./first-real-aux/service.js')).realControlsFor(core) : undefined;
     core.assistant = new AssistantService(core, {
+      realPreview: realControls ? (p, intent, source) => realControls.previewIntent(p, intent, source) : undefined,
       knowledge,
       knowledgeDeadlineMs: config.knowledge.replyDeadlineMs,
       externalConsent: core.externalConsent,

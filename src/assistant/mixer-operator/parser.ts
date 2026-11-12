@@ -48,6 +48,12 @@ export function parseMixerRequest(raw: string, ctx: ParseContext): ParseOutcome 
   const text = normalized(raw), query = queryVerb.test(text);
   if (/^nao\s+(muta|mute|mude|ajuste|altere|suba|aumente|abaixe|desmuta|execute)\b/.test(text)) return { kind: 'answer', text: 'Pedido de não alterar recebido; nada foi preparado ou executado.' };
   if (!query && !isExplicitMixRequest(raw)) return undefined;
+  if (query && /\b(master|volume geral)\b/.test(text)) {
+    const destination = resolveDestination(raw, ctx.names);
+    if (destination.problem || destination.dest === 'fones') return { kind: 'clarify', question: 'A leitura disponível é do master geral do PA. Qual parâmetro você quer consultar?', options: [] };
+    if (channelCandidates(raw, ctx.names).length) return { kind: 'clarify', question: 'Você quer o master geral ou o nível desse canal no PA?', options: [] };
+    return { kind: 'masterQuery' };
+  }
   const destination = resolveDestination(raw, ctx.names);
   if (destination.problem) return { kind: 'clarify', question: destination.problem, options: [] };
   const channelNumbers = /\b(?:ch|canal)\s*(\d+)\b/g;

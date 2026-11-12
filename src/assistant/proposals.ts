@@ -22,6 +22,7 @@ export interface ProposalCard {
   reason?: string;
   /** true = depois de Aplicar ainda vai para o cartão de aprovação do operador (E2). */
   needsApproval: boolean;
+  realControl?: { targetMode: 'real'; serverId: string; category: import('../mixer/ui16-controls.js').Ui16ControlCategory; confirmationPath: string };
   bus?: { kind: 'master' } | { kind: 'aux'; aux: number };
   parameters?: Array<{ key: ParamKey; previous: number | boolean | '-inf'; target: number | boolean | '-inf'; revision: number }>;
   expiresAt: string;
