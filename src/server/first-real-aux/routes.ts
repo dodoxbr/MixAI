@@ -54,6 +54,15 @@ export async function firstRealAuxRoutes(
     }
     return payload;
   });
+  const statusQuery = z.strictObject({
+    channel: z.coerce.number().int().min(1).max(12).optional(),
+    aux: z.coerce.number().int().min(1).max(6).optional(),
+  });
+  app.get('/api/ui16/aux/status', async (req, reply) => {
+    const q = statusQuery.safeParse(req.query);
+    if (!q.success) return reply.code(400).send({ code: 'INVALID' });
+    return service.status(actors.get(req)!, q.data);
+  });
   app.post('/api/ui16/aux/preview', { bodyLimit: 2048 }, async (req, reply) => {
     const input = preview.safeParse(req.body);
     if (!input.success) return reply.code(400).send({ code: 'INVALID' });
