@@ -32,8 +32,8 @@ export type LinkState =
 
 export type ReadResult = { known: true; value: ParamValue } | { known: false };
 
-/** O que se sabe sobre uma escrita no momento em que ela termina. */
-export type WriteOutcome = 'sent' | 'applied_simulated';
+/** observed = nova entrada independente coincide com o alvo; não é ACK causal do dispositivo. */
+export type WriteOutcome = 'sent' | 'applied_simulated' | 'observed';
 
 /** Classificação de uma escrita feita perto de uma queda, depois da ressincronização. */
 export type VerificationOutcome = 'observed_target' | 'observed_different' | 'indeterminate';

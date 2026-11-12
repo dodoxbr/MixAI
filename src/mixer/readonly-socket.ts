@@ -16,7 +16,7 @@ export function isObserverReadFrame(data: unknown): data is string {
 }
 
 /** Um bloqueio sela TODA a sessão, inclusive construtores futuros de reconexão. */
-export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => void, incoming?: { keys: ParamKey[]; onInvalid: (key: ParamKey) => void; beforeReceive?: (data: unknown) => boolean }, route?: { check: () => boolean; onMismatch: () => void }) {
+export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => void, incoming?: { keys: ParamKey[]; onInvalid: (key: ParamKey) => void; beforeReceive?: (data: unknown) => boolean; afterValidatedReceive?: (data: unknown) => void }, route?: { check: () => boolean; onMismatch: () => void }, allowWriteFrame?: (data: unknown) => boolean) {
   let sealed = false;
   // Só valida envelopes/campos numéricos selecionados; a biblioteca continua decodificando dB.
   const paths = new Map<string, { key: ParamKey; mute: boolean }>();
@@ -76,6 +76,7 @@ export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => vo
               }
             }
             handler.call(socket, event);
+            incoming.afterValidatedReceive?.(event.data);
           } : null;
           current = wrapped;
           if (descriptor?.set) descriptor.set.call(socket, wrapped);
@@ -86,6 +87,7 @@ export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => vo
     socket.send = (data) => {
       if (sealed) return;
       if (isObserverReadFrame(data)) { send(data); return; }
+      if (socket.readyState === 1 && allowWriteFrame?.(data) === true) { send(data); return; }
       sealed = true; // fecha antes de qualquer callback/reentrância
       try { onBlocked(); } finally { socket.close(); }
     };
@@ -94,5 +96,5 @@ export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => vo
   for (const key of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) {
     Object.defineProperty(Guarded, key, { value: (Base as unknown as Record<string, unknown>)[key] });
   }
-  return { Ctor: Guarded, closeSockets, seal: () => { sealed = true; closeSockets(); } };
+  return { Ctor: Guarded, isOpen: () => [...sockets].some(socket => socket.readyState === 1), closeSockets, seal: () => { sealed = true; closeSockets(); } };
 }

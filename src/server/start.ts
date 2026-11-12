@@ -1,3 +1,4 @@
+import type { FirstRealAuxGate } from '../mixer/ui16-aux-write.js';
 import { ExternalConsent } from './external-consent.js';
 import { AiRouter } from '../ai/routing/index.js';
 import { buildModelCatalog, SessionModelConsent, type ModelCatalogService, type ModelConsentPort } from '../ai/model-catalog/index.js';
@@ -50,7 +51,7 @@ export interface RunningServer {
  */
 export async function startServer(
   loaded: LoadedConfig,
-  opts: { modelCatalogFetch?: typeof fetch; modelCatalogConsent?: ModelConsentPort; port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; autoConfigSimulator?: AutoConfigSimulator; autoConfigPlannerFetch?: typeof fetch; autoConfigPlannerGeminiFetch?: typeof fetch; referencePorts?: ReferencePorts; knowledge?: LocalKnowledge } = {},
+  opts: { firstRealAux?: FirstRealAuxGate; modelCatalogFetch?: typeof fetch; modelCatalogConsent?: ModelConsentPort; port?: number; app?: App; log?: (msg: string) => void; clock?: () => number; webRoot?: string; aiFetch?: typeof fetch; pttRecognizer?: FileSpeechRecognizer; autoConfigSimulator?: AutoConfigSimulator; autoConfigPlannerFetch?: typeof fetch; autoConfigPlannerGeminiFetch?: typeof fetch; referencePorts?: ReferencePorts; knowledge?: LocalKnowledge } = {},
 ): Promise<RunningServer> {
   const { config } = loaded;
   const mode = config.mixer.mode;
@@ -74,7 +75,7 @@ export async function startServer(
   const tokenFile = agentTokenFile(dataDir, mode);
   try {
     if (mode === 'lab' || mode === 'mock') recordsLock = new OwnerLock(ownerLockFile('lab', join(dataDir, 'mix-reference-requests.json'))!, 'servidor', { install: PROJECT_ROOT, equipment: 'registros locais LAB/MOCK' }).acquire();
-    app = opts.app ?? (await createApp(loaded));
+    app = opts.app ?? (await createApp(loaded,{firstRealAux:opts.firstRealAux}));
     const agentToken = randomBytes(32).toString('base64url');
     const auth = new Auth({
       operatorPinHash: loaded.secrets?.operatorPinHash,
