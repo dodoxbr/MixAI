@@ -265,3 +265,12 @@ it('diagnóstico de retorno cadastrado AUX5 não é silenciosamente convertido e
   }
   expect(write).not.toHaveBeenCalled();
 });
+
+it('retorno sem nome seguido de complemento após pontuação continua sendo FONES (regressão do diagnóstico de M1)', async () => {
+  const { resolveDestination } = await import('../src/assistant/mixer-operator/parser.js');
+  const { ChannelMap } = await import('../src/core/channels.js');
+  const names = new ChannelMap(band(), { inputs: 12, aux: 6 });
+  expect(resolveDestination('Fred está abafado só no retorno, também sozinho.', names)).toMatchObject({ dest: 'fones' });
+  expect(resolveDestination('Fred está abafado só no retorno, também sozinho.', names).problemCode).toBeUndefined();
+  expect(resolveDestination('o surdo está sem grave no retorno do Lucius', names)).toMatchObject({ dest: 'fones', aux: 5 });
+});

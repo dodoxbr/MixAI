@@ -16,15 +16,15 @@ it('interface existente: pergunta de destino, AUX5 explícito, aplicar, leitura 
     await page.locator('.assist-options').getByRole('button', { name: 'AUX 5', exact: true }).waitFor();
     expect(value()).toMatchObject({ known: true, value: -20 });
     await page.locator('.assist-options').getByRole('button', { name: 'AUX 5', exact: true }).click();
-    await card().getByRole('button', { name: 'Aplicar' }).waitFor();
+    await card().getByRole('button', { name: 'Confirmar ajuste' }).waitFor();
     expect(await card().textContent()).toContain('AUX 5: Violão');
     expect(await card().textContent()).toContain('−18.0 dB');
     expect(value()).toMatchObject({ known: true, value: -20 });
-    await card().getByRole('button', { name: 'Aplicar' }).click();
+    await card().getByRole('button', { name: 'Confirmar ajuste' }).click();
     await expect.poll(() => value()).toMatchObject({ known: true, value: -18 });
     await say('Desfaz o último ajuste');
     await expect.poll(() => card().textContent()).toContain('Desfazer o último ajuste');
-    await card().getByRole('button', { name: 'Aplicar' }).click();
+    await card().getByRole('button', { name: 'Confirmar ajuste' }).click();
     await expect.poll(() => value()).toMatchObject({ known: true, value: -20 });
   } finally { await ctx.close(); await lab.server.close(); }
 });

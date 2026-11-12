@@ -23,7 +23,10 @@ export function resolveDestination(raw: string, names: ChannelMap): ResolvedDest
     // Unqualified FONES/retorno keeps the existing shared-AUX policy, not a musician-specific monitor.
     if (/^(retorno|retornos|fone|fones|monitor)$/.test(phrase)) return { sourceText, dest: 'fones' };
     try { return { sourceText, dest: 'fones', aux: names.auxBus(phrase).number }; }
-    catch { return { sourceText, problemCode: 'unknown_return', problem: 'Esse retorno não tem vínculo inequívoco no cadastro. Qual PA/AUX você quer consultar ou ajustar?' }; }
+    catch {
+      // "…só no retorno, também sozinho": complemento sem qualificador de nome não é um AUX nomeado; vale o FONES padrão.
+      if (/^(retorno|retornos|fone|fones|monitor)\b(?!\s+(?:d[oae]s?|de)\b)/.test(phrase)) return { sourceText, dest: 'fones' };
+      return { sourceText, problemCode: 'unknown_return', problem: 'Esse retorno não tem vínculo inequívoco no cadastro. Qual PA/AUX você quer consultar ou ajustar?' }; }
   }
   if (pa) return { sourceText: text.replace(/\b(pa|publico|plateia|main)\b/g, ''), dest: 'pa' };
   if (/\b(fone|fones|retorno|retornos|monitor)\b/.test(text)) return { sourceText: text, dest: 'fones' };
