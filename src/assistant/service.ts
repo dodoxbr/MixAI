@@ -490,7 +490,7 @@ export class AssistantService {
       if (outcome.intents.length !== 1) return error('INVALID', 'REAL exige um único parâmetro; não preparo operações em lote.');
       const prepared = this.opts.realPreview(p, outcome.intents[0]!, source);
       if (!prepared.proposal) return error('REAL_READ_ONLY', prepared.result?.message ?? 'Categoria REAL desabilitada.');
-      return { kind: 'proposals', source, proposals: [prepared.proposal], text: 'Proposta REAL apenas: confira categoria, destino e valores. A confirmação humana exige targetMode, serverId e humanConfirmed no caminho indicado pelo cartão. Nenhuma escrita foi enviada.' };
+      return { kind: 'proposals', source, proposals: [prepared.proposal], text: 'Proposta REAL: confira canal, destino e valores. Confirme pelo fluxo supervisionado autorizado; o botão Aplicar comum não envia comandos REAL.' };
     }
     const cards: ProposalCard[] = [];
     const notes: string[] = [];

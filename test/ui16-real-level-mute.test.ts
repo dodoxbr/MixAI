@@ -126,7 +126,7 @@ it('assistant natural language prepares only; explicit REAL human-confirm endpoi
   const s = await setup(), app = await buildHttp(s.core); close.push(() => app.close()); s.echo();
   const headers = { authorization: `Bearer ${s.token}` }, request = (url: string, payload: object, h = headers) => app.inject({ method: 'POST', url, headers: h, payload });
   const asked = (await request('/api/assistant/ask', { text: 'Sobe 0,5 dB do violão no PA' })).json().reply;
-  expect(asked.kind).toBe('proposals'); const card = asked.proposals[0]; expect(card.realControl).toMatchObject({ category: 'pa_level', targetMode: 'real', serverId: s.core.serverId }); expect(s.fake.last().commands()).toEqual([]);
+  expect(asked.kind).toBe('proposals'); expect(asked.text).not.toMatch(/targetMode|serverId|humanConfirmed/); const card = asked.proposals[0]; expect(card.realControl).toMatchObject({ category: 'pa_level', targetMode: 'real', serverId: s.core.serverId }); expect(s.fake.last().commands()).toEqual([]);
   const oldApply = (await request(`/api/assistant/proposals/${card.id}/apply`, { requestId: 'legacy' })).json(); expect(oldApply.status).toBe('failed');
   expect((await request(card.realControl.confirmationPath, { ...s.input(), humanConfirmed: false })).statusCode).toBe(400);
   expect((await request(`/api/ui16/aux/${card.id}/confirm`, s.input())).json().result.code).toBe('FORBIDDEN');
