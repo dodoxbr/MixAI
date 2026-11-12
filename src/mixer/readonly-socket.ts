@@ -2,6 +2,7 @@
 import { parseKey, type ParamKey } from '../core/revisions.js';
 
 export type ObserverSocketCtor = new (url: string, protocols?: string | string[]) => {
+  readonly readyState?: number;
   send(data: unknown): void;
   close(): void;
   onmessage?: ((event: { data: unknown }) => void) | null;
@@ -15,13 +16,16 @@ export function isObserverReadFrame(data: unknown): data is string {
 }
 
 /** Um bloqueio sela TODA a sessão, inclusive construtores futuros de reconexão. */
-export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => void, incoming?: { keys: ParamKey[]; onInvalid: (key: ParamKey) => void }, route?: { check: () => boolean; onMismatch: () => void }) {
+export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => void, incoming?: { keys: ParamKey[]; onInvalid: (key: ParamKey) => void; beforeReceive?: (data: unknown) => boolean }, route?: { check: () => boolean; onMismatch: () => void }) {
   let sealed = false;
   // Só valida envelopes/campos numéricos selecionados; a biblioteca continua decodificando dB.
   const paths = new Map<string, { key: ParamKey; mute: boolean }>();
   for (const key of incoming?.keys ?? []) {
     const p = parseKey(key);
     if (p.kind === 'master') paths.set('m.mix', { key, mute: false });
+    else if (p.kind === 'eq') paths.set(`i.${p.channel - 1}.eq.b${p.band}.${p.param}`, { key, mute: false });
+    else if (p.kind === 'hpf' && p.param === 'freq') paths.set(`i.${p.channel - 1}.eq.hpf.freq`, { key, mute: false });
+    else if (p.kind === 'eqBypass') paths.set(`i.${p.channel - 1}.eq.bypass`, { key, mute: true });
     else if (p.kind === 'channel') paths.set(`i.${p.channel - 1}.${p.aux ? `aux.${p.aux - 1}.${p.param === 'level' ? 'value' : 'mute'}` : p.param === 'level' ? 'mix' : 'mute'}`, { key, mute: p.param === 'mute' });
   }
   const sockets = new Set<InstanceType<ObserverSocketCtor>>();
@@ -56,7 +60,8 @@ export function observerSocketGate(Base: ObserverSocketCtor, onBlocked: () => vo
         get: () => descriptor?.get ? descriptor.get.call(socket) : current,
         set: (handler: ((event: { data: unknown }) => void) | null) => {
           const wrapped = handler ? (event: { data: unknown }) => {
-            if (sealed) return;
+            if (sealed || !sockets.has(socket) || socket.readyState !== undefined && socket.readyState !== 1) return;
+            if (incoming.beforeReceive && !incoming.beforeReceive(event.data)) { sealed = true; closeSockets(); return; }
             if (typeof event.data === 'string' && event.data.startsWith('3:::')) {
               for (const line of event.data.slice(4).split('\n')) {
                 const parts = line.split('^'), selected = paths.get(parts[1] ?? '');
