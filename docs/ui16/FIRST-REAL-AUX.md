@@ -162,3 +162,6 @@ comando pendente é restaurado ou repetido após reconexão.
    comparar estado, revisar eventuais alterações externas e referências de revisão.
 8. Encerrar sessão, desabilitar gate e registrar resultados sanitizados. Só o
    responsável decide próxima fase; merge desta entrega não autoriza uso físico.
+
+
+Preparação separada de processamento por canal: [EQ/HPF da Ui16, evidências e gates](REAL-PROCESSING.md). O gate AUX deste documento não autoriza EQ nem HPF.
