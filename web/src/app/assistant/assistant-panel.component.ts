@@ -2,7 +2,8 @@ import { LiveService } from '../core/live.service';
 import { excerpt, safeReference } from './diagnostic-view';
 import { MODE_LABEL } from '../knowledge/knowledge-view';
 import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, inject, viewChild } from '@angular/core';
-import { AssistantUiService, type CardState } from '../core/assistant.service';
+import { AssistantUiService, fmtReal, type CardState } from '../core/assistant.service';
+import type { ProposalCard } from '../core/protocol';
 
 const STATE_TEXT: Record<CardState, string> = {
   open: '',
@@ -15,6 +16,8 @@ const STATE_TEXT: Record<CardState, string> = {
   reported: 'Retorno recebido — confirmação final não disponível',
   sent: 'Enviado — confirmação física não disponível',
   uncertain: 'Resultado indeterminado — confira o estado',
+  observed: 'Enviado — observação recebida da mesa (amostra independente, não é confirmação causal)',
+  unconfirmed: 'Enviado, mas NÃO confirmado pela mesa — confira na mesa; nada foi repetido',
 };
 
 /**
@@ -24,12 +27,13 @@ const STATE_TEXT: Record<CardState, string> = {
 @Component({
   selector: 'mx-assistant-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styles: ['.guided-checks { border:1px solid var(--line); border-radius:var(--radius); padding:12px; margin:12px 0; } .guided-checks ol { padding-left:20px; } .guided-checks li { padding:8px 0; } .guided-checks p { margin:4px 0; } .guided-checks small {color:var(--muted);} .current-check {border-left:3px solid var(--brass);padding-left:8px!important;}'],
+  styles: ['.assist-env{font-size:.75rem;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-left:6px} .card-env{font-size:.75rem;font-weight:600;margin:2px 0} .guided-checks { border:1px solid var(--line); border-radius:var(--radius); padding:12px; margin:12px 0; } .guided-checks ol { padding-left:20px; } .guided-checks li { padding:8px 0; } .guided-checks p { margin:4px 0; } .guided-checks small {color:var(--muted);} .current-check {border-left:3px solid var(--brass);padding-left:8px!important;}'],
   host: { class: 'mx-assistant-panel', role: 'region', 'aria-label': 'Assistente' },
   template: `
     <header class="assist-head">
       <h2>Assistente</h2>
       <span class="assist-mode" [class.on]="assistant.aiOn()" [title]="assistant.aiOn() ? 'Pedidos que o modo local não entende vão para o Claude' : 'Comandos diretos e consulta técnica do operador, offline'">{{ assistant.aiOn() ? 'IA ligada' : 'sem IA' }}</span>
+      <span class="assist-env" data-testid="assist-mode" [title]="live.hello()?.mode === 'real' ? 'Servidor REAL: o envio físico só ocorre depois da sua confirmação em cada cartão' : 'Laboratório: ajustes simulados, sem mesa física'">{{ live.hello()?.mode === 'real' ? 'REAL · envio só após confirmar' : 'LAB · simulado' }}</span>
       <span class="spacer"></span>
       @if (hasDiagnostics()) {
       <button type="button" class="btn btn-ghost btn-small history-back" aria-label="Voltar na conversa" (click)="back()" [disabled]="assistant.items().length < 2">Voltar</button>
@@ -115,6 +119,7 @@ const STATE_TEXT: Record<CardState, string> = {
               }
             </details>
           } @else if (item.text) {
+            @if (item.code === 'REAL_READ_ONLY') { <strong class="assist-src" data-testid="real-blocked">Recurso REAL bloqueado</strong> }
             <p class="assist-text">@if (item.from === 'user') { <span class="assist-src">Seu relato/pedido</span> } @if (item.source === 'ai') { <span class="assist-src">IA</span> } {{ item.text }}</p>
           }
           @for (card of item.cards ?? []; track card.id) {
@@ -125,17 +130,20 @@ const STATE_TEXT: Record<CardState, string> = {
                 }
                 {{ card.title }}
               </h3>
+              @if (card.realControl) { <p class="card-env" data-testid="card-mode" title="Envio físico real depois da sua confirmação">REAL · {{ categoryLabel(card.realControl.category) }}</p> }
+              @else if (live.hello()?.mode !== 'real') { <p class="card-env" data-testid="card-mode">LAB · simulado</p> }
               <dl>
                 <dt>Canal</dt>
                 <dd>{{ channelLabel(card.channel) }}</dd>
                 <dt>Destino</dt>
                 <dd><span class="dest" [class]="'dest dest-' + card.destination">{{ destinationLabel(card.destination) }}</span></dd>
                 <dt>Atual na proposta</dt>
-                <dd>{{ card.current }}</dd>
+                <dd data-testid="card-current">{{ card.current }}</dd>
+                @if (card.realControl && card.realControl.observed !== undefined && card.realControl.observed !== null) { <dt>Observado agora</dt><dd data-testid="card-observed">{{ observedLabel(card) }}</dd> }
                 <dt>Mudança</dt>
                 <dd>{{ card.change }}</dd>
                 <dt>Proposto</dt>
-                <dd class="proposal-result">{{ card.result }}</dd>
+                <dd class="proposal-result" data-testid="card-result">{{ card.result }}</dd>
               </dl>
               @if (card.reason) {
                 <p class="proposal-reason">Motivo: {{ card.reason }}</p>
@@ -145,13 +153,16 @@ const STATE_TEXT: Record<CardState, string> = {
               }
               @if (assistant.state(card.id) === 'open' || assistant.state(card.id) === 'applying') {
                 <div class="card-actions">
-                  <button type="button" class="btn btn-reject" [disabled]="assistant.state(card.id) === 'applying'" (click)="assistant.cancel(card)">Cancelar</button>
-                  <button type="button" class="btn btn-approve" [disabled]="assistant.state(card.id) === 'applying'" (click)="assistant.apply(card)">
+                  <button type="button" class="btn btn-reject" data-testid="card-cancel" [disabled]="assistant.state(card.id) === 'applying'" (click)="assistant.cancel(card)">Cancelar</button>
+                  <button type="button" class="btn btn-approve" data-testid="card-confirm" [disabled]="assistant.state(card.id) === 'applying'" (click)="assistant.apply(card)">
                     {{ assistant.state(card.id) === 'applying' ? 'Aguardando retorno…' : 'Confirmar ajuste' }}
                   </button>
                 </div>
               } @else {
-                <p class="proposal-state">{{ stateText(assistant.state(card.id)) }}</p>
+                <p class="proposal-state" data-testid="card-state">{{ stateText(assistant.state(card.id)) }}</p>
+                @if (card.realControl && assistant.state(card.id) === 'observed' && card.destination !== 'DESFAZER') {
+                  <button type="button" class="btn chip" data-testid="card-undo" [disabled]="!!assistant.blockedReason()" (click)="assistant.undo(card)">Desfazer (pede nova confirmação)</button>
+                }
               }
             </article>
           }
@@ -183,7 +194,9 @@ export class AssistantPanelComponent {
   readonly assistant = inject(AssistantUiService);
   readonly live = inject(LiveService);
   channelLabel(name: string) { const matches = this.live.channels().filter(c => c.name === name); return matches.length === 1 ? 'CH' + matches[0]!.number + ' — ' + name : name || 'Não disponível'; }
-  destinationLabel(dest: string) { return dest === 'FONES' ? 'FONES · AUX ' + (this.live.hello()?.musicianAux ?? 'não disponível') : dest || 'Não disponível'; }
+  categoryLabel(category: string) { return ({ pa_level: 'volume no PA', pa_mute: 'mute no PA', aux_level: 'volume no AUX', aux_mute: 'mute no AUX', processing: 'EQ/HPF do canal de entrada' } as Record<string, string>)[category] ?? category; }
+  observedLabel(card: ProposalCard) { return card.realControl ? fmtReal(card.realControl, card.realControl.observed) : ''; }
+  destinationLabel(dest: string) { if (dest === 'CANAL') return 'Canal de entrada (sem destino PA/AUX)'; return dest === 'FONES' ? 'FONES · AUX ' + (this.live.hello()?.musicianAux ?? 'não disponível') : dest || 'Não disponível'; }
   readonly hasDiagnostics = computed(() => this.assistant.items().some(item => item.diagnostic));
   readonly latestDiagnostic = computed(() => this.assistant.items().filter(item => item.from === 'assistant').at(-1)?.id);
   readonly short = excerpt;

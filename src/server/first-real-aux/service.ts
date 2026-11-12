@@ -173,7 +173,8 @@ export class FirstRealAuxService {
     pr.card.needsApproval = true;
     pr.card.reason =
       `REAL: confirmação humana de ${category}, um canal por operação, volume até 1 dB. AUX1/HA800 é compartilhado. Não é medição de áudio.`;
-    pr.card.realControl = { targetMode: 'real', serverId: this.core.serverId, category, confirmationPath: `/api/ui16/controls/${pr.card.id}/confirm` };
+    pr.card.realControl = { targetMode: 'real', serverId: this.core.serverId, category, confirmationPath: `/api/ui16/controls/${pr.card.id}/confirm`, cancelPath: `/api/ui16/controls/${pr.card.id}/cancel`,
+      observed: sample.value === -Infinity ? '-inf' : sample.value, validation: this.bridge()!.auxHandshake.gateFor(key)!.validation };
     this.prepared.set(pr.card.id, {
       proposal: pr,
       key,
@@ -207,6 +208,15 @@ export class FirstRealAuxService {
     if (input.operation === 'mute' && typeof input.muted === 'boolean') return this.previewIntent(p, { type: 'mute', channels: [input.channel!], dest: input.aux === undefined ? 'pa' : 'fones', aux: input.aux, muted: input.muted });
     if (input.operation === 'level' && Number.isFinite(input.deltaDB) && input.deltaDB !== 0 && Math.abs(input.deltaDB!) <= 1) return this.previewIntent(p, { type: 'level', channel: input.channel!, dest: input.aux === undefined ? 'pa' : 'fones', aux: input.aux, deltaDB: input.deltaDB });
     return { result: fail('INVALID', 'Selecione um volume de até 1 dB ou um mute, sem lote.') };
+  }
+  /** Descarta uma prévia ainda não consumida. Nunca toca o transporte; uma operação já em andamento ou concluída não é desfeita. */
+  cancel(p: Principal, id: string) {
+    if (p.role !== 'operator' || !this.core.auth.isActive(p)) return { result: fail('FORBIDDEN', 'Sessão de operador obrigatória.') };
+    const prepared = this.prepared.get(id);
+    if (!prepared || prepared.proposal.ownerId !== p.id) return { result: fail('NOT_FOUND', 'Prévia não encontrada nesta sessão.') };
+    if (prepared.running || prepared.result) return { result: fail('CONFLICT', 'Confirmação já consumida; não há rollback automático.') };
+    this.prepared.delete(id);
+    return { result: { ok: true, code: 'OK', message: 'Prévia cancelada; nada foi enviado.' } };
   }
   apply(
     p: Principal,

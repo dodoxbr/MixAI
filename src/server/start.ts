@@ -121,9 +121,9 @@ export async function startServer(
     } catch (err) {
       opts.log?.(`Base de conhecimento desativada: ${(err as Error).message.slice(0, 120).replace(/[\r\n\t]+/g, ' ')}`);
     }
-    const realControls = mode === 'real' ? (await import('./first-real-aux/service.js')).realControlsFor(core) : undefined;
+    const realPreview = mode === 'real' ? (await import('./real-assistant.js')).realAssistantPreview(core) : undefined;
     core.assistant = new AssistantService(core, {
-      realPreview: realControls ? (p, intent, source) => realControls.previewIntent(p, intent, source) : undefined,
+      realPreview,
       knowledge,
       knowledgeDeadlineMs: config.knowledge.replyDeadlineMs,
       externalConsent: core.externalConsent,

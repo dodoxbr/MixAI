@@ -9,6 +9,8 @@ import {
 } from '../../mixer/ui16-processing.js';
 import type { Principal } from '../auth.js';
 import { fail, type ServerCore, type CommandResponse } from '../core.js';
+import type { Intent } from '../../assistant/intent.js';
+import type { ProposalCard } from '../../assistant/proposals.js';
 
 export interface ProcessingProposal {
   id: string;
@@ -195,6 +197,41 @@ export class Ui16ProcessingService {
       validation: this.bridge()!.processingHandshake.gate!.validation,
     };
   }
+  /**
+   * Fronteira do assistente: uma intenção tipada (EQ/HPF/bypass ou desfazer) vira SOMENTE uma prévia pelo mesmo caminho do operador.
+   * Calcula o alvo relativo de ganho a partir da amostra independente; não escreve, não confirma e não aceita comando bruto.
+   */
+  previewIntent(p: Principal, intent: Intent, source: ProposalCard['source']): { proposal?: ProposalCard; result?: { code: string; message: string } } {
+    const common = { targetMode: 'real', serverId: this.core.serverId, source: 'assistant' as const };
+    let out: ReturnType<Ui16ProcessingService['preview']>;
+    if (intent.type === 'undo') out = this.preview(p, { ...common, undo: true });
+    else if (intent.type === 'processing') {
+      const key = (intent.field === 'hpf' ? `ch.${intent.channel}.eq.hpf.freq` : intent.field === 'bypass' ? `ch.${intent.channel}.eq.bypass` : `ch.${intent.channel}.eq.b${intent.band}.${intent.field}`) as ParamKey;
+      let value = intent.value;
+      if (value === undefined && intent.deltaDB !== undefined && intent.field === 'gain') {
+        const current = processingSpec(key) && this.bridge()?.processingHandshake.current(key)?.value;
+        if (typeof current !== 'number') return { result: { code: 'STATE_CHANGED', message: 'Leitura independente ausente, antiga ou indisponível: não calculo o ganho sem o valor atual.' } };
+        value = Number((current + intent.deltaDB).toFixed(1));
+      }
+      if (value === undefined) return { result: { code: 'INVALID', message: 'Falta o valor do ajuste.' } };
+      out = this.preview(p, { ...common, key, value });
+    } else return { result: { code: 'INVALID', message: 'Intenção fora do escopo do processamento.' } };
+    if (!('proposal' in out) || !out.proposal) { const r = (out as { result: { code: string; message: string } }).result; return { result: { code: r.code, message: r.message } }; }
+    const pr = out.proposal, spec = processingSpec(pr.key)!;
+    const show = (v: ParamValue) => typeof v === 'boolean' ? (v ? 'bypass ligado (EQ fora do caminho)' : 'bypass desligado (EQ ativo)') : spec.unit === 'dB' ? `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)} dB` : spec.unit === 'Q' ? `Q ${v}` : `${v} Hz`;
+    const what = spec.field === 'hpf' ? 'HPF · frequência de corte' : spec.field === 'bypass' ? 'EQ · bypass' : `EQ banda ${spec.band} · ${spec.field === 'freq' ? 'frequência' : spec.field === 'gain' ? 'ganho' : 'Q'}`;
+    const undo = intent.type === 'undo';
+    const card: ProposalCard = {
+      id: pr.id, source, title: undo ? `Desfazer: ${what}` : what, channel: pr.channelName, destination: undo ? 'DESFAZER' : 'CANAL',
+      parameters: [{ key: pr.key, previous: pr.previous, target: pr.target, revision: pr.revision }],
+      current: show(pr.previous), change: undo ? 'desfazer (nova confirmação)' : `${show(pr.previous)} → ${show(pr.target)}`, result: show(pr.target),
+      reason: `REAL: processamento do canal de entrada (sem destino PA/AUX). ${pr.warnings[0] ?? ''} Observação do parâmetro, não medição de áudio.`,
+      needsApproval: true, expiresAt: pr.expiresAt,
+      realControl: { targetMode: 'real', serverId: this.core.serverId, category: 'processing', confirmationPath: `/api/ui16/processing/${pr.id}/confirm`, cancelPath: `/api/ui16/processing/${pr.id}/cancel`,
+        observed: typeof pr.previous === 'number' || typeof pr.previous === 'boolean' ? pr.previous : null, validation: out.validation, unit: spec.unit },
+    };
+    return { proposal: card };
+  }
   cancel(p: Principal, id: string) {
     const item = this.proposals.get(id);
     if (!this.core.auth.isActive(p) || p.role !== 'operator' || !item || item.owner !== p.id)
@@ -315,4 +352,12 @@ export class Ui16ProcessingService {
     });
     return { ...response, requestId: input.requestId, confirmation };
   }
+}
+
+const processingServices = new WeakMap<ServerCore, Ui16ProcessingService>();
+/** Uma única instância por núcleo, compartilhada entre as rotas HTTP e o assistente (mesmos bloqueios e propostas). */
+export function processingFor(core: ServerCore): Ui16ProcessingService {
+  let service = processingServices.get(core);
+  if (!service) { service = new Ui16ProcessingService(core); processingServices.set(core, service); }
+  return service;
 }

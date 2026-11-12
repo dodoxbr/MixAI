@@ -15,14 +15,15 @@ export interface ProposalCard {
   title: string;
   /** Canal(is) afetado(s), pelos nomes da banda. */
   channel: string;
-  destination: 'PA' | 'FONES' | 'MASTER' | 'DESFAZER';
+  destination: 'PA' | 'FONES' | 'MASTER' | 'DESFAZER' | 'CANAL';
   current: string;
   change: string;
   result: string;
   reason?: string;
   /** true = depois de Aplicar ainda vai para o cartão de aprovação do operador (E2). */
   needsApproval: boolean;
-  realControl?: { targetMode: 'real'; serverId: string; category: import('../mixer/ui16-controls.js').Ui16ControlCategory; confirmationPath: string };
+  realControl?: { targetMode: 'real'; serverId: string; category: import('../mixer/ui16-controls.js').Ui16ControlCategory | 'processing'; confirmationPath: string; cancelPath?: string;
+    /** Valor da amostra independente usada no cálculo (não é confirmação do resultado). */ observed?: number | boolean | '-inf' | null; validation?: string; unit?: string };
   bus?: { kind: 'master' } | { kind: 'aux'; aux: number };
   parameters?: Array<{ key: ParamKey; previous: number | boolean | '-inf'; target: number | boolean | '-inf'; revision: number }>;
   expiresAt: string;
@@ -206,6 +207,8 @@ export class ProposalBuilder {
           },
         };
       }
+      case 'processing':
+        return { ok: false, code: 'INVALID', message: 'EQ/HPF existem somente no REAL, pelo serviço de processamento com gate próprio; nada foi preparado.' };
       case 'undo': {
         const command: Command = { type: 'undo', steps: 1 };
         const denied = check(command);

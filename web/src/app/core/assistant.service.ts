@@ -6,7 +6,7 @@ import { LiveService, type AssistantOutcome } from './live.service';
 import { SessionService } from './session.service';
 import type { ApplyReply, AssistantReply, DiagnosticContext, ProposalCard } from './protocol';
 
-export type CardState = 'open' | 'applying' | 'applied' | 'awaiting' | 'cancelled' | 'stale' | 'failed' | 'reported' | 'sent' | 'uncertain';
+export type CardState = 'open' | 'applying' | 'applied' | 'awaiting' | 'cancelled' | 'stale' | 'failed' | 'reported' | 'sent' | 'uncertain' | 'observed' | 'unconfirmed';
 
 export interface ChatItem {
   id: number;
@@ -25,9 +25,22 @@ export interface ChatItem {
   tone?: 'normal' | 'error' | 'ok';
   /** De onde veio (local = sem IA; ai = Claude). */
   source?: AssistantReply['source'];
+  /** Código do servidor (ex.: REAL_READ_ONLY = recurso REAL bloqueado). */
+  code?: string;
 }
 
 const MAX_ITEMS = 40;
+const REAL_CONFIRM_TIMEOUT_MS = 12_000;
+
+/** Valor de uma amostra REAL no formato do cartão (unidade pela categoria). */
+export function fmtReal(rc: NonNullable<ProposalCard['realControl']>, v: unknown): string {
+  if (v === '-inf') return '−∞ dB';
+  if (typeof v === 'boolean') return rc.category.endsWith('mute') ? (v ? 'mutado' : 'aberto') : (v ? 'bypass ligado' : 'bypass desligado');
+  if (typeof v !== 'number' || !Number.isFinite(v)) return 'não disponível';
+  if (rc.unit === 'Hz') return `${v} Hz`;
+  if (rc.unit === 'Q') return `Q ${v}`;
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)} dB`;
+}
 
 const NOT_SENT = 'Sem conexão com o servidor: o pedido NÃO foi enviado e nada mudou na mesa. Quando a conexão voltar, envie de novo.';
 const LOST_ASK = 'Sem resposta no prazo ou conexão interrompida. O pedido não será repetido automaticamente; confira a tela e, se precisar, envie de novo.';
@@ -127,8 +140,64 @@ export class AssistantUiService {
     }
   }
 
+  /**
+   * REAL: o cartão só alcança o servidor por esta ação HUMANA, pelo endpoint de confirmação da própria proposta (nunca o
+   * Aplicar legado/WS). Um requestId por clique; sem reenvio automático. Observação independente NÃO é ACK causal.
+   */
+  private async applyReal(card: ProposalCard): Promise<void> {
+    const rc = card.realControl!, hello = this.live.hello(), token = this.session.token();
+    if (!token || hello?.mode !== 'real' || hello.serverId !== rc.serverId || hello.role !== 'operator') {
+      this.setState(card.id, 'failed');
+      return this.push({ from: 'assistant', tone: 'error', text: 'A instância ou o modo mudou (ou a sessão não é de operador). Nada foi enviado; peça uma nova proposta.' });
+    }
+    this.setState(card.id, 'applying');
+    const requestId = 'ui-' + (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/[^A-Za-z0-9]/g, '').slice(0, 40);
+    const r = await this.post(rc.confirmationPath, { targetMode: 'real', serverId: rc.serverId, requestId, humanConfirmed: true }, REAL_CONFIRM_TIMEOUT_MS);
+    if (token !== this.session.token() || rc.serverId !== this.live.hello()?.serverId) return; // sessão/instância mudou: resposta tardia descartada
+    if (r === 'offline' || r === 'timeout') {
+      this.setState(card.id, 'uncertain');
+      return this.push({ from: 'assistant', tone: 'error', text: 'Sem resposta do servidor: o envio PODE ter ocorrido. Confira o valor na mesa. Não reenvio automaticamente.' });
+    }
+    const confirmation = r.json['confirmation'] as { status?: string; previous?: unknown; requested?: unknown; observed?: unknown } | undefined;
+    const code = String((r.json['result'] as { code?: string } | undefined)?.code ?? r.json['code'] ?? '');
+    if (r.status === 401) {
+      this.setState(card.id, 'uncertain');
+      return this.push({ from: 'assistant', tone: 'error', text: 'A sessão terminou durante a operação. Se o envio já tinha começado, ele pode ter sido concluído: confira a mesa. Nada será repetido.' });
+    }
+    const shown = (v: unknown) => fmtReal(rc, v);
+    if (confirmation?.status === 'observed_target') {
+      this.setState(card.id, 'observed');
+      return this.push({ from: 'assistant', tone: 'ok', text: `Enviado. Observação recebida da mesa: ${shown(confirmation.observed)} (antes: ${shown(confirmation.previous)}; pedido: ${shown(confirmation.requested)}). É uma amostra independente no valor pedido: não prova que o MixAI causou a mudança nem melhora de áudio.` });
+    }
+    if (confirmation?.status === 'unconfirmed' || code === 'INDETERMINATE') {
+      this.setState(card.id, 'unconfirmed');
+      return this.push({ from: 'assistant', tone: 'error', text: 'Enviado, mas a mesa NÃO confirmou o valor pedido (resultado incerto). Confira na mesa antes de qualquer nova operação. Nada foi repetido ou desfeito automaticamente.' });
+    }
+    this.setState(card.id, 'failed');
+    this.push({ from: 'assistant', tone: 'error', text: ((r.json['result'] as { message?: string } | undefined)?.message ?? 'Confirmação recusada.') + ' Nada foi enviado à mesa.' });
+  }
+
+  private async post(path: string, body: unknown, timeoutMs: number): Promise<{ status: number; json: Record<string, any> } | 'timeout' | 'offline'> {
+    const token = this.session.token();
+    if (!token || !path.startsWith('/api/ui16/')) return 'offline';
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort('timeout'), timeoutMs);
+    try {
+      const res = await fetch(path, { method: 'POST', cache: 'no-store', credentials: 'omit', signal: ctl.signal, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const json = await res.json().catch(() => ({}));
+      return { status: res.status, json: json && typeof json === 'object' ? json : {} };
+    } catch { return ctl.signal.aborted && ctl.signal.reason === 'timeout' ? 'timeout' : 'offline'; }
+    finally { clearTimeout(timer); }
+  }
+
+  /** Desfazer supervisionado: pede ao servidor uma NOVA proposta de desfazer (nova confirmação humana). Não desfaz por conta própria. */
+  async undo(card: ProposalCard): Promise<void> {
+    if (!card.realControl || this.state(card.id) !== 'observed') return;
+    await this.send('Desfaz o último ajuste');
+  }
+
   async apply(card: ProposalCard): Promise<void> {
     if (this.state(card.id) !== 'open') return;
+    if (card.realControl) return this.applyReal(card);
     const token = this.session.token(), serverId = this.live.hello()?.serverId;
     this.setState(card.id, 'applying');
     const r: AssistantOutcome = await this.live.assistant({ type: 'proposal_apply', proposalId: card.id });
@@ -172,7 +241,9 @@ export class AssistantUiService {
 
   cancel(card: ProposalCard): void {
     if (this.state(card.id) !== 'open') return;
-    this.live.send({ type: 'proposal_cancel', proposalId: card.id });
+    const rc = card.realControl;
+    if (rc?.cancelPath) void this.post(rc.cancelPath, { targetMode: 'real', serverId: rc.serverId }, 6000); // descarta a prévia no servidor; nunca toca a mesa
+    else if (!rc) this.live.send({ type: 'proposal_cancel', proposalId: card.id });
     this.setState(card.id, 'cancelled');
   }
 
@@ -231,7 +302,7 @@ export class AssistantUiService {
       this.push({ from: 'assistant', source: r.source, text: r.question || 'Pode explicar melhor?', options: r.options });
     } else {
       const text = r.text || (r.kind === 'error' ? 'Não foi possível atender o pedido.' : 'Sem resposta.');
-      this.push({ from: 'assistant', source: r.source, tone: r.kind === 'error' ? 'error' : 'normal', text });
+      this.push({ from: 'assistant', source: r.source, tone: r.kind === 'error' ? 'error' : 'normal', text, code: r.code });
     }
   }
 

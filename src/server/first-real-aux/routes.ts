@@ -94,5 +94,9 @@ export async function firstRealAuxRoutes(
     if (!input.success || !/^[a-f0-9]{12}$/.test(req.params.id)) return reply.code(400).send({ code: 'INVALID' });
     return service.apply(actors.get(req)!, req.params.id, input.data);
   });
-
+  app.post<{ Params: { id: string } }>('/api/ui16/controls/:id/cancel', { bodyLimit: 2048 }, async (req, reply) => {
+    const input = z.strictObject(common).safeParse(req.body);
+    if (!input.success || !/^[a-f0-9]{12}$/.test(req.params.id) || input.data.serverId !== opts.core.serverId) return reply.code(400).send({ code: 'INVALID' });
+    return service.cancel(actors.get(req)!, req.params.id);
+  });
 }

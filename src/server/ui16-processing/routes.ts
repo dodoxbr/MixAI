@@ -2,8 +2,7 @@ import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ServerCore } from '../core.js';
 import type { Principal } from '../auth.js';
-import { Ui16ProcessingService } from './service.js';
-const services = new WeakMap<ServerCore, Ui16ProcessingService>();
+import { processingFor } from './service.js';
 const common = { targetMode: z.literal('real'), serverId: z.string().uuid() };
 const preview = z.union([
   z.strictObject({
@@ -26,8 +25,7 @@ export async function ui16ProcessingRoutes(
     principal(req: FastifyRequest, reply: FastifyReply): Principal | undefined;
   },
 ) {
-  const service = services.get(opts.core) ?? new Ui16ProcessingService(opts.core);
-  services.set(opts.core, service);
+  const service = processingFor(opts.core);
   const actors = new WeakMap<FastifyRequest, Principal>();
   app.addHook('onRequest', async (req, reply) => {
     const p = opts.principal(req, reply);
