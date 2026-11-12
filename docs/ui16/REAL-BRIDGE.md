@@ -1,5 +1,9 @@
 # Ui16 — ponte de estado e ensaio controlado de AUX
 
+Evolução posterior: [primeira operação AUX com gate dedicado](FIRST-REAL-AUX.md).
+O texto abaixo descreve a base somente leitura do PR #97; o gate dedicado continua
+ausente por padrão e exige validação supervisionada fora dos testes.
+
 ## Escopo e integração
 
 Base: main `0919a53`. O caminho `createApp` seleciona `Ui16RealBridge` para Ui16 REAL;

@@ -1,3 +1,4 @@
+import type { FirstRealAuxGate } from '../mixer/ui16-aux-write.js';
 import { ChannelMap } from './channels.js';
 import { loadConfig, type LoadedConfig } from './config.js';
 import { MixController } from './controller.js';
@@ -40,8 +41,9 @@ export function keysFor(names: ChannelMap): { required: ParamKey[]; watched: Par
  * Monta mesa (real, laboratório ou simulada) + controlador. O modo é decidido UMA vez, aqui.
  * Nos modos lab e mock o código da mesa real nem é carregado (import dinâmico).
  */
-export async function createApp(loaded: LoadedConfig = loadConfig(), options: { readOnly?: boolean } = {}): Promise<App> {
+export async function createApp(loaded: LoadedConfig = loadConfig(), options: { readOnly?: boolean; firstRealAux?: FirstRealAuxGate } = {}): Promise<App> {
   const { config } = loaded;
+  if(options.firstRealAux&&(config.mixer.mode!=='real'||config.mixer.model!=='ui16'))throw Error('AUX_GATE_REQUIRES_REAL_UI16');
   const caps = MODEL_CAPS[config.mixer.model];
   const names = new ChannelMap(loaded.channels, caps, { allowUnmapped: config.naming.allowUnmapped });
   const log = new ActionLog(loaded.logDir);
@@ -55,6 +57,7 @@ export async function createApp(loaded: LoadedConfig = loadConfig(), options: { 
     const Adapter = config.mixer.model === 'ui16' ? Ui16RealBridge : RealMixer;
     mixer = new Adapter({
       readOnly: true,
+      firstRealAux: options.readOnly===true?undefined:options.firstRealAux,
       ip: config.mixer.ip,
       model: config.mixer.model,
       requiredKeys: keys.required,

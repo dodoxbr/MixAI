@@ -179,6 +179,11 @@ export async function buildHttp(core: ServerCore, opts: { modelCatalog?: ModelCa
     });
   }
 
+  if(core.mode==='real'&&core.mixer.mode==='real'){
+    const {firstRealAuxRoutes}=await import('./first-real-aux/routes.js');
+    await app.register(firstRealAuxRoutes,{core,principal:(req:FastifyRequest,reply:FastifyReply)=>principalOf(core,req,reply)});
+  }
+
   app.get('/api/hello', async () => core.hello());
 
   app.post('/api/login', async (req, reply) => {
