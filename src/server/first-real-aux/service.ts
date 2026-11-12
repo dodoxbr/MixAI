@@ -324,6 +324,7 @@ export class FirstRealAuxService {
         },
       };
     }
+    const current = bridge.auxHandshake.current(prepared.key)?.value;
     return {
       ...response,
       requestId: input.requestId,
@@ -332,7 +333,7 @@ export class FirstRealAuxService {
           response.result.code === 'INDETERMINATE' ? 'unconfirmed' : 'not_sent',
         previous: prepared.sample.value,
         requested: prepared.target,
-        observed: bridge.auxHandshake.current(prepared.key)?.value ?? null,
+        observed: current === -Infinity ? '-inf' : (current ?? null),
       },
       ...(observation?.status === 'unconfirmed'
         ? {

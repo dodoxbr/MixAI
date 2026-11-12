@@ -522,6 +522,20 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
       `SETD^i.1.aux.0.value^${DBToFaderValue(-19)}`,
     ]);
   });
+  it('represents an observed closed fader as -inf, never as missing data', async () => {
+    const s = await setup();
+    s.respond(() => s.fake.last().deliver('SETD^i.1.aux.0.value^0'));
+    const result = await s.apply(s.preview().proposal!.id);
+    expect(JSON.parse(JSON.stringify(result))).toMatchObject({
+      confirmation: {
+        status: 'unconfirmed',
+        reason: 'different_value',
+        observed: '-inf',
+      },
+    });
+    expect(s.c.peekUndo()).toBeUndefined();
+    expect(s.fake.last().commands()).toHaveLength(1);
+  });
 });
 
 describe('HTTP + existing WebSocket boundary', () => {

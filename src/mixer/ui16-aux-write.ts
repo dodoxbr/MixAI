@@ -28,7 +28,7 @@ export interface AuxWriteReport {
   key: ParamKey;
   previous: number;
   requested: number;
-  observed: number | null;
+  observed: number | '-inf' | null;
   status: 'observed_target' | 'unconfirmed' | 'not_sent';
   reason:
     | 'new_inbound_sample'
@@ -315,7 +315,11 @@ export class Ui16AuxHandshake {
       key: f.permit.key,
       previous: f.permit.previous.value,
       requested: f.permit.requested,
-      observed: sample?.value ?? null,
+      observed: sample
+        ? sample.value === -Infinity
+          ? '-inf'
+          : sample.value
+        : null,
       status,
       reason,
       generation: f.permit.previous.generation,

@@ -119,7 +119,7 @@ Não incluir token em logs, histórico de shell, documentação pública ou PR.
    ```json
    {"targetMode":"real","serverId":"<instância atual>","requestId":"operacao-unica","humanConfirmed":true}
    ```
-5. Mostrar `confirmation.previous`, `.requested`, `.observed` (null se sem amostra),
+5. Mostrar `confirmation.previous`, `.requested`, `.observed` (null se sem amostra, `"-inf"` para fader fechado),
    `.status`, `.reason`, `.source`, `.validation`, `.causalAcknowledgement`. Sucesso
    do executor só ocorre após `observed_target`; `unconfirmed` nunca é sucesso.
    Falhas anteriores ao envio retornam `not_sent` e mantêm as revisões/undo existentes.
