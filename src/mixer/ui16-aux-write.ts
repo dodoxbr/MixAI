@@ -1,5 +1,5 @@
-import { DBToFaderValue } from 'soundcraft-ui-connection';
-import { sameValue, type ParamKey } from '../core/revisions.js';
+import { controlCategory, controlFrame, validControlChange, type Ui16ControlCategory, type Ui16ControlGates } from './ui16-controls.js';
+import { sameValue, type ParamKey, type ParamValue } from '../core/revisions.js';
 import { LinkUnavailableError, type LinkState } from './types.js';
 
 /** Bootstrap capability, never read from HTTP, an AI response or mixer state. Absent by default. */
@@ -11,7 +11,7 @@ export interface FirstRealAuxGate {
   confirmationTimeoutMs?: number;
 }
 export interface AuxObservation {
-  value: number;
+  value: ParamValue;
   at: number;
   generation: number;
   sequence: number;
@@ -20,15 +20,16 @@ export interface AuxAuthorization {
   id: string;
   key: ParamKey;
   previous: AuxObservation;
-  requested: number;
+  requested: ParamValue;
   authorized: () => boolean;
 }
 export interface AuxWriteReport {
+  category: Ui16ControlCategory;
   id: string;
   key: ParamKey;
-  previous: number;
-  requested: number;
-  observed: number | '-inf' | null;
+  previous: ParamValue;
+  requested: ParamValue;
+  observed: ParamValue | '-inf' | null;
   status: 'observed_target' | 'unconfirmed' | 'not_sent';
   reason:
     | 'new_inbound_sample'
@@ -58,7 +59,8 @@ export class AuxUnconfirmedError extends Error {
 export const isAuxLevel = (key: ParamKey) =>
   /^ch\.[1-9]\d*\.aux\.[1-9]\d*\.level$/.test(key);
 
-/** Adapter handshake only. Execution/serialization/undo remain owned by MixController/ServerCore. */
+/** Shared PR #100 handshake, extended by category. Historical name preserves its single implementation.
+ * Execution/serialization/undo remain owned by MixController/ServerCore. */
 export class Ui16AuxHandshake {
   private permit?: AuxAuthorization;
   private flight?: {
@@ -74,7 +76,7 @@ export class Ui16AuxHandshake {
   private reports = new Map<string, AuxWriteReport>();
   private uncertain = new Map<ParamKey, number>();
   constructor(
-    readonly gate: FirstRealAuxGate | undefined,
+    gate: FirstRealAuxGate | undefined,
     private ports: {
       now(): number;
       connected(): boolean;
@@ -82,50 +84,69 @@ export class Ui16AuxHandshake {
       identified(): boolean;
       monophonic(key: ParamKey): boolean;
       observation(key: ParamKey): AuxObservation | undefined;
-      send(key: ParamKey, value: number): void;
+      send(key: ParamKey, value: ParamValue): void;
     },
+    controls: Ui16ControlGates = {},
   ) {
-    if (
-      gate &&
-      (!['simulated_transport', 'supervised_protocol'].includes(
-        gate.validation,
-      ) ||
-        !/^[A-Za-z0-9._/-]{1,120}$/.test(gate.validationReference) ||
-        typeof gate.routeGuard !== 'function' ||
-        !Number.isInteger(gate.freshnessMs ?? 3000) ||
-        (gate.freshnessMs ?? 3000) < 10 ||
-        (gate.freshnessMs ?? 3000) > 30000 ||
-        !Number.isInteger(gate.confirmationTimeoutMs ?? 1500) ||
-        (gate.confirmationTimeoutMs ?? 1500) < 10 ||
-        (gate.confirmationTimeoutMs ?? 1500) > 10000)
-    )
-      throw Error('AUX_INVALID_BOOTSTRAP_GATE');
-    this.gate = gate ? Object.freeze({ ...gate }) : undefined;
+    if (gate && controls.aux_level) throw Error('AUX_DUPLICATE_BOOTSTRAP_GATE');
+    const entries = { ...controls, ...(gate ? { aux_level: gate } : {}) };
+    if (controls.master_level && controls.master_level.enabled !== false) throw Error('MASTER_CONTROL_DISABLED');
+    for (const category of Object.keys(entries)) if (!['pa_level', 'pa_mute', 'aux_level', 'aux_mute', 'master_level'].includes(category)) throw Error('UI16_UNKNOWN_CAPABILITY');
+    const validated: Ui16ControlGates = {};
+    for (const category of ['pa_level', 'pa_mute', 'aux_level', 'aux_mute'] as const) {
+      const gate = entries[category];
+      if (
+        gate &&
+        (!['simulated_transport', 'supervised_protocol'].includes(
+          gate.validation,
+        ) ||
+          !/^[A-Za-z0-9._/-]{1,120}$/.test(gate.validationReference) ||
+          typeof gate.routeGuard !== 'function' ||
+          !Number.isInteger(gate.freshnessMs ?? 3000) ||
+          (gate.freshnessMs ?? 3000) < 10 ||
+          (gate.freshnessMs ?? 3000) > 30000 ||
+          !Number.isInteger(gate.confirmationTimeoutMs ?? 1500) ||
+          (gate.confirmationTimeoutMs ?? 1500) < 10 ||
+          (gate.confirmationTimeoutMs ?? 1500) > 10000)
+      )
+        throw Error('AUX_INVALID_BOOTSTRAP_GATE');
+      if (gate) validated[category] = Object.freeze({ ...gate });
+    }
+    this.gates = Object.freeze(validated);
+    this.gate = this.gates.aux_level;
   }
-  enabled() {
-    return !!this.gate;
+  readonly gate: FirstRealAuxGate | undefined;
+  private readonly gates: Ui16ControlGates;
+  gateFor(key: ParamKey): FirstRealAuxGate | undefined {
+    const category = controlCategory(key);
+    return category && category !== 'master_level' ? this.gates[category] : undefined;
   }
-  available() {
+  enabled(key?: ParamKey) {
+    return key ? !!this.gateFor(key) : Object.keys(this.gates).length > 0;
+  }
+  available(key?: ParamKey): boolean {
+    if (!key) return ['ch.1.main.level', 'ch.1.main.mute', 'ch.1.aux.1.level', 'ch.1.aux.1.mute'].some(k => this.available(k as ParamKey));
+    const gate = this.gateFor(key);
     if (
-      !this.gate ||
+      !gate ||
       this.ports.link() !== 'READY' ||
       !this.ports.connected() ||
       !this.ports.identified()
     )
       return false;
     try {
-      return this.gate.routeGuard() === true;
+      return gate.routeGuard() === true;
     } catch {
       return false;
     }
   }
   current(key: ParamKey): AuxObservation | undefined {
     const sample = this.ports.observation(key);
-    return this.available() &&
+    return this.available(key) &&
       this.ports.monophonic(key) &&
       sample &&
       this.ports.now() - sample.at >= 0 &&
-      this.ports.now() - sample.at <= (this.gate?.freshnessMs ?? 3000) &&
+      this.ports.now() - sample.at <= (this.gateFor(key)?.freshnessMs ?? 3000) &&
       !this.stale(key, sample.sequence)
       ? { ...sample }
       : undefined;
@@ -141,15 +162,13 @@ export class Ui16AuxHandshake {
     if (
       this.permit ||
       this.flight ||
-      !isAuxLevel(p.key) ||
+      !controlFrame(p.key, p.requested) ||
       !sample ||
       !p.authorized() ||
       sample.generation !== p.previous.generation ||
       sample.sequence !== p.previous.sequence ||
       !sameValue(sample.value, p.previous.value) ||
-      !Number.isFinite(p.requested) ||
-      !Number.isFinite(p.previous.value) ||
-      Math.abs(p.requested - p.previous.value) > 1 ||
+      !validControlChange(p.key, p.previous.value, p.requested) ||
       sameValue(p.requested, p.previous.value)
     )
       throw new AuxNotSentError('AUX_AUTHORIZATION_STALE');
@@ -167,7 +186,7 @@ export class Ui16AuxHandshake {
       !f ||
       f.sent ||
       data !== f.frame ||
-      !this.available() ||
+      !this.available(f.permit.key) ||
       !f.permit.authorized()
     )
       return false;
@@ -181,7 +200,7 @@ export class Ui16AuxHandshake {
     f.sent = true;
     return true;
   }
-  async write(key: ParamKey, value: number): Promise<'observed'> {
+  async write(key: ParamKey, value: ParamValue): Promise<'observed'> {
     const p = this.permit;
     this.permit = undefined;
     if (
@@ -199,13 +218,13 @@ export class Ui16AuxHandshake {
       sample.generation !== p.previous.generation
     )
       throw new AuxNotSentError('AUX_AUTHORIZATION_STALE');
-    const match = /^ch\.(\d+)\.aux\.(\d+)\.level$/.exec(key)!;
-    const frame = `3:::SETD^i.${Number(match[1]) - 1}.aux.${Number(match[2]) - 1}.value^${DBToFaderValue(value)}`;
+    const frame = controlFrame(key, value);
+    if (!frame) throw new AuxNotSentError();
     const completed = new Promise<void>((resolve, reject) => {
       this.flight = {
         permit: p,
         sent: false,
-        deadline: this.ports.now() + (this.gate!.confirmationTimeoutMs ?? 1500),
+        deadline: this.ports.now() + (this.gateFor(key)!.confirmationTimeoutMs ?? 1500),
         frame,
         resolve,
         reject,
@@ -214,7 +233,7 @@ export class Ui16AuxHandshake {
     const f = this.flight!;
     f.timer = setTimeout(
       () => this.finish('timeout'),
-      this.gate!.confirmationTimeoutMs ?? 1500,
+      this.gateFor(key)!.confirmationTimeoutMs ?? 1500,
     );
     try {
       this.ports.send(key, value);
@@ -266,7 +285,7 @@ export class Ui16AuxHandshake {
         this.finish('authorization_revoked', latest);
         return;
       }
-      if (!this.available()) {
+      if (!this.available(key)) {
         this.finish('connection_changed', latest);
         return;
       }
@@ -312,6 +331,7 @@ export class Ui16AuxHandshake {
           : 'not_sent';
     const report: AuxWriteReport = {
       id: f.permit.id,
+      category: controlCategory(f.permit.key)!,
       key: f.permit.key,
       previous: f.permit.previous.value,
       requested: f.permit.requested,
@@ -324,7 +344,7 @@ export class Ui16AuxHandshake {
       reason,
       generation: f.permit.previous.generation,
       source: 'independent_socket_input',
-      validation: this.gate!.validation,
+      validation: this.gateFor(f.permit.key)!.validation,
       causalAcknowledgement: false,
     };
     this.reports.set(report.id, report);

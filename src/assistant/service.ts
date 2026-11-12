@@ -101,6 +101,7 @@ export class AssistantService {
       /** Roteador central: provedor/modelo escolhido pelo operador NESTA sessão (catálogo). Sem seleção, devolve undefined e vale o caminho anterior. */
       chatRoute?: (p: Principal) => ChatRoute | undefined;
       mixerRoute?: (p: Principal) => ChatRoute | undefined;
+      realPreview?: (p: Principal, intent: import('./intent.js').Intent, source: ProposalCard['source']) => { proposal?: ProposalCard; result?: { code: string; message: string } };
       usesModelCatalog?: boolean;
       log: ActionLog;
       clock?: () => number;
@@ -164,7 +165,7 @@ export class AssistantService {
     }
     const parseContext = { names: this.core.controller.names, role: p.role, steps: this.opts.steps, musicianPA: musicianHasPA(this.core.policy) };
     const local = parseMixerRequest(text, parseContext) ?? parseRequest(text, parseContext);
-    if (local.kind === 'query') return this.render(p, local, 'local', undefined, text);
+    if (local.kind === 'query' || local.kind === 'masterQuery') return this.render(p, local, 'local', undefined, text);
     const explicitCommand = isExplicitMixRequest(text);
     if (explicitCommand && !consultation && local.kind !== 'unknown') {
       this.diagnosticContexts.clear(p.id); this.planningContexts.delete(p.id);
@@ -469,6 +470,12 @@ export class AssistantService {
       }
       return { kind: 'clarify', source, question: outcome.question, options, ai };
     }
+    if (outcome.kind === 'masterQuery') {
+      const snapshot = this.core.snapshotFor(p), state = snapshot.params['master.level'];
+      if (!state) return error('FORBIDDEN', 'Master não está visível para esta sessão.');
+      const value = state.value.status === 'known' && (typeof state.value.value === 'number' || state.value.value === '-inf') ? fmtDb(state.value.value === '-inf' ? -Infinity : state.value.value) : 'leitura indisponível/desconhecida';
+      return { kind: 'answer', source: 'local', text: `Master: ${value}. Modo ${this.core.mode}; conexão ${snapshot.link}. Nenhuma alteração.` };
+    }
     if (outcome.kind === 'query') {
       const observations = operatorObservations(this.core, p, outcome.channel, outcome.dest, outcome.aux);
       if (!observations) return error('FORBIDDEN', 'Esse canal/destino não está visível para esta sessão.');
@@ -478,7 +485,13 @@ export class AssistantService {
     }
     if (outcome.kind === 'answer') return { kind: 'answer', source, text: outcome.text, ai };
     if (outcome.kind === 'unknown') return { kind: 'answer', source, text: 'Não entendi o pedido.', ai };
-    if (this.core.mode === 'real' || this.core.mixer.mode === 'real') return error('REAL_READ_ONLY', 'REAL permanece somente leitura; nenhuma proposta de escrita foi criada.');
+    if (this.core.mode === 'real' || this.core.mixer.mode === 'real') {
+      if (p.role !== 'operator' || !this.opts.realPreview) return error('REAL_READ_ONLY', 'REAL permanece somente leitura; nenhuma proposta de escrita foi criada.');
+      if (outcome.intents.length !== 1) return error('INVALID', 'REAL exige um único parâmetro; não preparo operações em lote.');
+      const prepared = this.opts.realPreview(p, outcome.intents[0]!, source);
+      if (!prepared.proposal) return error('REAL_READ_ONLY', prepared.result?.message ?? 'Categoria REAL desabilitada.');
+      return { kind: 'proposals', source, proposals: [prepared.proposal], text: 'Proposta REAL apenas: confira categoria, destino e valores. A confirmação humana exige targetMode, serverId e humanConfirmed no caminho indicado pelo cartão. Nenhuma escrita foi enviada.' };
+    }
     const cards: ProposalCard[] = [];
     const notes: string[] = [];
     let forbidden = false;
