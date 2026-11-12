@@ -24,4 +24,5 @@ export type ParseOutcome =
   | { kind: 'clarify'; question: string; options: ClarifyOption[] }
   | { kind: 'answer'; text: string }
   | { kind: 'query'; channel: number; dest: Destination; aux?: number; parameter: 'level' | 'mute' | 'configuration' }
+  | { kind: 'masterQuery' }
   | { kind: 'unknown' };

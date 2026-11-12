@@ -69,3 +69,23 @@ Antes de qualquer ensaio físico, o responsável precisa aprovar um plano espec�
 6. Avaliar precisão/quantização do firmware, parâmetros inalterados sem publicação e atraso na mesma conexão antes de considerar ampliar qualquer gate. Nenhum entrypoint desta entrega fornece esse desbloqueio.
 
 Não foi realizado ensaio físico no Yoga, Android ou Ui16; não foram medidos espectro, SPL, microfonia, ganho acústico, compressor, gate ou de-esser.
+
+## Integração com PA/AUX/mute (#102)
+
+A branch incorpora o merge do #102, preservando a tela/CLI supervisionada do #101. Os conflitos em `ui16-real-bridge.ts` e `ui16-aux-write.ts` foram combinados para manter o handshake comum, observações independentes de todos os controles e o perfil de precisão do processamento.
+
+| Bootstrap | Autoriza somente |
+|---|---|
+| `firstRealAux` (legado #101) | `aux_level` |
+| `realControls.pa_level` | Fader do canal no PA |
+| `realControls.pa_mute` | Mute do canal no PA |
+| `realControls.aux_level` | Fader do envio AUX |
+| `realControls.aux_mute` | Mute do envio AUX |
+| `processingGate` | Um parâmetro EQ/HPF/bypass suportado por proposta |
+| Master | Continua não habilitável nesta versão |
+
+O perfil de processamento não é instalado como gate AUX, não aceita chaves de fader/mute e não pode receber gates de controle junto de seu perfil interno. O perfil de controles não aceita chaves EQ/HPF. `gateFor(key)` conserva rota, frescor e timeout próprios por categoria; uma categoria não toma emprestada a configuração da outra. O gate legado do #101 não promove PA, mute ou processamento.
+
+Ambos os perfis continuam atrás da mesma fila do `MixController`: propostas independentes podem coexistir, mas cada frame e cada confirmação são serializados. Identificadores de proposta e undo não são intercambiáveis entre os serviços. Cada reversão exige seu fluxo correspondente e uma observação atual. Dados recebidos de uma categoria não confirmam operação de outra, inclusive quando o alvo booleano coincide.
+
+`test/ui16-integrated-capabilities.test.ts` testa seis parâmetros (PA level/mute, AUX level/mute, EQ e HPF) na **mesma instância com socket falso**, aplicação e undo em ordem inversa, concorrência com apenas um frame em voo, gates isolados, padrão fechado, legado #101, frescor/rota por categoria, revogação e tentativa de emprestar permissões/confirmações. O procedimento físico continua pendente; integração de código/fixtures não valida firmware ou escrita na Soundcraft física.

@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { ProposalBuilder, type Proposal } from '../../assistant/proposals.js';
 import type { Intent } from '../../assistant/intent.js';
-import type { ParamKey } from '../../core/revisions.js';
+import type { ParamKey, ParamValue } from '../../core/revisions.js';
 import { Ui16RealBridge } from '../../mixer/ui16-real-bridge.js';
 import { isAuxLevel, type AuxObservation } from '../../mixer/ui16-aux-write.js';
+import { UI16_CONTROL_CATEGORIES, controlCategory, validControlChange, type Ui16ControlCategory } from '../../mixer/ui16-controls.js';
 import type { Principal } from '../auth.js';
 import { fail, type ServerCore, type CommandResponse } from '../core.js';
 
@@ -11,7 +12,7 @@ interface Prepared {
   proposal: Proposal;
   key: ParamKey;
   sample: AuxObservation;
-  target: number;
+  target: ParamValue;
   running?: { requestId: string; response: Promise<unknown> };
   result?: { requestId: string; response: unknown };
 }
@@ -45,7 +46,7 @@ export class FirstRealAuxService {
     if (p.role !== 'operator' || !this.core.auth.isActive(p))
       return fail(
         'FORBIDDEN',
-        'Só uma sessão autenticada de operador pode autorizar AUX REAL.',
+        'Só uma sessão autenticada de operador pode autorizar controles REAL.',
       );
     if (
       mode !== 'real' ||
@@ -64,7 +65,7 @@ export class FirstRealAuxService {
     if (!this.bridge()?.auxHandshake.available())
       return fail(
         'DEGRADED_READ_ONLY',
-        'Escrita AUX desabilitada ou sem identificação/conexão/rota válidas.',
+        'Escrita REAL desabilitada ou sem identificação/conexão/rota válidas.',
       );
     return undefined;
   }
@@ -76,14 +77,14 @@ export class FirstRealAuxService {
     const bridge = this.bridge();
     const names = this.core.controller.names;
     const gate = bridge?.auxHandshake.gate;
-    const available = !!bridge?.auxHandshake.available();
+    const available = !!bridge?.auxHandshake.available('ch.1.aux.1.level');
     let observed: number | '-inf' | null = null;
     const registered =
       Number.isInteger(query.channel) && Number.isInteger(query.aux) &&
       names.inputs.configured().includes(query.channel!) && names.aux.configured().includes(query.aux!);
     if (registered && bridge) {
       const sample = bridge.auxHandshake.current(`ch.${query.channel}.aux.${query.aux}.level` as ParamKey);
-      if (sample) observed = sample.value === -Infinity ? '-inf' : sample.value;
+      if (sample && typeof sample.value === 'number') observed = sample.value === -Infinity ? '-inf' : sample.value;
     }
     return {
       serverId: this.core.serverId,
@@ -116,84 +117,49 @@ export class FirstRealAuxService {
   ) {
     const blocked = this.access(p, input.targetMode, input.serverId);
     if (blocked) return { result: blocked };
-    const names = this.core.controller.names;
-    let intent: Intent;
-    if (input.undo === true) {
-      const undo = this.core.controller.peekUndo();
-      if (!undo || undo.keys.length !== 1 || !isAuxLevel(undo.keys[0]!))
-        return {
-          result: fail(
-            'INVALID',
-            'Desfazer exige um único envio AUX autorizado.',
-          ),
-        };
-      intent = { type: 'undo' };
-    } else {
-      if (
-        !Number.isInteger(input.channel) ||
-        !names.inputs.configured().includes(input.channel!) ||
-        !Number.isInteger(input.aux) ||
-        !names.aux.configured().includes(input.aux!) ||
-        !Number.isFinite(input.deltaDB) ||
-        Math.abs(input.deltaDB!) > 1 ||
-        input.deltaDB === 0
-      )
-        return {
-          result: fail(
-            'INVALID',
-            'Selecione um canal/AUX cadastrado e passo de até 1 dB.',
-          ),
-        };
-      intent = {
-        type: 'level',
-        channel: input.channel!,
-        dest: 'fones',
-        aux: input.aux!,
-        deltaDB: input.deltaDB!,
-      };
+    if (input.undo) {
+      const top = this.core.controller.peekUndo();
+      if (!top || top.keys.length !== 1 || !isAuxLevel(top.keys[0]!)) return { result: fail('INVALID', 'Desfazer AUX exige um único envio AUX.') };
     }
-    const built = this.builder.build(p, intent, 'local');
+    if (!input.undo && (!Number.isInteger(input.channel) || !Number.isInteger(input.aux) || !Number.isFinite(input.deltaDB) || Math.abs(input.deltaDB!) > 1 || input.deltaDB === 0)) return { result: fail('INVALID', 'Passo AUX exige até 1 dB.') };
+    return this.previewIntent(p, input.undo ? { type: 'undo' } : { type: 'level', channel: input.channel!, dest: 'fones', aux: input.aux!, deltaDB: input.deltaDB }, 'local');
+  }
+  /** Shared proposal boundary for API and natural-language assistant. Never executes here. */
+  previewIntent(p: Principal, intent: Intent, source: Proposal['card']['source'] = 'local') {
+    const blocked = this.access(p, 'real', this.core.serverId);
+    if (blocked) return { result: blocked };
+    if (!['level', 'mute', 'undo'].includes(intent.type) || (intent.type === 'mute' && intent.channels.length !== 1))
+      return { result: fail('INVALID', 'Somente volume/mute de um canal por operação; master e lote bloqueados.') };
+    const names = this.core.controller.names;
+    if (intent.type === 'level' || intent.type === 'mute') {
+      const channel = intent.type === 'level' ? intent.channel : intent.channels[0]!;
+      const aux = intent.dest === 'fones' ? intent.aux ?? this.core.policy.musicianAux : undefined;
+      if (!names.inputs.configured().includes(channel) || (aux !== undefined && !names.aux.configured().includes(aux))) return { result: fail('INVALID', 'Canal/AUX precisa estar cadastrado.') };
+    }
+    if (intent.type === 'undo') {
+      const top = this.core.controller.peekUndo();
+      if (!top || top.keys.length !== 1 || !controlCategory(top.keys[0]!) || top.keys[0] === 'master.level') return { result: fail('INVALID', 'Desfazer exige um único parâmetro autorizado.') };
+    }
+    const built = this.builder.build(p, intent, source);
     if (!built.ok) return { result: fail('INVALID', built.message) };
-    const pr = built.proposal;
-    const parameters = pr.card.parameters;
-    if (
-      !parameters ||
-      parameters.length !== 1 ||
-      !isAuxLevel(parameters[0]!.key)
-    )
-      return {
-        result: fail(
-          'INVALID',
-          'Somente um fader de envio AUX pode ser autorizado.',
-        ),
-      };
+    const pr = built.proposal, parameters = pr.card.parameters;
+    if (!parameters || parameters.length !== 1) return { result: fail('INVALID', 'Uma operação exige exatamente um parâmetro.') };
     const { key, previous, target } = parameters[0]!;
-    const match = /^ch\.(\d+)\.aux\.(\d+)\.level$/.exec(key)!;
+    const category = controlCategory(key);
+    if (!this.bridge()!.auxHandshake.enabled(key)) return { result: fail('FORBIDDEN', 'Esta categoria REAL não foi habilitada pelo bootstrap confiável.') };
+    const match = /^ch\.(\d+)\.(?:main|aux\.(\d+))\.(?:level|mute)$/.exec(key);
     if (
+      !category || !match ||
       !names.inputs.configured().includes(Number(match[1])) ||
-      !names.aux.configured().includes(Number(match[2])) ||
-      typeof previous !== 'number' ||
-      typeof target !== 'number' ||
-      !Number.isFinite(previous) ||
-      !Number.isFinite(target) ||
-      Math.abs(target - previous) >
-        Math.min(1, this.core.controller.limits().maxStepDB) ||
-      target === previous
+      (match[2] && !names.aux.configured().includes(Number(match[2]))) ||
+      previous === '-inf' || target === '-inf' ||
+      !validControlChange(key, previous, target) ||
+      (typeof target === 'number' && typeof previous === 'number' &&
+        Math.abs(target - previous) > Math.min(1, this.core.controller.limits().maxStepDB))
     )
-      return {
-        result: fail(
-          'INVALID',
-          'Origem/alvo fora do escopo de até 1 dB. Nada autorizado.',
-        ),
-      };
+      return { result: fail('INVALID', 'Parâmetro/origem/alvo fora do escopo: um mute ou até 1 dB; nenhum lote/master.') };
     const sample = this.bridge()!.auxHandshake.current(key);
-    if (!sample || Math.abs(sample.value - previous) > 0.05)
-      return {
-        result: fail(
-          'STATE_CHANGED',
-          'Leitura atual indisponível, antiga ou diferente; obtenha nova observação.',
-        ),
-      };
+    if (!sample || (typeof previous === 'boolean' ? sample.value !== previous : typeof sample.value !== 'number' || Math.abs(sample.value - previous) > 0.05)) return { result: fail('STATE_CHANGED', 'Leitura independente indisponível, antiga ou diferente; obtenha nova observação.') };
     for (const [id, old] of this.prepared)
       if (this.now() > old.proposal.expiresAtMs + 60000 && !old.running)
         this.prepared.delete(id);
@@ -206,7 +172,8 @@ export class FirstRealAuxService {
       };
     pr.card.needsApproval = true;
     pr.card.reason =
-      'REAL: confirmação humana de uma operação AUX de até 1 dB. AUX1/HA800 é compartilhado. Não é uma medição de áudio.';
+      `REAL: confirmação humana de ${category}, um canal por operação, volume até 1 dB. AUX1/HA800 é compartilhado. Não é medição de áudio.`;
+    pr.card.realControl = { targetMode: 'real', serverId: this.core.serverId, category, confirmationPath: `/api/ui16/controls/${pr.card.id}/confirm` };
     this.prepared.set(pr.card.id, {
       proposal: pr,
       key,
@@ -219,8 +186,27 @@ export class FirstRealAuxService {
       requested: target,
       observed: sample.value,
       source: 'independent_socket_input',
-      validation: this.bridge()!.auxHandshake.gate!.validation,
+      validation: this.bridge()!.auxHandshake.gateFor(key)!.validation,
     };
+  }
+  capabilities(p: Principal) {
+    if (p.role !== 'operator' || !this.core.auth.isActive(p)) return { result: fail('FORBIDDEN', 'Sessão de operador obrigatória.') };
+    const bridge = this.bridge();
+    return { schemaVersion: 1, targetMode: 'real', serverId: this.core.serverId,
+      categories: UI16_CONTROL_CATEGORIES.map(category => {
+        const key: ParamKey = category === 'master_level' ? 'master.level' : `ch.1.${category.startsWith('aux') ? 'aux.1' : 'main'}.${category.endsWith('mute') ? 'mute' : 'level'}`;
+        return { category, enabled: bridge?.auxHandshake.enabled(key) ?? false, available: bridge?.auxHandshake.available(key) ?? false,
+          ...(category === 'master_level' ? { reason: 'separate_approval_and_physical_validation_pending' } : {}) };
+      }), master: bridge?.reading('master.level') ?? { state: 'unavailable' } };
+  }
+  previewControl(p: Principal, input: { targetMode: unknown; serverId: unknown; operation?: 'level' | 'mute' | 'master'; channel?: number; aux?: number; deltaDB?: number; muted?: boolean; undo?: boolean }) {
+    const blocked = this.access(p, input.targetMode, input.serverId);
+    if (blocked) return { result: blocked };
+    if (input.undo) return this.previewIntent(p, { type: 'undo' });
+    if (input.operation === 'master') return { result: fail('FORBIDDEN', 'Master somente leitura; aprovação e validação física específicas pendentes.') };
+    if (input.operation === 'mute' && typeof input.muted === 'boolean') return this.previewIntent(p, { type: 'mute', channels: [input.channel!], dest: input.aux === undefined ? 'pa' : 'fones', aux: input.aux, muted: input.muted });
+    if (input.operation === 'level' && Number.isFinite(input.deltaDB) && input.deltaDB !== 0 && Math.abs(input.deltaDB!) <= 1) return this.previewIntent(p, { type: 'level', channel: input.channel!, dest: input.aux === undefined ? 'pa' : 'fones', aux: input.aux, deltaDB: input.deltaDB });
+    return { result: fail('INVALID', 'Selecione um volume de até 1 dB ou um mute, sem lote.') };
   }
   apply(
     p: Principal,
@@ -231,6 +217,7 @@ export class FirstRealAuxService {
       serverId: unknown;
       humanConfirmed: unknown;
     },
+    scope?: Ui16ControlCategory,
   ): Promise<unknown> {
     const blocked = this.access(p, input.targetMode, input.serverId);
     if (blocked) return Promise.resolve({ result: blocked });
@@ -249,6 +236,7 @@ export class FirstRealAuxService {
       return Promise.resolve({
         result: fail('NOT_FOUND', 'Prévia não encontrada nesta sessão.'),
       });
+    if (scope && controlCategory(prepared.key) !== scope) return Promise.resolve({ result: fail('FORBIDDEN', 'Categoria de confirmação incompatível.') });
     if (prepared.running)
       return prepared.running.requestId === input.requestId
         ? prepared.running.response
@@ -296,7 +284,7 @@ export class FirstRealAuxService {
       this.core.auth.isActive(p) &&
       this.now() <= pr.expiresAtMs &&
       this.bridge() === bridge &&
-      bridge.auxHandshake.available();
+      bridge.auxHandshake.available(prepared.key);
     let response: CommandResponse;
     try {
       response = await this.core.execute(
@@ -383,4 +371,11 @@ export class FirstRealAuxService {
         : {}),
     };
   }
+}
+
+const services = new WeakMap<ServerCore, FirstRealAuxService>();
+export function realControlsFor(core: ServerCore): FirstRealAuxService {
+  let service = services.get(core);
+  if (!service) { service = new FirstRealAuxService(core); services.set(core, service); }
+  return service;
 }

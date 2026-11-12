@@ -1,5 +1,7 @@
 # Primeiro envio AUX REAL — implementação e limites
 
+Nota de evolução: [REAL-LEVEL-MUTE.md](REAL-LEVEL-MUTE.md) amplia o mesmo handshake/serviço por categoria. Este documento registra o escopo original do PR #100; o gate legado continua restrito a AUX level.
+
 Base desta entrega: main `dfc3494`, com PRs #97 (ponte), #99 (UX ao vivo) e #98
 (operador IA, incluindo a reconciliação dos três). O caminho normal continua somente
 leitura. Nenhuma Ui16 física foi acessada nesta entrega.
