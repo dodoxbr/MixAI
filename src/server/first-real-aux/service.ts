@@ -68,6 +68,41 @@ export class FirstRealAuxService {
       );
     return undefined;
   }
+  /**
+   * Estado somente leitura para a tela supervisionada. Não prepara, não autoriza e não toca o transporte.
+   * `observed` só existe com amostra independente recente do alvo exato; nunca vem de cache otimista.
+   */
+  status(p: Principal, query: { channel?: number; aux?: number } = {}) {
+    const bridge = this.bridge();
+    const names = this.core.controller.names;
+    const gate = bridge?.auxHandshake.gate;
+    const available = !!bridge?.auxHandshake.available();
+    let observed: number | '-inf' | null = null;
+    const registered =
+      Number.isInteger(query.channel) && Number.isInteger(query.aux) &&
+      names.inputs.configured().includes(query.channel!) && names.aux.configured().includes(query.aux!);
+    if (registered && bridge) {
+      const sample = bridge.auxHandshake.current(`ch.${query.channel}.aux.${query.aux}.level` as ParamKey);
+      if (sample) observed = sample.value === -Infinity ? '-inf' : sample.value;
+    }
+    return {
+      serverId: this.core.serverId,
+      mode: this.core.mode,
+      model: this.core.mixer.capabilities().model,
+      link: this.core.mixer.link(),
+      feature: {
+        gate: !!gate,
+        validation: gate?.validation ?? null,
+        available,
+        state: !bridge ? 'not_real' : !gate ? 'disabled' : available ? 'enabled' : 'blocked',
+      },
+      stepDB: 0.5,
+      maxStepDB: Math.min(1, this.core.controller.limits().maxStepDB),
+      channels: names.inputs.list().filter((c) => names.inputs.configured().includes(c.number)).map((c) => ({ number: c.number, name: c.name })),
+      aux: names.aux.list().filter((a) => names.aux.configured().includes(a.number)).map((a) => ({ number: a.number, name: a.name })),
+      observed,
+    };
+  }
   preview(
     p: Principal,
     input: {
