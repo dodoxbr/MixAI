@@ -163,7 +163,7 @@ describe('assistente na tela', () => {
     await settle();
     const apply = ws.last('proposal_apply')!;
     expect(apply['proposalId']).toBe('c1');
-    ws.receive({ type: 'proposal_result', requestId: apply['requestId'], status: 'applied', message: 'ok', askFeedback: true });
+    ws.receive({ type: 'proposal_result', requestId: apply['requestId'], status: 'applied', message: 'ok', result: {ok:true,code:'OK',message:'LAB',data:{changes:[{outcome:'applied_simulated'}]}}, askFeedback: true });
     await settle();
     expect(el.querySelector('.proposal-state')!.textContent).toContain('Aplicado');
     expect(el.querySelector('.assist-feedback')!.textContent).toContain('Melhorou?');
@@ -375,4 +375,38 @@ it('compatible C choices use only the existing readonly consultation transport',
  expect(ws.last('assistant_diagnose')).toMatchObject({input:{channel:3,symptom:'abafado',evidence:[]}});
  expect(ws.last('proposal_apply')).toBeUndefined();
  expect(ws.sent.some(m=>(m['command'] as any)?.type==='set_master')).toBe(false);
+});
+
+describe('confirmação de operação ao vivo', () => {
+ afterEach(() => vi.unstubAllGlobals());
+ it.each(['AUX 5','AUX-5','AUX cinco'])('blocks unsupported %s before sending rather than targeting shared AUX1', async (destination) => {
+  const {ws,el,say}=await boot(); await say('Sobe 2 dB do violão no ' + destination);
+  expect(ws.last('assistant')).toBeUndefined(); expect(el.textContent).toContain('Nenhum pedido foi enviado');
+ });
+ it('keeps delayed operation pending and shows only actual returned result, never proposed final value', async () => {
+  const {ws,el,say,settle}=await boot(); const req=await say('sobe o cavaco no PA');
+  ws.receive({type:'assistant_reply',requestId:req['requestId'],reply:{kind:'proposals',source:'local',proposals:[{...CARD,channel:'Cavaco'}]}}); await settle();
+  (el.querySelector('.proposal .btn-approve') as HTMLButtonElement).click(); await settle();
+  expect(el.textContent).toContain('Aguardando retorno');
+  expect((el.querySelector('.proposal .btn-approve') as HTMLButtonElement).disabled).toBe(true);
+  const apply=ws.last('proposal_apply')!;
+  ws.receive({type:'proposal_result',requestId:apply['requestId'],status:'applied',proposalId:CARD.id,message:'Enviado',result:{ok:true,code:'OK',message:'Estado ainda não confirmado',data:{changes:[{outcome:'sent'}]}}}); await settle();
+  expect(el.textContent).toContain('sem confirmação física'); expect(el.textContent).not.toContain('agora −8.0');
+ });
+});
+
+describe('retorno insuficiente ou recusado', () => {
+ afterEach(() => vi.unstubAllGlobals());
+ it.each([
+  [{status:'applied',message:'ok'},'confirmação final não disponível'],
+  [{status:'failed',message:'Permissão revogada'},'Permissão revogada'],
+ ])('não transforma %j em conclusão confirmada',async(reply,label)=>{
+  const {ws,el,say,settle}=await boot();const req=await say('sobe o cavaco no PA');
+  ws.receive({type:'assistant_reply',requestId:req['requestId'],reply:{kind:'proposals',source:'local',proposals:[CARD]}});await settle();
+  (el.querySelector('.proposal .btn-approve') as HTMLButtonElement).click();await settle();
+  const apply=ws.last('proposal_apply')!;ws.receive({type:'proposal_result',requestId:apply['requestId'],...reply});await settle();
+  expect(el.querySelector('.assist-log')!.textContent).toContain(label);
+  expect(el.querySelector('.proposal-state')!.textContent).not.toContain('Aplicado');
+  expect(el.querySelector('.proposal .btn-approve')).toBeNull();
+ });
 });

@@ -48,10 +48,13 @@ export async function createApp(loaded: LoadedConfig = loadConfig(), options: { 
   let mixer: MixerAdapter;
   if (config.mixer.mode === 'real') {
     const { RealMixer } = await import('../mixer/real.js');
+    const { Ui16RealBridge } = await import('../mixer/ui16-real-bridge.js');
     const keys = keysFor(names);
     const c = config.mixer.connection;
-    mixer = new RealMixer({
-      readOnly: options.readOnly,
+    // Compatibility option readOnly cannot authorize physical writes: hardware gate is pending.
+    const Adapter = config.mixer.model === 'ui16' ? Ui16RealBridge : RealMixer;
+    mixer = new Adapter({
+      readOnly: true,
       ip: config.mixer.ip,
       model: config.mixer.model,
       requiredKeys: keys.required,

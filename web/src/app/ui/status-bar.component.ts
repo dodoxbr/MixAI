@@ -59,13 +59,14 @@ export class StatusBarComponent {
     const c = this.live.connection();
     if (c !== 'online') return 'down';
     const link = this.live.state()?.link;
-    return link === 'READY' ? 'ok' : 'warn';
+    return link === 'READY' && !this.live.synchronizing() ? 'ok' : 'warn';
   });
   readonly linkText = computed(() => {
     const c = this.live.connection();
     if (c === 'connecting') return 'Conectando…';
     if (c === 'offline') return 'Sem servidor — reconectando…';
     if (c === 'idle') return 'Desconectado';
+    if (this.live.synchronizing()) return 'Sincronizando…';
     const link = this.live.state()?.link;
     const texts: Record<string, string> = {
       READY: 'Conectado',

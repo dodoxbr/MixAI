@@ -73,7 +73,7 @@ describe('operador: o chat sempre responde na tela', () => {
     await sendButton(page).click();
     await expect.poll(() => page.locator('.assist-log > .assist-item:not(.from-user)').count()).toBe(2);
     await expectNewestVisible(page);
-    await page.locator('.proposal').first().getByRole('button', { name: 'Aplicar' }).click();
+    await page.locator('.proposal').first().getByRole('button', { name: 'Confirmar ajuste' }).click();
     await page.locator('.tone-ok').filter({ hasText: 'Aplicado' }).waitFor();
     await expectNewestVisible(page);
     expect(errors).toEqual([]);

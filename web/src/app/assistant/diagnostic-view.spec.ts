@@ -24,3 +24,15 @@ it('falls back to the full legacy message for unsupported versions without inven
  expect(safeReference('https://www.soundcraft.com/')).toBe('https://www.soundcraft.com/');
  expect(excerpt('x'.repeat(400)).length).toBeLessThan(230);
 });
+it('renders real v1 sequential checks and human progress without promoting it to mixer evidence', () => {
+ const checks = ['HPF','EQ','Ganho e roteamento'].map((instruction,i)=>({id:'check-'+i,instruction,execution:'not_executable',requiresHumanReview:true}));
+ const view = diagnosticView({diagnosticSession:{schemaVersion:1,sessionId:null,knownContext:{channel:8,destination:'fones',results:[{checkId:'check-0',result:'better'}]},pendingQuestion:{prompt:'O som melhorou?'},nextCheck:checks[1]},diagnosis:{recommendations:[...checks,{id:'unsafe',instruction:'Executar EQ',execution:'automatic'}]}});
+ expect(view.checks?.map(c=>c.instruction)).toEqual(['EQ']);
+ expect(view.checkReports).toEqual([{checkId:'check-0',title:'Verificação informada',label:'melhorou'}]); expect(view.checks?.[0]?.current).toBe(true);
+ expect(view.question).toBe('O som melhorou?'); expect(view.measurement).toContain('Não ouvi nem medi');
+});
+
+it('preserves configured source and channel number from the actual diagnostic session',()=>{
+ const view=diagnosticView({diagnosticSession:{schemaVersion:1,sessionId:'session',knownContext:{channel:3,sourceLabel:'Voz Fred',destination:'fones'}}});
+ expect(view.channel).toBe('Voz Fred (canal 3)');expect(view.destination).toBe('FONES');expect(view.measurement).toContain('Não ouvi nem medi');
+});

@@ -1,3 +1,4 @@
+import { LiveService } from '../core/live.service';
 import { excerpt, safeReference } from './diagnostic-view';
 import { MODE_LABEL } from '../knowledge/knowledge-view';
 import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, inject, viewChild } from '@angular/core';
@@ -6,11 +7,14 @@ import { AssistantUiService, type CardState } from '../core/assistant.service';
 const STATE_TEXT: Record<CardState, string> = {
   open: '',
   applying: 'Aplicando…',
-  applied: 'Aplicado',
+  applied: 'Aplicado em LAB/MOCK (simulado)',
   awaiting: 'Aguardando aprovação',
   cancelled: 'Cancelado',
   stale: 'Valor mudou — veja a nova proposta',
-  failed: 'Não aplicado',
+  failed: 'Recusado ou falhou — veja o retorno',
+  reported: 'Retorno recebido — confirmação final não disponível',
+  sent: 'Enviado — confirmação física não disponível',
+  uncertain: 'Resultado indeterminado — confira o estado',
 };
 
 /**
@@ -20,6 +24,7 @@ const STATE_TEXT: Record<CardState, string> = {
 @Component({
   selector: 'mx-assistant-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: ['.guided-checks { border:1px solid var(--line); border-radius:var(--radius); padding:12px; margin:12px 0; } .guided-checks ol { padding-left:20px; } .guided-checks li { padding:8px 0; } .guided-checks p { margin:4px 0; } .guided-checks small {color:var(--muted);} .current-check {border-left:3px solid var(--brass);padding-left:8px!important;}'],
   host: { class: 'mx-assistant-panel', role: 'region', 'aria-label': 'Assistente' },
   template: `
     <header class="assist-head">
@@ -60,6 +65,26 @@ const STATE_TEXT: Record<CardState, string> = {
             @if (!view.question && view.recommendation) { <p class="chat-block recommendation"><strong>Recomendação · revisão humana</strong> {{ short(view.recommendation) }}</p> }
             <p class="chat-block measurement"><strong>Medição indisponível</strong> {{ view.measurement }}</p>
             @if (item.diagnosticContext && item.id === latestDiagnostic() && !assistant.isCurrentContext(item.diagnosticContext)) { <p role="status">Contexto encerrado ou expirado. Descreva novamente o problema no chat.</p> }
+            @if (view.checks?.length) {
+              <section class="guided-checks" aria-label="Verificações guiadas">
+                <h4>Verificações guiadas · sugestões técnicas</h4>
+                <ol>
+                  @for (check of view.checks; track check.id) {
+                    <li [class.current-check]="check.current">
+                      <p><strong>{{ check.current ? 'Verificação atual · ' : '' }}{{ check.instruction }}</strong></p>
+                      <small>Sugestão técnica. Confirmação pela mesa: não disponível.</small>
+                      @if (check.report) { <p>Retorno informado ao diagnóstico: {{ check.report }} — relato humano, não medição.</p> }
+                    </li>
+                  }
+                </ol>
+              </section>
+            }
+            @if (view.checkReports?.length) {
+              <section aria-label="Relatos das verificações">
+                <h4>Retornos informados</h4>
+                <ul>@for (report of view.checkReports; track report.checkId) { <li>{{ report.title }}: {{ report.label }} — relato humano, não medição.</li> }</ul>
+              </section>
+            }
             <details class="technical-details">
               <summary>Ver detalhes técnicos e fontes</summary>
               <p class="assist-text technical-text">{{ view.fullText }}</p>
@@ -102,27 +127,27 @@ const STATE_TEXT: Record<CardState, string> = {
               </h3>
               <dl>
                 <dt>Canal</dt>
-                <dd>{{ card.channel }}</dd>
+                <dd>{{ channelLabel(card.channel) }}</dd>
                 <dt>Destino</dt>
-                <dd><span class="dest" [class]="'dest dest-' + card.destination">{{ card.destination }}</span></dd>
-                <dt>Agora</dt>
+                <dd><span class="dest" [class]="'dest dest-' + card.destination">{{ destinationLabel(card.destination) }}</span></dd>
+                <dt>Atual na proposta</dt>
                 <dd>{{ card.current }}</dd>
                 <dt>Mudança</dt>
                 <dd>{{ card.change }}</dd>
-                <dt>Fica</dt>
+                <dt>Proposto</dt>
                 <dd class="proposal-result">{{ card.result }}</dd>
               </dl>
               @if (card.reason) {
                 <p class="proposal-reason">Motivo: {{ card.reason }}</p>
               }
               @if (card.needsApproval) {
-                <p class="proposal-approval">Operação crítica: depois de Aplicar, precisa da aprovação do operador.</p>
+                <p class="proposal-approval">Operação crítica: depois de confirmar o ajuste, precisa da aprovação do operador.</p>
               }
               @if (assistant.state(card.id) === 'open' || assistant.state(card.id) === 'applying') {
                 <div class="card-actions">
                   <button type="button" class="btn btn-reject" [disabled]="assistant.state(card.id) === 'applying'" (click)="assistant.cancel(card)">Cancelar</button>
                   <button type="button" class="btn btn-approve" [disabled]="assistant.state(card.id) === 'applying'" (click)="assistant.apply(card)">
-                    {{ assistant.state(card.id) === 'applying' ? 'Aplicando…' : 'Aplicar' }}
+                    {{ assistant.state(card.id) === 'applying' ? 'Aguardando retorno…' : 'Confirmar ajuste' }}
                   </button>
                 </div>
               } @else {
@@ -156,6 +181,9 @@ const STATE_TEXT: Record<CardState, string> = {
 })
 export class AssistantPanelComponent {
   readonly assistant = inject(AssistantUiService);
+  readonly live = inject(LiveService);
+  channelLabel(name: string) { const matches = this.live.channels().filter(c => c.name === name); return matches.length === 1 ? 'CH' + matches[0]!.number + ' — ' + name : name || 'Não disponível'; }
+  destinationLabel(dest: string) { return dest === 'FONES' ? 'FONES · AUX ' + (this.live.hello()?.musicianAux ?? 'não disponível') : dest || 'Não disponível'; }
   readonly hasDiagnostics = computed(() => this.assistant.items().some(item => item.diagnostic));
   readonly latestDiagnostic = computed(() => this.assistant.items().filter(item => item.from === 'assistant').at(-1)?.id);
   readonly short = excerpt;

@@ -82,7 +82,7 @@ it('capturas do assistente (Yoga e celular)', async () => {
     };
     await ask(yoga.page, 'diminui 3 dB da voz Fernando no PA');
     await yoga.page.locator('.proposal').waitFor();
-    await yoga.page.locator('.proposal').last().getByRole('button', { name: 'Aplicar' }).click();
+    await yoga.page.locator('.proposal').last().getByRole('button', { name: 'Confirmar ajuste' }).click();
     await yoga.page.locator('.assist-feedback').waitFor();
     await ask(yoga.page, 'preciso organizar melhor o cavaco na mix');
     await yoga.page.locator('.proposal .assist-src').waitFor();
