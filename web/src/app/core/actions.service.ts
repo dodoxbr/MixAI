@@ -1,4 +1,6 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { SessionService } from './session.service';
+import type { OperationReceipt } from '../live-ux/operation-view';
+import { Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { LiveService } from './live.service';
 import { newId, type Result } from './protocol';
 
@@ -9,6 +11,9 @@ import { newId, type Result } from './protocol';
 @Injectable({ providedIn: 'root' })
 export class ActionsService {
   private readonly live = inject(LiveService);
+  private readonly session = inject(SessionService);
+  readonly receipt = signal<OperationReceipt | null>(null);
+  constructor() { effect(() => { this.session.token(); this.live.hello()?.serverId; untracked(() => this.receipt.set(null)); }); }
   /** Ações em andamento (chave livre: "mute:3", "fones:5:+", "undo"...). */
   readonly busy = signal<ReadonlySet<string>>(new Set());
   /** Pendência sendo aprovada/recusada. */
@@ -19,10 +24,11 @@ export class ActionsService {
   }
 
   async run(key: string, command: Record<string, unknown> & { type: string }, okText?: (r: Result) => string): Promise<Result> {
+    const token = this.session.token(), serverId = this.live.hello()?.serverId;
     this.busy.update((s) => new Set(s).add(key));
     try {
       const r = await this.live.command(command);
-      this.report(r, okText);
+      if (token === this.session.token() && serverId === this.live.hello()?.serverId) { this.receipt.set({ receivedAt: Date.now(), result: r }); this.report(r, okText); }
       return r;
     } finally {
       this.busy.update((s) => {
@@ -34,9 +40,12 @@ export class ActionsService {
   }
 
   async decide(pendingId: string, approve: boolean): Promise<void> {
+    const token = this.session.token(), serverId = this.live.hello()?.serverId;
     this.deciding.set(pendingId);
     try {
       const r = approve ? await this.live.approve(pendingId) : await this.live.reject(pendingId);
+      if (token !== this.session.token() || serverId !== this.live.hello()?.serverId) return;
+      this.receipt.set({ receivedAt: Date.now(), result: r });
       if (!r.ok) this.live.toast('error', r.message);
     } finally {
       this.deciding.set(null);

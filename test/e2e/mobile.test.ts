@@ -82,6 +82,10 @@ async function rotate(page: Page, to: { viewport: { width: number; height: numbe
 async function expectFadersUsable(page: Page) {
   // espera os canais e os valores reais (não "desconhecido") antes de medir
   await expect.poll(() => page.locator('.strips .strip-value').first().textContent(), { timeout: 5000 }).toContain('dB');
+  await expectFaderGeometry(page);
+}
+
+async function expectFaderGeometry(page: Page) {
   await page.waitForTimeout(150); // um quadro de layout depois da última mudança de tamanho
   const strips = await box(page, '.strips');
   const fader = await box(page, '.strips mx-fader');
@@ -217,6 +221,18 @@ describe('envio bloqueado com o celular deitado (correção da E4 preservada)', 
     await field.fill('sobe o surdo no PA');
     const assistantBefore = sent.filter((m) => m['type'] === 'assistant').length;
     const ws = (l.server.https[0] as unknown as { websocketServer: { clients: Set<{ terminate(): void }> } }).websocketServer;
+    // Reconnect really reaches the LAB server, but delay its frames until the offline
+    // assertions finish. Layout timing must not turn the forced click into a valid send.
+    let reconnectAllowed = false;
+    const delayedFrames: Array<() => void> = [];
+    await page.routeWebSocket(/\/ws(?:\?|$)/, route => {
+      const server = route.connectToServer();
+      route.onMessage(message => server.send(message));
+      server.onMessage(message => {
+        if (reconnectAllowed) route.send(message);
+        else delayedFrames.push(() => route.send(message));
+      });
+    });
     for (const c of ws.clients) c.terminate();
 
     // o motivo aparece de verdade (não só em title/aria): visível, dentro da tela, com tamanho legível
@@ -235,8 +251,10 @@ describe('envio bloqueado com o celular deitado (correção da E4 preservada)', 
     const send = page.locator('.mx-assistant-input button[type=submit]');
     expect(await send.isDisabled()).toBe(true);
     expect(h.y).toBeGreaterThan((await send.boundingBox())!.y);
-    // faders continuam inteiros com o motivo à vista
-    await expectFadersUsable(page);
+    // Geometry remains usable, but disconnected values must not masquerade as current.
+    await expectFaderGeometry(page);
+    expect(await page.locator('.strips .strip-value').first().textContent()).not.toContain('dB');
+    expect(await page.getByRole('slider').first().getAttribute('aria-disabled')).toBe('true');
 
     // tentar enviar: nada sai, o texto fica
     await field.press('Enter');
@@ -244,6 +262,8 @@ describe('envio bloqueado com o celular deitado (correção da E4 preservada)', 
     await page.waitForTimeout(300);
     expect(await field.inputValue()).toBe('sobe o surdo no PA');
 
+    reconnectAllowed = true;
+    for (const sendFrame of delayedFrames.splice(0)) sendFrame();
     // reconecta sozinho (mesma sessão): o motivo some, a barra volta a uma linha e o pedido sai UMA vez
     await hint.waitFor({ state: 'detached', timeout: 8000 });
     expect(sent.filter((m) => m['type'] === 'assistant').length).toBe(assistantBefore); // nada foi enviado offline

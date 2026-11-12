@@ -18,11 +18,12 @@ import type { PendingCard } from '../core/protocol';
         </header>
         <h3>{{ card.title }}</h3>
         <p class="card-summary">{{ pretty(card.summary) }}</p>
+        @if (card.command.type === 'set_master') { <p class="card-summary">MASTER afeta todo o PA. Confira o valor e a necessidade antes da aprovação especial.</p> }
         <p class="card-who">Pedido por: {{ card.requestedBy.label }}</p>
         @if (canDecide()) {
           <div class="card-actions">
-            <button type="button" class="btn btn-reject" [disabled]="busy() === card.pendingId" (click)="reject.emit(card.pendingId)">Recusar</button>
-            <button type="button" class="btn btn-approve" [disabled]="busy() === card.pendingId" (click)="approve.emit(card.pendingId)">
+            <button type="button" class="btn btn-reject" [disabled]="busy() === card.pendingId || secondsLeft(card) <= 0" (click)="reject.emit(card.pendingId)">Recusar</button>
+            <button type="button" class="btn btn-approve" [disabled]="busy() === card.pendingId || secondsLeft(card) <= 0" (click)="approve.emit(card.pendingId)">
               {{ busy() === card.pendingId ? 'Aplicando…' : 'Aprovar' }}
             </button>
           </div>

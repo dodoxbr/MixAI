@@ -1,3 +1,4 @@
+import { operationView } from '../live-ux/operation-view';
 import { diagnosticView, presentationChoices, type DiagnosticView } from '../assistant/diagnostic-view';
 import { knowledgeView, type KnowledgeView } from '../knowledge/knowledge-view';
 import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
@@ -5,7 +6,7 @@ import { LiveService, type AssistantOutcome } from './live.service';
 import { SessionService } from './session.service';
 import type { ApplyReply, AssistantReply, DiagnosticContext, ProposalCard } from './protocol';
 
-export type CardState = 'open' | 'applying' | 'applied' | 'awaiting' | 'cancelled' | 'stale' | 'failed';
+export type CardState = 'open' | 'applying' | 'applied' | 'awaiting' | 'cancelled' | 'stale' | 'failed' | 'reported' | 'sent' | 'uncertain';
 
 export interface ChatItem {
   id: number;
@@ -83,6 +84,12 @@ export class AssistantUiService {
     const t = text.trim();
     if (!t || this.blockedReason()) return false;
     const sessionToken = this.session.token();
+    const auxMentions = [...t.matchAll(/\baux(?=[\s:#-]|\d|$)\s*[:#-]?\s*(\d+)?/gi)];
+    if (auxMentions.some(m => !m[1] || Number(m[1]) !== this.live.hello()?.musicianAux)) {
+      this.open.set(true); this.push({ from: 'user', text: t });
+      this.push({ from: 'assistant', tone: 'error', text: 'Destino não disponível neste contrato do assistente. Ele usa PA ou FONES (AUX ' + (this.live.hello()?.musicianAux ?? 'não informado') + '). Nenhum pedido foi enviado. Para outro AUX, use os controles manuais LAB; não será convertido para o retorno compartilhado.' });
+      return true;
+    }
     this.open.set(true);
     this.push({ from: 'user', text: t });
     this.thinking.set(true);
@@ -118,8 +125,10 @@ export class AssistantUiService {
 
   async apply(card: ProposalCard): Promise<void> {
     if (this.state(card.id) !== 'open') return;
+    const token = this.session.token(), serverId = this.live.hello()?.serverId;
     this.setState(card.id, 'applying');
     const r: AssistantOutcome = await this.live.assistant({ type: 'proposal_apply', proposalId: card.id });
+    if (token !== this.session.token()) return;
     if (!r.ok && r.why === 'offline') {
       // Nem saiu: nada foi aplicado. O cartão continua disponível.
       this.setState(card.id, 'open');
@@ -127,15 +136,22 @@ export class AssistantUiService {
     }
     if (!r.ok) {
       // Saiu e a resposta não voltou: NÃO repete. Pode ter sido aplicado.
-      this.setState(card.id, 'failed');
+      this.setState(card.id, 'uncertain');
       return this.push({ from: 'assistant', tone: 'error', text: 'A conexão caiu antes da resposta: o ajuste PODE ter sido aplicado. Confira os valores na tela antes de pedir de novo.' });
+    }
+    if (serverId !== this.live.hello()?.serverId) {
+      this.setState(card.id, 'uncertain');
+      return this.push({ from: 'assistant', tone: 'error', text: 'A instância do servidor mudou. Resultado não confirmado; nenhum ajuste será repetido automaticamente.' });
     }
     const m = r.msg as ApplyReply & Record<string, unknown>;
     switch (m.status) {
-      case 'applied':
-        this.setState(card.id, 'applied');
-        this.push({ from: 'assistant', tone: 'ok', text: `Aplicado: ${card.title} ${card.change} (agora ${card.result}).`, feedbackFor: m.askFeedback ? card.id : undefined });
+      case 'applied': {
+        const view = operationView(m.result, this.live.hello()?.mode);
+        const state: CardState = view.state === 'simulated' ? 'applied' : view.state === 'sent' ? 'sent' : view.state === 'reported' ? 'reported' : 'uncertain';
+        this.setState(card.id, state);
+        this.push({ from: 'assistant', tone: state === 'applied' ? 'ok' : state === 'uncertain' ? 'error' : 'normal', text: view.label + '. ' + (m.result?.message ?? m.message ?? 'Estado final não disponível.'), feedbackFor: m.askFeedback && state !== 'uncertain' ? card.id : undefined });
         return;
+      }
       case 'awaiting_approval':
         this.setState(card.id, 'awaiting');
         this.push({ from: 'assistant', text: m.message });

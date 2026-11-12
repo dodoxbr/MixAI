@@ -1,3 +1,4 @@
+import type { OperationReceipt } from '../live-ux/operation-view';
 import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angular/core';
 import { SessionService } from './session.service';
 import { newId, StateSync, type Hello, type MeterFrame, type Named, type PendingCard, type PendingStatus, type Result, type Snapshot } from './protocol';
@@ -54,12 +55,14 @@ export class LiveService {
   readonly hello = signal<Hello | null>(null);
   readonly state = signal<Snapshot | null>(null);
   readonly pending = signal<PendingCard[]>([]);
+  readonly synchronizing = signal(false);
+  readonly faderReceipt = signal<OperationReceipt | null>(null);
   readonly meters = signal<MeterFrame | null>(null);
   readonly channels = signal<Named[]>([]);
   readonly auxes = signal<Named[]>([]);
   readonly toasts = signal<Toast[]>([]);
   /** Pode mexer: conectado e a mesa legível/gravável. */
-  readonly writable = computed(() => this.connection() === 'online' && this.state()?.link === 'READY');
+  readonly writable = computed(() => this.connection() === 'online' && this.state()?.link === 'READY' && this.state()?.available === true && !this.synchronizing());
 
   private ws: WebSocket | undefined;
   private sync = new StateSync(() => this.raw({ type: 'resync' }));
@@ -79,6 +82,7 @@ export class LiveService {
     // Liga quando há sessão; desliga quando a sessão termina.
     effect(() => {
       const token = this.session.token();
+      this.faderReceipt.set(null);
       if (token) this.open();
       else this.close();
     });
@@ -205,6 +209,7 @@ export class LiveService {
     this.musicianBinding.set(null);
     this.musicianSession.set('');
     this.state.set(null);
+    this.synchronizing.set(false); this.faderReceipt.set(null);
     this.hello.set(null);
     this.pending.set([]);
     this.meters.set(null);
@@ -248,6 +253,7 @@ export class LiveService {
       case 'hello': {
         const h = m as unknown as Hello;
         if (this.hello() && this.hello()!.serverId !== h.serverId) this.pending.set([]);
+        this.synchronizing.set(true);
         this.hello.set(h);
         this.session.rememberServer(h.serverId);
         this.connection.set('online');
@@ -262,6 +268,8 @@ export class LiveService {
       case 'snapshot':
       case 'event': {
         const out = this.sync.handle(m);
+        if (out === 'resync') this.synchronizing.set(true);
+        if (out === 'ready') this.synchronizing.set(false);
         const s = this.sync.state;
         if (out === 'ready' || out === 'applied') this.state.set(s ? { ...s, params: { ...s.params } } : null);
         return;
@@ -298,7 +306,9 @@ export class LiveService {
         return;
       }
       case 'fader_result': {
+        if (typeof m['serverId'] === 'string' && m['serverId'] !== this.hello()?.serverId) return;
         const r = m['result'] as Result;
+        this.faderReceipt.set({ receivedAt: Date.now(), result: r });
         if (!r.ok) this.toast('error', r.message);
         return;
       }

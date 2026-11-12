@@ -224,6 +224,7 @@ export interface AssistantReply {
   diagnosis?: unknown;
   clarification?: unknown;
   conversation?: unknown;
+  diagnosticSession?: unknown;
   diagnosticContext?: DiagnosticContext | null;
   /** Fontes da base local (somente apresentação; validado por knowledgeView). */
   knowledge?: unknown;
@@ -240,6 +241,7 @@ export interface AssistantReply {
 }
 
 export interface ApplyReply {
+  result?: Result;
   status: 'applied' | 'awaiting_approval' | 'recalculated' | 'expired' | 'not_found' | 'nothing' | 'failed';
   message: string;
   proposal?: ProposalCard;

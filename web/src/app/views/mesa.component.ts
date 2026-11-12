@@ -1,8 +1,10 @@
+import { LiveChannelComponent } from '../live-ux/live-channel.component';
+import { SessionService } from '../core/session.service';
 import { SoundcheckComponent } from '../soundcheck/soundcheck.component';
 import { ReferenceWorkspaceComponent } from '../reference/reference.component';
 import { MusiciansComponent } from '../musicians/musicians.component';
 import { EqComponent } from '../eq/eq.component';
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { ActionsService } from '../core/actions.service';
 import { LiveService } from '../core/live.service';
 import { keys, type StateValue } from '../core/protocol';
@@ -33,8 +35,9 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 @Component({
   selector: 'mx-mesa',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SoundcheckComponent, ReferenceWorkspaceComponent, MusiciansComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
-  host: { class: 'mx-view mx-mesa', '[class.is-passagem]': 'onPassagem()' },
+  imports: [LiveChannelComponent, SoundcheckComponent, ReferenceWorkspaceComponent, MusiciansComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
+  host: { class: 'mx-view mx-mesa', '[class.is-passagem]': 'onPassagem()', '[class.has-selection]': 'selectedChannel() !== null' },
+  styles: [`@media (max-width:720px) { :host.has-selection .mesa-main { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:'side side' 'strips master'; } :host.has-selection .side { grid-area:side; } :host.has-selection .strips, :host.has-selection mx-fones-list { grid-area:strips; } :host.has-selection .master-area { grid-area:master; } }`],
   template: `
     <mx-status-bar>
       <!-- Navegação principal: destinos (telas). As ferramentas ficam à direita; Sair por último. -->
@@ -70,10 +73,10 @@ const UNKNOWN: StateValue = { status: 'unknown' };
     <div class="toolbar">
       <div class="segmented" role="tablist" aria-label="Mix">
         <button type="button" role="tab" [attr.aria-selected]="bus() === 'pa'" [class.on]="bus() === 'pa'" (click)="bus.set('pa')">PA</button>
-        <button type="button" role="tab" [attr.aria-selected]="bus() === 'fones'" [class.on]="bus() === 'fones'" (click)="bus.set('fones')">FONES</button>
+        <button type="button" role="tab" [attr.aria-selected]="bus() === 'fones'" [class.on]="bus() === 'fones'" (click)="bus.set('fones')">{{ auxOverride() === null ? 'FONES' : 'AUX ' + aux() }}</button>
       </div>
       @if (bus() === 'fones') {
-        <span class="shared-warning">{{ auxName() }}: muda o fone de TODOS</span>
+        <span class="shared-warning">{{ auxName() }}: {{ aux() === 1 ? 'muda o fone de TODOS (HA800)' : 'AUX ' + aux() + ' · roteamento físico não verificado' }}</span>
       } @else if (simulatedMeters()) {
         <span class="sim-legend"><span class="tb-full">Medidores SIMULADOS (laboratório) — não é o som real</span><span class="tb-short">Medidores SIMULADOS — não é o som real</span></span>
       }
@@ -108,14 +111,15 @@ const UNKNOWN: StateValue = { status: 'unknown' };
     <mx-reference-workspace />
     <div class="mesa-main">
       @if (bus() === 'fones' && narrow()) {
-        <mx-fones-list />
+        <mx-fones-list [auxOverride]="aux()" />
       } @else {
         <div class="strips" #stripRow [class.is-fones]="bus() === 'fones'" (scroll)="rememberScroll()">
           @for (s of strips(); track s.number) {
             <mx-strip
               [name]="s.name"
+              [selectable]="true" [selected]="selectedChannel() === s.number" (chosen)="selectedChannel.set(s.number)"
               [number]="s.number"
-              [where]="bus() === 'pa' ? 'no PA' : 'nos fones'"
+              [where]="bus() === 'pa' ? 'no PA' : 'no AUX ' + aux()"
               [level]="s.level"
               [mute]="s.mute"
               [meter]="s.meter"
@@ -142,11 +146,16 @@ const UNKNOWN: StateValue = { status: 'unknown' };
           </div>
         }
       }
-      @if (live.pending().length || showHistory() || assistant.open()) {
+      @if (selectedChannel() !== null || live.pending().length || showHistory() || assistant.open()) {
         <aside class="side" [class.has-assistant]="assistant.open()">
+          @if (selectedChannel(); as channel) {
+            <mx-live-channel [channel]="channel" [aux]="bus() === 'fones' ? aux() : undefined"
+              (closed)="selectedChannel.set(null)" (channelChanged)="selectChannel($event)" (routeChanged)="selectRoute($event)"
+              (historyRequested)="openHistory()" (undoRequested)="undo()" />
+          }
           <mx-pending-cards
             [cards]="live.pending()"
-            [canDecide]="true"
+            [canDecide]="live.writable()"
             [busy]="actions.deciding()"
             (approve)="actions.decide($event, true)"
             (reject)="actions.decide($event, false)"
@@ -157,6 +166,9 @@ const UNKNOWN: StateValue = { status: 'unknown' };
           @if (showHistory()) {
             <section class="history" aria-label="Histórico">
               <h2>Histórico</h2>
+              <button type="button" class="btn" [disabled]="historyBusy() || live.connection() !== 'online'" (click)="openHistory()">Atualizar histórico</button>
+              @if (historyBusy()) { <p role="status">Consultando histórico…</p> }
+              @if (historyError()) { <p role="alert">{{ historyError() }}</p> }
               <ol>
                 @for (e of history(); track $index) {
                   <li [class.is-error]="!e.ok">
@@ -183,6 +195,9 @@ const UNKNOWN: StateValue = { status: 'unknown' };
   `,
 })
 export class MesaComponent {
+  readonly selectedChannel = signal<number | null>(null);
+  readonly auxOverride = signal<number | null>(null);
+  private readonly session = inject(SessionService);
   readonly showMusicians = signal(false);
   readonly live = inject(LiveService);
   readonly actions = inject(ActionsService);
@@ -199,13 +214,16 @@ export class MesaComponent {
   readonly bus = signal<'pa' | 'fones'>('pa');
   readonly showHistory = signal(false);
   readonly history = signal<LogEntry[]>([]);
+  readonly historyBusy = signal(false);
+  readonly historyError = signal('');
+  private historyGeneration = 0;
   readonly narrow = signal(false);
 
-  readonly aux = computed(() => this.live.hello()?.musicianAux ?? 1);
+  readonly aux = computed(() => this.auxOverride() ?? this.live.hello()?.musicianAux ?? 1);
   readonly auxName = computed(() => this.live.auxes().find((a) => a.number === this.aux())?.name ?? `AUX ${this.aux()}`);
   readonly simulatedMeters = computed(() => !!this.live.meters()?.simulated);
   readonly strips = computed(() => {
-    const params = this.live.state()?.params ?? {};
+    const params = this.live.connection() === 'online' && !this.live.synchronizing() && this.live.state()?.available ? this.live.state()!.params : {};
     const aux = this.bus() === 'fones' ? this.aux() : undefined;
     const levels = this.live.meters()?.levels ?? {};
     return this.live.channels().map((ch) => ({
@@ -216,7 +234,7 @@ export class MesaComponent {
       meter: levels[`ch.${ch.number}`] ?? null,
     }));
   });
-  readonly masterLevel = computed(() => this.live.state()?.params[keys.master]?.value ?? UNKNOWN);
+  readonly masterLevel = computed(() => this.live.connection() === 'online' && !this.live.synchronizing() && this.live.state()?.available ? this.live.state()?.params[keys.master]?.value ?? UNKNOWN : UNKNOWN);
   readonly masterMeter = computed(() => this.live.meters()?.levels['master'] ?? null);
   readonly offlineText = computed(() => {
     const c = this.live.connection();
@@ -242,6 +260,7 @@ export class MesaComponent {
   }
 
   constructor() {
+    effect(() => { this.session.token(); this.live.hello()?.serverId; this.live.hello()?.mode; untracked(() => { this.selectedChannel.set(null); this.historyGeneration++; this.history.set([]); this.historyBusy.set(false); this.historyError.set(''); this.auxOverride.set(null); }); });
     // Girar a tela muda o tamanho da área dos canais: volta a mostrar o mesmo canal à esquerda.
     effect((onCleanup) => {
       const el = this.stripsEl()?.nativeElement;
@@ -267,6 +286,16 @@ export class MesaComponent {
       inject(DestroyRef).onDestroy(() => mq.removeEventListener?.('change', onChange));
     }
   }
+
+  selectChannel(channel: number) { if (this.live.channels().some(c => c.number === channel)) this.selectedChannel.set(channel); }
+  selectRoute(route: string) {
+    if (route === 'pa') { this.bus.set('pa'); return; }
+    const aux = Number(route);
+    if (!this.live.auxes().some(a => a.number === aux)) return;
+    if (this.live.hello()?.mode === 'real' && aux !== this.live.hello()?.musicianAux) return;
+    this.auxOverride.set(aux); this.bus.set('fones');
+  }
+  async openHistory() { this.showHistory.set(true); await this.loadHistory(); }
 
   fader(channel: number, e: FaderMove): void {
     const aux = this.bus() === 'fones' ? this.aux() : undefined;
@@ -296,7 +325,14 @@ export class MesaComponent {
   }
 
   private async loadHistory() {
-    const r = await this.live.command({ type: 'history', limit: 30 });
-    if (r.ok) this.history.set([...((r.data?.['entries'] as LogEntry[]) ?? [])].reverse());
+    if (this.historyBusy()) return;
+    const generation = ++this.historyGeneration, token = this.session.token(), serverId = this.live.hello()?.serverId;
+    this.historyBusy.set(true); this.historyError.set('');
+    try {
+      const r = await this.live.command({ type: 'history', limit: 30 });
+      if (generation !== this.historyGeneration || token !== this.session.token() || serverId !== this.live.hello()?.serverId) return;
+      if (r.ok && Array.isArray(r.data?.['entries'])) this.history.set([...(r.data!['entries'] as LogEntry[])].reverse());
+      else this.historyError.set('Histórico não disponível. Nenhum pedido será repetido automaticamente.');
+    } finally { if (generation === this.historyGeneration) this.historyBusy.set(false); }
   }
 }
