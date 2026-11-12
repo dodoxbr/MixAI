@@ -988,9 +988,9 @@ export class MixController {
   }
 
   /** O que o próximo desfazer reverteria (para o cartão de proposta do assistente). */
-  peekUndo(): { id: number; description: string; keys: ParamKey[] } | undefined {
+  peekUndo(): { id: number; description: string; keys: ParamKey[]; targets: Array<{ key: ParamKey; before: ParamValue; after: ParamValue }> } | undefined {
     const e = this.undoStack.peek(1)[0];
-    return e && e.id !== undefined ? { id: e.id, description: e.description, keys: e.items.map((it) => it.key) } : undefined;
+    return e && e.id !== undefined ? { id: e.id, description: e.description, keys: e.items.map((it) => it.key), targets: e.items.map(it => ({ key: it.key, before: it.before, after: it.after })) } : undefined;
   }
 
   /** Limites de volume (para o assistente calcular o valor resultante igual ao controlador). */

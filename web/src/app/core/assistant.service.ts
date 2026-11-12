@@ -85,7 +85,11 @@ export class AssistantUiService {
     if (!t || this.blockedReason()) return false;
     const sessionToken = this.session.token();
     const auxMentions = [...t.matchAll(/\baux(?=[\s:#-]|\d|$)\s*[:#-]?\s*(\d+)?/gi)];
-    if (auxMentions.some(m => !m[1] || Number(m[1]) !== this.live.hello()?.musicianAux)) {
+    // Operador pode pedir um AUX explícito CADASTRADO (#98); o servidor revalida e nunca converte para o AUX compartilhado.
+    // Músico, AUX não cadastrado, "AUX" sem número ou número ilegível continuam bloqueados aqui, sem enviar nada.
+    const operator = this.live.hello()?.role === 'operator';
+    const registered = (n: number) => this.live.auxes().some(a => a.number === n);
+    if (auxMentions.some(m => !m[1] ? true : Number(m[1]) !== this.live.hello()?.musicianAux && !(operator && registered(Number(m[1]))))) {
       this.open.set(true); this.push({ from: 'user', text: t });
       this.push({ from: 'assistant', tone: 'error', text: 'Destino não disponível neste contrato do assistente. Ele usa PA ou FONES (AUX ' + (this.live.hello()?.musicianAux ?? 'não informado') + '). Nenhum pedido foi enviado. Para outro AUX, use os controles manuais LAB; não será convertido para o retorno compartilhado.' });
       return true;

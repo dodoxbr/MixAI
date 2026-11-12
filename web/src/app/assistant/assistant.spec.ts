@@ -383,6 +383,21 @@ describe('confirmação de operação ao vivo', () => {
   const {ws,el,say}=await boot(); await say('Sobe 2 dB do violão no ' + destination);
   expect(ws.last('assistant')).toBeUndefined(); expect(el.textContent).toContain('Nenhum pedido foi enviado');
  });
+ it.each(['AUX 5','AUX-5'])('músico: bloqueia %s mesmo cadastrado', async (destination) => {
+  const {ws,el,say}=await boot('musician'); TestBed.inject(LiveService).auxes.set([{number:5,name:'Retorno Lucius'} as never]);
+  await say('Sobe 2 dB do violão no ' + destination);
+  expect(ws.last('assistant')).toBeUndefined(); expect(el.textContent).toContain('Nenhum pedido foi enviado');
+ });
+ it.each(['AUX cinco','AUX'])('operador: bloqueia %s (sem número legível) mesmo com AUX 5 cadastrado', async (destination) => {
+  const {ws,el,say}=await boot(); TestBed.inject(LiveService).auxes.set([{number:5,name:'Retorno Lucius'} as never]);
+  await say('Sobe 2 dB do violão no ' + destination);
+  expect(ws.last('assistant')).toBeUndefined(); expect(el.textContent).toContain('Nenhum pedido foi enviado');
+ });
+ it.each(['AUX 5','AUX-5'])('operador: %s CADASTRADO segue para o servidor, que revalida o destino (#98)', async (destination) => {
+  const {ws,say}=await boot(); TestBed.inject(LiveService).auxes.set([{number:5,name:'Retorno Lucius'} as never]);
+  await say('Sobe 2 dB do violão no ' + destination);
+  expect(ws.last('assistant')).toBeDefined();
+ });
  it('keeps delayed operation pending and shows only actual returned result, never proposed final value', async () => {
   const {ws,el,say,settle}=await boot(); const req=await say('sobe o cavaco no PA');
   ws.receive({type:'assistant_reply',requestId:req['requestId'],reply:{kind:'proposals',source:'local',proposals:[{...CARD,channel:'Cavaco'}]}}); await settle();

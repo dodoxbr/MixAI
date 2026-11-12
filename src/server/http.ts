@@ -1,3 +1,4 @@
+import { mixerOperatorRoutes } from '../assistant/mixer-operator/routes.js';
 import type { AutoConfigAdvisor } from '../autoconfig/suggestion-source.js';
 import type { AutoConfigService } from '../autoconfig/service.js';
 import { autoConfigRoutes } from '../autoconfig/routes.js';
@@ -210,6 +211,10 @@ export async function buildHttp(core: ServerCore, opts: { modelCatalog?: ModelCa
     const p = principalOf(core, req, reply);
     if (!p) return reply;
     return sendCommand(core, reply, await core.execute(p, (req.body ?? {}) as object));
+  });
+
+  if (core.assistant) await app.register(mixerOperatorRoutes, { assistant: core.assistant, serverId: core.serverId, origin: opts.labProxyOrigin,
+    principal: (req: FastifyRequest, reply: FastifyReply) => principalOf(core, req, reply), active: (p: Principal) => core.auth.isActive(p),
   });
 
   // Consulta B3A: mesmo servidor e autenticação, sem caminho de comandos.
