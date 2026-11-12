@@ -67,7 +67,7 @@ podem atualizar o estado observado, mas nunca reclassificam uma tentativa encerr
 
 O assistente #98 continua recusando propostas REAL; agente e músico não podem usar
 os novos endpoints. Não há alteração no núcleo D/AutoConfig, PINs, catálogo, roteador
-IA ou telas. A UI atual não ganha um botão REAL nesta entrega: o fluxo funcional é
+IA ou telas. (Atualização PR #101: a tela supervisionada e a CLI de inicialização estão em [SUPERVISED-FIRST-WRITE.md](SUPERVISED-FIRST-WRITE.md).) A UI atual não ganha um botão REAL nesta entrega: o fluxo funcional é
 backend/API autenticada, com cartões compatíveis com o contrato de propostas.
 
 ## Gate físico: desabilitado por padrão

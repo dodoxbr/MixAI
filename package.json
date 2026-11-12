@@ -18,6 +18,7 @@
     "start:lab": "node dist/index.js --lab",
     "serve": "node dist/serve.js",
     "serve:lab": "node dist/serve.js --lab",
+    "serve:supervised-aux": "node dist/supervised-first-write-cli.js",
     "serve:mock": "node dist/serve.js --mock",
     "serve:real": "node dist/serve.js --real",
     "pin": "node dist/pin.js",

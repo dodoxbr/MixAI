@@ -1,3 +1,4 @@
+import { SupervisedAuxComponent } from '../live-ux/supervised-aux.component';
 import { LiveChannelComponent } from '../live-ux/live-channel.component';
 import { SessionService } from '../core/session.service';
 import { SoundcheckComponent } from '../soundcheck/soundcheck.component';
@@ -35,7 +36,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 @Component({
   selector: 'mx-mesa',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LiveChannelComponent, SoundcheckComponent, ReferenceWorkspaceComponent, MusiciansComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
+  imports: [SupervisedAuxComponent, LiveChannelComponent, SoundcheckComponent, ReferenceWorkspaceComponent, MusiciansComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
   host: { class: 'mx-view mx-mesa', '[class.is-passagem]': 'onPassagem()', '[class.has-selection]': 'selectedChannel() !== null' },
   styles: [`@media (max-width:720px) { :host.has-selection .mesa-main { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:'side side' 'strips master'; } :host.has-selection .side { grid-area:side; } :host.has-selection .strips, :host.has-selection mx-fones-list { grid-area:strips; } :host.has-selection .master-area { grid-area:master; } }`],
   template: `
@@ -152,6 +153,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
             <mx-live-channel [channel]="channel" [aux]="bus() === 'fones' ? aux() : undefined"
               (closed)="selectedChannel.set(null)" (channelChanged)="selectChannel($event)" (routeChanged)="selectRoute($event)"
               (historyRequested)="openHistory()" (undoRequested)="undo()" />
+            <mx-supervised-aux />
           }
           <mx-pending-cards
             [cards]="live.pending()"

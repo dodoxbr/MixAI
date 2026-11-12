@@ -635,3 +635,35 @@ describe('HTTP + existing WebSocket boundary', () => {
     expect(s.fake.last().commands()).toHaveLength(1);
   });
 });
+
+describe('GET /api/ui16/aux/status (somente leitura, tela supervisionada)', () => {
+  it('exige operador autenticado, aceita só canais/AUX cadastrados e nunca envia ao transporte', async () => {
+    const s = await setup();
+    const app = await buildHttp(s.core);
+    cleanup.push(() => app.close());
+    const op = { authorization: `Bearer ${s.operatorToken}` };
+    expect((await app.inject({ method: 'GET', url: '/api/ui16/aux/status' })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/api/ui16/aux/status', headers: { authorization: `Bearer ${s.musicianToken}` } })).statusCode).toBe(403);
+    const ok = await app.inject({ method: 'GET', url: '/api/ui16/aux/status?channel=2&aux=1', headers: op });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.headers['cache-control']).toBe('no-store');
+    const body = ok.json();
+    expect(body).toMatchObject({ mode: 'real', model: 'ui16', link: 'READY', stepDB: 0.5, feature: { gate: true, available: true, state: 'enabled', validation: 'simulated_transport' } });
+    expect(typeof body.observed).toBe('number');
+    expect(body.channels.map((c: { number: number }) => c.number)).toContain(2);
+    expect(JSON.stringify(body)).not.toMatch(/token|pin|secret|routeGuard|validationReference/i);
+    const unregistered = await app.inject({ method: 'GET', url: '/api/ui16/aux/status?channel=11&aux=5', headers: op });
+    expect(unregistered.json().observed).toBeNull();
+    expect((await app.inject({ method: 'GET', url: '/api/ui16/aux/status?channel=99', headers: op })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/ui16/aux/status?x=1', headers: op })).statusCode).toBe(400);
+    expect(s.fake.last().commands()).toEqual([]);
+  });
+  it('gate fechado (padrão) aparece como disabled e sem valor observado; rota inválida vira blocked', async () => {
+    const off = await setup({ enabled: false });
+    expect(off.service.status(off.op, { channel: 2, aux: 1 })).toMatchObject({ feature: { gate: false, available: false, state: 'disabled', validation: null }, observed: null });
+    const on = await setup();
+    on.route(false);
+    expect(on.service.status(on.op, { channel: 2, aux: 1 })).toMatchObject({ feature: { gate: true, available: false, state: 'blocked' }, observed: null });
+    expect(on.fake.last().commands()).toEqual([]);
+  });
+});
