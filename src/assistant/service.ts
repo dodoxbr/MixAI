@@ -1,4 +1,5 @@
 import { parseMixerRequest, channelCandidates, resolveDestination } from './mixer-operator/parser.js';
+import { isProcessingCommand, parseProcessingRequest } from './mixer-operator/processing-parser.js';
 import { interpretMixerRequest } from './mixer-operator/interpreter.js';
 import { operatorObservations } from './mixer-operator/observations.js';
 import type { OperatorObservations } from './mixer-operator/contracts.js';
@@ -154,7 +155,8 @@ export class AssistantService {
     }
     if (this.mixEpoch.size >= 128 && !this.mixEpoch.has(p.id)) this.mixEpoch.delete(this.mixEpoch.keys().next().value!);
     const epoch = ++this.mixSequence; this.mixEpoch.set(p.id, epoch);
-    const consultation = parseConsultation(text, this.core.controller.names);
+    // Comando explícito de EQ/HPF tem prioridade sobre a conversa técnica (não é queixa): vira prévia ou pergunta, nunca diagnóstico.
+    const consultation = p.role === 'operator' && isProcessingCommand(text) ? undefined : parseConsultation(text, this.core.controller.names);
     if (consultation) {
       const destination = resolveDestination(text, this.core.controller.names);
       const unsupportedAux = [...text.matchAll(/\baux\s*(\d+)\b/gi)].some(match => Number(match[1]) !== 1);
@@ -164,9 +166,9 @@ export class AssistantService {
       }
     }
     const parseContext = { names: this.core.controller.names, role: p.role, steps: this.opts.steps, musicianPA: musicianHasPA(this.core.policy) };
-    const local = parseMixerRequest(text, parseContext) ?? parseRequest(text, parseContext);
+    const local = parseProcessingRequest(text, parseContext) ?? parseMixerRequest(text, parseContext) ?? parseRequest(text, parseContext);
     if (local.kind === 'query' || local.kind === 'masterQuery') return this.render(p, local, 'local', undefined, text);
-    const explicitCommand = isExplicitMixRequest(text);
+    const explicitCommand = isExplicitMixRequest(text) || isProcessingCommand(text);
     if (explicitCommand && !consultation && local.kind !== 'unknown') {
       this.diagnosticContexts.clear(p.id); this.planningContexts.delete(p.id);
       this.prune();
@@ -489,8 +491,8 @@ export class AssistantService {
       if (p.role !== 'operator' || !this.opts.realPreview) return error('REAL_READ_ONLY', 'REAL permanece somente leitura; nenhuma proposta de escrita foi criada.');
       if (outcome.intents.length !== 1) return error('INVALID', 'REAL exige um único parâmetro; não preparo operações em lote.');
       const prepared = this.opts.realPreview(p, outcome.intents[0]!, source);
-      if (!prepared.proposal) return error('REAL_READ_ONLY', prepared.result?.message ?? 'Categoria REAL desabilitada.');
-      return { kind: 'proposals', source, proposals: [prepared.proposal], text: 'Proposta REAL: confira canal, destino e valores. Confirme pelo fluxo supervisionado autorizado; o botão Aplicar comum não envia comandos REAL.' };
+      if (!prepared.proposal) return error('REAL_READ_ONLY', `Recurso REAL bloqueado ou recusado: ${prepared.result?.message ?? 'categoria REAL desabilitada.'} Nada foi preparado ou enviado.`);
+      return { kind: 'proposals', source, proposals: [prepared.proposal], text: 'Proposta REAL: nada foi enviado. Confira canal, destino, valor anterior e valor proposto e confirme no cartão; o envio só ocorre depois da sua confirmação.' };
     }
     const cards: ProposalCard[] = [];
     const notes: string[] = [];

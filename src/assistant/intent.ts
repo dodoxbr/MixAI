@@ -10,7 +10,9 @@ export type Intent =
   | { type: 'level'; channel: number; dest: Destination; aux?: number; deltaDB?: number; db?: number; reason?: string }
   | { type: 'mute'; channels: number[]; dest: Destination; aux?: number; muted: boolean; reason?: string }
   | { type: 'master'; deltaDB?: number; db?: number; reason?: string }
-  | { type: 'undo'; reason?: string };
+  | { type: 'undo'; reason?: string }
+  /** EQ/HPF/bypass: processamento do CANAL DE ENTRADA (sem destino). Vira prévia só no REAL, pelo serviço de processamento. */
+  | { type: 'processing'; channel: number; field: 'freq' | 'gain' | 'q' | 'hpf' | 'bypass'; band?: 1 | 2 | 3 | 4; value?: number | boolean; deltaDB?: number; reason?: string };
 
 export interface ClarifyOption {
   /** Texto do botão ("PA", "Fones", "Voz Fred"). */

@@ -205,13 +205,15 @@ export interface ProposalCard {
   source: 'local' | 'ai' | 'feedback';
   title: string;
   channel: string;
-  destination: 'PA' | 'FONES' | 'MASTER' | 'DESFAZER';
+  destination: 'PA' | 'FONES' | 'MASTER' | 'DESFAZER' | 'CANAL';
   current: string;
   change: string;
   result: string;
   reason?: string;
   needsApproval: boolean;
   expiresAt: string;
+  /** Presente só em propostas REAL: confirmar/cancelar usam os endpoints do servidor, nunca o Aplicar legado. */
+  realControl?: { targetMode: 'real'; serverId: string; category: string; confirmationPath: string; cancelPath?: string; observed?: number | boolean | '-inf' | null; validation?: string; unit?: string };
 }
 
 export interface DiagnosticContext {
