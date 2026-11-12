@@ -32,6 +32,7 @@ export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('undo'), steps: z.number().int().min(1).max(10).optional() }).strict(),
   z.object({ type: z.literal('load_snapshot'), show: z.string().min(1).max(100), snapshot: z.string().min(1).max(100) }).strict(),
   z.object({ type: z.literal('reset_lab') }).strict(),
+  z.strictObject({ type: z.literal('set_processing'), key: z.string().regex(/^ch\.([1-9]|1[0-2])\.eq\.(b[1-4]\.(freq|q|gain)|hpf\.freq|bypass)$/), value: z.union([z.number().finite(),z.boolean()]) }),
   z.object({ type: z.literal('set_lab_eq'), channel: z.number().int().min(1).max(12), values: z.record(z.string(), z.union([z.number(), z.boolean()])).refine(v => Object.keys(v).length > 0 && Object.keys(v).length <= 15) }).strict(),
   z.object({ type: z.literal('reset_lab_eq'), channel: z.number().int().min(1).max(12) }).strict(),
   // ---------- cenas do MixAI (E5): só operador; carregar só no LAB e com aprovação ----------
@@ -51,7 +52,7 @@ export type Command = z.infer<typeof CommandSchema>;
 export type CommandType = Command['type'];
 
 /** Comandos que mudam a mesa (os outros são consultas). */
-export const WRITE_COMMANDS: ReadonlySet<CommandType> = new Set(['set_level', 'set_mute', 'set_master', 'undo', 'load_snapshot', 'reset_lab', 'scene_load', 'set_lab_eq', 'reset_lab_eq']);
+export const WRITE_COMMANDS: ReadonlySet<CommandType> = new Set(['set_level', 'set_mute', 'set_master', 'undo', 'load_snapshot', 'reset_lab', 'scene_load', 'set_lab_eq', 'reset_lab_eq', 'set_processing']);
 
 export function isSceneCommand(cmd: Command): cmd is Extract<Command, { type: `scene_${string}` }> {
   return cmd.type.startsWith('scene_');
@@ -111,6 +112,8 @@ export async function dispatch(
       return c.undo(cmd.steps ?? 1, { confirmationId, approvalReason: role ? undoApproval(role) : undefined, expect, actor });
     case 'load_snapshot':
       return c.loadSnapshot({ show: cmd.show, snapshot: cmd.snapshot, confirmationId, actor });
+    case 'set_processing':
+      return c.setProcessing({ key: cmd.key as import('../core/revisions.js').ParamKey, value:cmd.value, origin:role, actor, expect });
     case 'set_lab_eq':
       return c.editLabEq(cmd.channel, cmd.values, { origin: role, actor, expect });
     case 'reset_lab_eq':
@@ -148,6 +151,7 @@ export function authorizeCommand(
   if (role === 'operator') return { ok: true, command: cmd };
   if (cmd.type.startsWith('musician_') && cmd.type !== 'musician_identity') return deny('Vínculos são exclusivos do operador.');
   if (cmd.type === 'musician_identity') return { ok: true, command: cmd };
+  if (cmd.type === 'set_processing') return deny('Processamento exige uma sessão de operador e confirmação individual.');
   if (cmd.type === 'set_lab_eq' || cmd.type === 'reset_lab_eq') return deny('EQ do laboratório é exclusivo do operador.');
   if (isSceneCommand(cmd)) {
     // Cenas do MixAI: criar, administrar, importar/exportar, carregar e aprovar são só do

@@ -1,3 +1,12 @@
+import {
+  processingSpec,
+  processingPath,
+  processingValue,
+  processingRaw,
+  processingFrame,
+  validProcessingChange,
+  sendProcessing,
+} from './ui16-processing.js';
 import { ConnectionStatus, faderValueToDB } from 'soundcraft-ui-connection';
 import {
   Ui16AuxHandshake,
@@ -31,6 +40,7 @@ export interface BridgeReading {
   key: ParamKey;
   generation: number;
   value?: ParamValue;
+  rawValue?: number;
   lastObserved?: { value: ParamValue; at: number; generation: number };
   reason?:
     | 'write_pending'
@@ -55,6 +65,8 @@ export interface Ui16BridgeOptions extends Omit<
   routeGuard?: () => boolean;
   /** Server bootstrap only; omitted by default. */
   firstRealAux?: FirstRealAuxGate;
+  /** Trusted bootstrap only; no CLI/YAML/HTTP enables this. */
+  processingGate?: FirstRealAuxGate;
 }
 interface Seen {
   at: number;
@@ -62,9 +74,14 @@ interface Seen {
   sequence: number;
 }
 
-/** Read-only by default. AUX writes need trusted bootstrap plus a queued human authorization. */
+/** Read-only by default. Each write needs trusted bootstrap plus a queued human authorization. */
 export class Ui16RealBridge extends RealMixer {
   readonly auxHandshake: Ui16AuxHandshake;
+  readonly processingHandshake: Ui16AuxHandshake<ParamValue>;
+  private readonly independentProcessing = new Map<
+    ParamKey,
+    AuxObservation<ParamValue>
+  >();
   private readonly stereo = new Map<
     string,
     { value: number; at: number; generation: number }
@@ -137,10 +154,18 @@ export class Ui16RealBridge extends RealMixer {
       !opts.webSocketCtor
     )
       throw Error('AUX_SIMULATION_REQUIRES_INJECTED_TRANSPORT');
+    if (
+      opts.processingGate?.validation === 'simulated_transport' &&
+      !opts.webSocketCtor
+    )
+      throw Error('PROCESSING_SIMULATION_REQUIRES_INJECTED_TRANSPORT');
     const Base = (opts.webSocketCtor ??
       globalThis.WebSocket) as ObserverSocketCtor;
     let bridge: Ui16RealBridge | undefined;
-    const routeGuard = opts.routeGuard ?? opts.firstRealAux?.routeGuard;
+    const routeGuard =
+      opts.routeGuard ??
+      opts.firstRealAux?.routeGuard ??
+      opts.processingGate?.routeGuard;
     const gate = observerSocketGate(
       Base,
       () => bridge?.fail('outbound_blocked'),
@@ -156,7 +181,9 @@ export class Ui16RealBridge extends RealMixer {
             onMismatch: () => bridge?.fail('disconnected'),
           }
         : undefined,
-      (data) => bridge?.auxHandshake?.allowFrame(data) ?? false,
+      (data) =>
+        (bridge?.auxHandshake?.allowFrame(data) ?? false) ||
+        (bridge?.processingHandshake?.allowFrame(data) ?? false),
     );
     super({
       ...opts,
@@ -174,7 +201,8 @@ export class Ui16RealBridge extends RealMixer {
       connected: () => gate.isOpen(),
       link: () => this.link(),
       identified: () => this.reported === 'ui16',
-      observation: (key) => this.required.includes(key)?this.independentAux.get(key):undefined,
+      observation: (key) =>
+        this.required.includes(key) ? this.independentAux.get(key) : undefined,
       monophonic: (key) => this.monophonic(key),
       send: (key, value) => {
         const p = parseKey(key);
@@ -190,12 +218,54 @@ export class Ui16RealBridge extends RealMixer {
         ui.aux(p.aux).input(p.channel).setFaderLevelDB(value);
       },
     });
+    this.processingHandshake = new Ui16AuxHandshake<ParamValue>(
+      opts.processingGate,
+      {
+        now: () => this.now(),
+        connected: () => gate.isOpen(),
+        link: () => this.link(),
+        identified: () => this.reported === 'ui16',
+        observation: (key) => {
+          const sample = this.independentProcessing.get(key);
+          // Rounded library values alone cannot authorize an exact reversible write.
+          return sample &&
+            sample.raw !== undefined &&
+            sample.raw === processingRaw(key, sample.value)
+            ? sample
+            : undefined;
+        },
+        monophonic: (key) => {
+          const spec = processingSpec(key);
+          const sample =
+            spec && this.stereo.get(`i.${spec.channel - 1}.stereoIndex`);
+          return (
+            !!sample &&
+            sample.value === -1 &&
+            sample.generation === this.supervisor.generation() &&
+            this.now() - sample.at >= 0 &&
+            this.now() - sample.at <= (opts.processingGate?.freshnessMs ?? 3000)
+          );
+        },
+        send: (key, value) => {
+          const ui = this.supervisor.currentUi();
+          if (!ui || ui.conn.status !== ConnectionStatus.Open)
+            throw new PhysicalWriteBlockedError();
+          sendProcessing(ui, key, value);
+        },
+      },
+      {
+        valid: validProcessingChange,
+        frame: processingFrame,
+        same: (a, b) => a === b,
+      },
+    );
     this.watched = new Set(keys);
     this.required = [...opts.requiredKeys];
     super.onLinkChange((state) => {
       if (state === 'CONNECTING') {
         this.received.clear();
         this.independentAux.clear();
+        this.independentProcessing.clear();
         this.stereo.clear();
         this.reported = undefined;
         this.quarantined = false;
@@ -204,12 +274,13 @@ export class Ui16RealBridge extends RealMixer {
       }
       if (['LOST', 'DISCONNECTED', 'STOPPED', 'CONNECTING'].includes(state)) {
         this.auxHandshake.connectionChanged();
+        this.processingHandshake.connectionChanged();
         if (state !== 'CONNECTING') this.reported = undefined;
       }
       this.announce();
     });
     super.onParamChange((key, value, origin) => {
-      if (isAuxLevel(key)) return; // Only raw inbound AUX samples may notify consumers; no library echo.
+      if (isAuxLevel(key) || processingSpec(key)) return; // Only raw inbound AUX samples may notify consumers; no library echo.
       const seen = this.received.get(key);
       if (seen && !this.registry.validate(key, value))
         this.history.set(key, {
@@ -226,6 +297,7 @@ export class Ui16RealBridge extends RealMixer {
     this.timer = undefined;
     this.fault = reason;
     this.auxHandshake.connectionChanged();
+    this.processingHandshake.connectionChanged();
     this.announce();
     void super.disconnect();
   }
@@ -307,6 +379,43 @@ export class Ui16RealBridge extends RealMixer {
       });
     }
     this.auxHandshake.configurationChanged();
+    this.processingHandshake.configurationChanged();
+    for (const line of data.slice(4).split('\n')) {
+      const [kind, path, raw] = line.split('^');
+      if (kind !== 'SETD') continue;
+      for (const key of this.watched) {
+        if (!processingSpec(key) || processingPath(key) !== path) continue;
+        const seen = this.received.get(key);
+        if (!seen) continue;
+        const value = processingValue(key, Number(raw));
+        if (this.registry.validate(key, value)) {
+          this.fail('invalid_sample');
+          return;
+        }
+        const previous = this.independentProcessing.get(key);
+        const sample = { ...seen, value, raw: Number(raw) };
+        this.independentProcessing.set(key, sample);
+        this.history.set(key, {
+          value,
+          at: sample.at,
+          generation: sample.generation,
+        });
+        this.processingHandshake.observe(key, sample);
+        if (
+          !previous ||
+          previous.value !== value ||
+          previous.generation !== sample.generation
+        )
+          for (const listener of this.paramListeners)
+            listener(
+              key,
+              value,
+              previous?.generation === sample.generation
+                ? 'external'
+                : 'resync',
+            );
+      }
+    }
     for (const line of data.slice(4).split('\n')) {
       const match = /^SETD\^i\.(\d+)\.aux\.(\d+)\.value\^(.+)$/.exec(line);
       if (!match) continue;
@@ -427,9 +536,13 @@ export class Ui16RealBridge extends RealMixer {
         this.reported === 'ui16'
           ? 'device_reported_not_authenticated'
           : 'unconfirmed',
-      physicalWrite: this.auxHandshake.enabled()
-        ? 'aux_only_bootstrap_gate'
-        : 'blocked',
+      physicalWrite: this.processingHandshake.enabled()
+        ? this.auxHandshake.enabled()
+          ? 'aux_and_processing_bootstrap_gate'
+          : 'processing_only_bootstrap_gate'
+        : this.auxHandshake.enabled()
+          ? 'aux_only_bootstrap_gate'
+          : 'blocked',
     };
   }
   reading(key: ParamKey): BridgeReading {
@@ -458,26 +571,32 @@ export class Ui16RealBridge extends RealMixer {
         ...(lastObserved ? { lastObserved } : {}),
         reason: 'inbound_silence',
       };
-    if (this.auxHandshake.pending(key))
+    if (this.auxHandshake.pending(key) || this.processingHandshake.pending(key))
       return {
         ...base,
         state: 'pending',
         ...(lastObserved ? { lastObserved } : {}),
         reason: 'write_pending',
       };
-    if (seen && this.auxHandshake.stale(key, seen.sequence))
+    if (
+      seen &&
+      (this.auxHandshake.stale(key, seen.sequence) ||
+        this.processingHandshake.stale(key, seen.sequence))
+    )
       return {
         ...base,
         state: 'stale',
         ...(lastObserved ? { lastObserved } : {}),
         reason: 'write_unconfirmed',
       };
-    const rawAux = this.independentAux.get(key);
-    const value = isAuxLevel(key)
-      ? rawAux
-        ? { known: true as const, value: rawAux.value }
-        : { known: false as const }
-      : super.read(key);
+    const rawAux =
+      this.independentAux.get(key) ?? this.independentProcessing.get(key);
+    const value =
+      isAuxLevel(key) || !!processingSpec(key)
+        ? rawAux
+          ? { known: true as const, value: rawAux.value }
+          : { known: false as const }
+        : super.read(key);
     if (!seen || !value.known)
       return {
         ...base,
@@ -500,6 +619,26 @@ export class Ui16RealBridge extends RealMixer {
       lastObserved: observation,
     };
   }
+  processingReading(key: ParamKey): BridgeReading {
+    const r = this.reading(key);
+    const sample = this.independentProcessing.get(key);
+    const age = sample ? this.now() - sample.at : Infinity;
+    if (
+      processingSpec(key) &&
+      r.state === 'confirmed' &&
+      (age < 0 || age > (this.processingHandshake.gate?.freshnessMs ?? 3000))
+    )
+      return {
+        ...r,
+        state: 'stale',
+        value: undefined,
+        reason: 'inbound_silence',
+      };
+    return {
+      ...r,
+      ...(r.state === 'confirmed' && sample ? { rawValue: sample.raw } : {}),
+    };
+  }
   override read(key: ParamKey): ReadResult {
     const r = this.reading(key);
     return r.state === 'confirmed'
@@ -513,9 +652,11 @@ export class Ui16RealBridge extends RealMixer {
       : undefined;
   }
   override statusText() {
-    return `Ui16 bridge · ${this.link()} · identificação ${this.identity().verification} · ${this.auxHandshake.enabled() ? 'AUX 1 dB: confirmação humana obrigatória' : 'SOMENTE LEITURA'}`;
+    return `Ui16 bridge · ${this.link()} · identificação ${this.identity().verification} · ${this.processingHandshake.enabled() ? 'Processamento unitário: confirmação humana obrigatória' : this.auxHandshake.enabled() ? 'AUX 1 dB: confirmação humana obrigatória' : 'SOMENTE LEITURA'}`;
   }
   override async write(key: ParamKey, value: ParamValue): Promise<'observed'> {
+    if (processingSpec(key) && this.processingHandshake.enabled())
+      return this.processingHandshake.write(key, value);
     if (
       !this.auxHandshake.enabled() ||
       !isAuxLevel(key) ||

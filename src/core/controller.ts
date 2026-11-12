@@ -1,3 +1,4 @@
+import { processingSpec, validProcessingChange } from './processing-policy.js';
 import type { SafetyConfig } from './config.js';
 import { ChannelMap, NameResolutionError, type Resolved } from './channels.js';
 import type { ActionLog } from './log.js';
@@ -480,6 +481,12 @@ export class MixController {
 
       const n = Math.max(1, Math.min(steps, this.undoStack.size()));
       const preview = this.undoStack.peek(n);
+      // Processing undo needs a fresh single-item server authorization; the public undo
+      // command cannot consume or execute this entry on a REAL adapter by itself.
+      const processingUndo = this.mixer.mode === 'real' && preview.some(e => e.items.some(it => !!processingSpec(it.key)));
+      const authorizedProcessingUndo = processingUndo && n === 1 && preview[0]!.items.length === 1 &&
+        opts.expect?.undoId === preview[0]!.id && typeof opts.expect?.authorize === 'function';
+      if (processingUndo && !authorizedProcessingUndo) return this.refuse('undo','FORBIDDEN','Faça uma prévia e confirmação individual para reverter processamento.',{});
       const reason = opts.approvalReason?.(
         preview.map((e) => ({
           description: e.description,
@@ -513,7 +520,7 @@ export class MixController {
             const current = this.tracker.actorOf(item.key);
             const actor = item.blockedBy ?? (current && current !== 'mixai' ? current : 'external');
             skipped.push(`${item.label}: alterado depois ${ACTOR_TEXT[actor]}; não desfiz para não apagar essa mudança`);
-          } else if (this.registry.get(item.key)?.capability === 'simulated_only' && this.mixer.mode !== 'lab') {
+          } else if (this.registry.get(item.key)?.capability === 'simulated_only' && this.mixer.mode !== 'lab' && !(authorizedProcessingUndo && processingSpec(item.key))) {
             skipped.push(`${item.label}: somente laboratório`);
           } else if (this.registry.get(item.key)?.kind === 'level' && typeof item.before === 'number' && item.before > this.ceilingFor(item.key)) {
             skipped.push(`${item.label}: o valor anterior (${formatDB(item.before)}) está acima do teto atual`);
@@ -813,6 +820,54 @@ export class MixController {
         applied,
         { scene: req.sceneId, sceneName: req.sceneName, changed: applied.done.length },
         { origin: req.origin, critical: true, actor: req.actor },
+      );
+    });
+  }
+
+  /** One verified processing parameter, in the existing queue/undo/audit machinery.
+   * No client confirmation flag grants access: a server-owned authorization is mandatory.
+   */
+  async setProcessing(req: {
+    key: ParamKey;
+    value: ParamValue;
+    origin?: string;
+    actor?: string;
+    expect?: Expectation;
+  }): Promise<Result> {
+    return this.queue.run(async () => {
+      const gate = this.writeGate();
+      if (gate) return gate;
+      if (!req.expect?.authorize)
+        return this.refuse(
+          'processing',
+          'FORBIDDEN',
+          'Use a prévia e confirmação autenticadas de processamento.',
+          {},
+        );
+      const spec = processingSpec(req.key);
+      if (!spec || !this.names.inputs.configured().includes(spec.channel))
+        return this.refuse('processing', 'INVALID', 'Parâmetro/canal não disponível.', {});
+      const current = this.mixer.read(req.key);
+      if (!current.known) return this.unknownState(req.key);
+      if (!validProcessingChange(req.key, current.value, req.value))
+        return this.refuse(
+          'processing',
+          'INVALID',
+          'Alteração fora dos limites de processamento ou sem efeito.',
+          {},
+        );
+      const changed = this.checkExpectation(req.expect);
+      if (changed) return changed;
+      const limited = this.rateLimit();
+      if (limited) return limited;
+      return this.finish(
+        'processing',
+        `Processamento ${req.key}: ${current.value} → ${req.value}`,
+        await this.applyChanges([
+          { key: req.key, label: req.key, from: current.value, to: req.value },
+        ]),
+        { channel: spec.channel, scope: spec.scope },
+        { origin: req.origin, actor: req.actor, critical: true },
       );
     });
   }
