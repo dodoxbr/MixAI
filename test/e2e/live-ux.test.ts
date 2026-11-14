@@ -38,7 +38,7 @@ for(const [name,device] of [['desktop',{viewport:{width:1920,height:1080}}],['yo
   }
   await panel.getByRole('button',{name:'Ver histórico'}).click();await page.getByRole('region',{name:'Histórico',exact:true}).waitFor();
   expect(write).not.toHaveBeenCalled();
-  if(name === 'celular') { const panelBox=await panel.boundingBox(), listBox=await page.locator('mx-fones-list').boundingBox(); expect(panelBox!.y).toBeLessThan(listBox!.y); }
+  if(name === 'celular') { const panelBox=await panel.boundingBox(), listBox=await page.locator('.strips').boundingBox(); expect(panelBox!.y).toBeLessThan(listBox!.y); }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await panel.scrollIntoViewIfNeeded();mkdirSync(screenshots,{recursive:true});await page.screenshot({path:resolve(screenshots,name+'.png'),fullPage:name !== 'celular'});
   expect(errors).toEqual([]);
@@ -85,8 +85,9 @@ it('AUX adicional cadastrado é somente uma seleção de vista; ajuste manual LA
  const panel=page.getByRole('region',{name:'Canal selecionado'});
  await panel.getByLabel('Destino dos controles').selectOption('5');
  await expect.poll(()=>panel.textContent()).toContain('AUX 5');expect(write).not.toHaveBeenCalled();
- await page.getByRole('button',{name:'Aumentar Violão no AUX 5',exact:true}).click();
- await expect.poll(()=>write.mock.calls.length).toBe(1);
+ const slider=page.getByRole('slider',{name:'Violão no AUX 5',exact:true});await slider.focus();await page.keyboard.press('ArrowUp');
+ await expect.poll(()=>(l.mixer.read('ch.2.aux.5.level' as never)as {value:number}).value).toBe(-19);await expect.poll(()=>slider.getAttribute('aria-valuenow')).toBe('-19');await page.keyboard.press('ArrowUp');
+ await expect.poll(()=>write.mock.calls.length).toBe(2);
  expect((l.mixer.read('ch.2.aux.5.level' as never) as {value:number}).value).toBe(-18);
  expect((l.mixer.read('ch.2.aux.1.level' as never) as {value:number}).value).toBe(-20);expect(value(l)).toBe(-10);
 });
