@@ -347,7 +347,8 @@ export class Ui16ProcessingService {
       bridge.processingHandshake.cancelAuthorization(operationId);
     }
     const confirmation = bridge.processingHandshake.report(operationId) ?? {
-      status: response.result.code === 'INDETERMINATE' ? 'unconfirmed' : 'not_sent',
+      status: response.result.code === 'INDETERMINATE' ? 'sent_unconfirmed' : 'not_sent',
+      ...(response.result.code === 'INDETERMINATE' ? { deliveryKnown: false } : {}),
       previous: pr.previous,
       requested: pr.target,
       observed: null,

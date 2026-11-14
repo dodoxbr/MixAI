@@ -203,6 +203,7 @@ export class Ui16RealBridge extends RealMixer {
         observation: (key) =>
           this.required.includes(key) ? this.independentControls.get(key) : undefined,
         monophonic: (key) => this.monophonic(key),
+        liveConnection: (generation, windowMs) => this.liveConnection(generation, windowMs),
         send: (key, value) => {
           const p = parseKey(key);
           const ui = this.supervisor.currentUi();
@@ -356,13 +357,25 @@ export class Ui16RealBridge extends RealMixer {
       ...(p.aux ? [`a.${p.aux - 1}.stereoIndex`] : []),
     ].every((path) => {
       const sample = this.stereo.get(path);
-      return (
-        sample?.value === -1 &&
-        sample.generation === this.supervisor.generation() &&
-        this.now() - sample.at >= 0 &&
-        this.now() - sample.at <= (this.auxHandshake.gateFor(key)?.freshnessMs ?? 3000)
-      );
+      if (sample?.value !== -1 || sample.generation !== this.supervisor.generation()) return false;
+      const age = this.now() - sample.at;
+      if (age < 0) return false;
+      const gate = this.auxHandshake.gateFor(key);
+      const window = gate?.freshnessMs ?? 3000;
+      // Mesma separação idade × evidência: o vínculo estéreo não é republicado se não mudar.
+      return age <= window || (gate?.evidence === 'live_connection' && age <= (gate.maxObservationAgeMs ?? 300000) && this.liveConnection(sample.generation, window));
     });
+  }
+  /**
+   * Evidência da conexão ATUAL (não de uma amostra): conexão READY (sem quarentena de silêncio), mesma geração, sem falha/dado inválido
+   * e com mensagem de entrada nos últimos `windowMs`. A Ui16 transmite sem parar (medido: intervalo máximo de 0,05 s em 20 s).
+   */
+  liveConnection(generation: number, windowMs: number): boolean {
+    if (this.fault || this.supervisor.generation() !== generation) return false;
+    this.checkSilence();
+    if (this.quarantined || this.link() !== 'READY') return false;
+    const age = this.now() - this.lastInbound;
+    return age >= 0 && age <= windowMs;
   }
   private independentInput(data: unknown) {
     if (typeof data !== 'string' || !data.startsWith('3:::')) return;

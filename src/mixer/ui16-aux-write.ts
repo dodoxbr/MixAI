@@ -13,8 +13,20 @@ export interface FirstRealAuxGate {
   validation: 'simulated_transport' | 'supervised_protocol';
   validationReference: string;
   routeGuard: () => boolean;
+  /** Janela de 3 s (padrão): idade máxima da última observação do campo (`sample_age`) OU, em `live_connection`, idade máxima da última ENTRADA de qualquer mensagem na conexão atual. */
   freshnessMs?: number;
   confirmationTimeoutMs?: number;
+  /**
+   * `sample_age` (padrão): só vale amostra do campo com até `freshnessMs` de idade (a mesa não republica valor inalterado).
+   * `live_connection`: além disso, uma observação MAIS ANTIGA vale se, AGORA, a conexão é a mesma geração, está READY, sem silêncio de entrada, sem dado inválido,
+   * com entrada recente (≤ `freshnessMs`) e a observação tem no máximo `maxObservationAgeMs`. Uma amostra histórica da sessão sozinha NUNCA autoriza escrita.
+   */
+  evidence?: 'sample_age' | 'live_connection';
+  maxObservationAgeMs?: number;
+  /** Restringe o gate a estes canais (1..12). Ausente = todos os cadastrados. */
+  channels?: number[];
+  /** Protocolo de validação inicial: `pending` = a publicação de nova amostra após SETD AINDA NÃO foi confirmada; o primeiro resultado observado é a evidência, nunca uma confirmação prévia. */
+  setdPublication?: 'confirmed' | 'pending';
 }
 export interface AuxObservation<T extends ParamValue = ParamValue> {
   value: T;
@@ -37,7 +49,11 @@ export interface AuxWriteReport<T extends ParamValue = ParamValue> {
   previous: T;
   requested: T;
   observed: T | '-inf' | null;
-  status: 'observed_target' | 'unconfirmed' | 'not_sent';
+  /** `not_sent`: nada saiu. `sent_unconfirmed`: o frame saiu e não houve nova leitura independente do valor pedido. `observed_target`: nova leitura independente no valor pedido. */
+  status: 'observed_target' | 'sent_unconfirmed' | 'not_sent';
+  /** Base da evidência que autorizou o envio: idade da amostra ou conexão viva (histórico nunca autoriza sozinho). */
+  basis: 'sample_age' | 'live_connection';
+  setdPublication: 'confirmed' | 'pending' | 'unspecified';
   reason:
     | 'new_inbound_sample'
     | 'timeout'
@@ -80,6 +96,7 @@ export class Ui16AuxHandshake<T extends ParamValue = ParamValue> {
     resolve: () => void;
     reject: (e: Error) => void;
     timer?: NodeJS.Timeout;
+    basis: 'sample_age' | 'live_connection';
   };
   private reports = new Map<string, AuxWriteReport<T>>();
   private uncertain = new Map<ParamKey, number>();
@@ -93,6 +110,8 @@ export class Ui16AuxHandshake<T extends ParamValue = ParamValue> {
       monophonic(key: ParamKey): boolean;
       observation(key: ParamKey): AuxObservation<T> | undefined;
       send(key: ParamKey, value: T): void;
+      /** Conexão atual viva AGORA: READY, mesma geração, sem silêncio de entrada, sem falha e com entrada dentro de `windowMs`. */
+      liveConnection?(generation: number, windowMs: number): boolean;
     },
     controls: Ui16ControlGates = {},
     private profile?: {
@@ -126,7 +145,14 @@ export class Ui16AuxHandshake<T extends ParamValue = ParamValue> {
           (gate.freshnessMs ?? 3000) > 30000 ||
           !Number.isInteger(gate.confirmationTimeoutMs ?? 1500) ||
           (gate.confirmationTimeoutMs ?? 1500) < 10 ||
-          (gate.confirmationTimeoutMs ?? 1500) > 10000)
+          (gate.confirmationTimeoutMs ?? 1500) > 10000 ||
+          !['sample_age', 'live_connection', undefined].includes(gate.evidence) ||
+          (gate.maxObservationAgeMs !== undefined &&
+            (!Number.isInteger(gate.maxObservationAgeMs) || gate.maxObservationAgeMs < 1000 || gate.maxObservationAgeMs > 1_800_000)) ||
+          (gate.channels !== undefined &&
+            (!Array.isArray(gate.channels) || !gate.channels.length || gate.channels.length > 12 ||
+              gate.channels.some((c) => !Number.isInteger(c) || c < 1 || c > 12))) ||
+          !['confirmed', 'pending', undefined].includes(gate.setdPublication))
       )
         throw Error('AUX_INVALID_BOOTSTRAP_GATE');
       if (gate) validated[category] = Object.freeze({ ...gate });
@@ -150,7 +176,10 @@ export class Ui16AuxHandshake<T extends ParamValue = ParamValue> {
   gateFor(key: ParamKey): FirstRealAuxGate | undefined {
     if (this.profile) return this.profile.accepts(key) ? this.gate : undefined;
     const category = controlCategory(key);
-    return category && category !== 'master_level' ? this.gates[category] : undefined;
+    const gate = category && category !== 'master_level' ? this.gates[category] : undefined;
+    if (!gate?.channels) return gate;
+    const channel = Number(/^ch\.(\d+)\./.exec(key)?.[1]);
+    return gate.channels.includes(channel) ? gate : undefined; // fora do escopo = gate inexistente para este canal
   }
   enabled(key?: ParamKey) {
     return key
@@ -161,10 +190,16 @@ export class Ui16AuxHandshake<T extends ParamValue = ParamValue> {
   }
   available(key?: ParamKey): boolean {
     if (!key && this.profile) return this.available(this.profile.probeKey);
-    if (!key)
-      return ['ch.1.main.level', 'ch.1.main.mute', 'ch.1.aux.1.level', 'ch.1.aux.1.mute'].some(
-        (k) => this.available(k as ParamKey),
-      );
+    if (!key) {
+      // Sondas por escopo: um gate restrito a canais (ex.: só CH3) não existe para o canal 1.
+      const probes: ParamKey[] = [];
+      for (const [category, gate] of Object.entries(this.gates) as Array<[string, FirstRealAuxGate | undefined]>) {
+        if (!gate) continue;
+        for (const channel of gate.channels ?? [1])
+          probes.push(...(['level', 'mute'] as const).map((p) => (category.startsWith('aux') ? `ch.${channel}.aux.1.${p}` : `ch.${channel}.main.${p}`) as ParamKey));
+      }
+      return probes.some((k) => this.available(k));
+    }
     const gate = this.gateFor(key);
     if (
       !gate ||
@@ -179,13 +214,31 @@ export class Ui16AuxHandshake<T extends ParamValue = ParamValue> {
       return false;
     }
   }
+  /**
+   * Separa a IDADE da última observação (informativa; a mesa não republica valor inalterado) da VALIDADE DA EVIDÊNCIA na conexão atual (decide).
+   * Devolve a base que sustenta a escrita ou undefined (falha fechada).
+   */
+  evidenceBasis(key: ParamKey, sample: AuxObservation<T>): 'sample_age' | 'live_connection' | undefined {
+    const gate = this.gateFor(key);
+    if (!gate) return undefined;
+    const age = this.ports.now() - sample.at;
+    if (age < 0) return undefined;
+    const window = gate.freshnessMs ?? 3000;
+    if (age <= window) return 'sample_age';
+    if (
+      gate.evidence === 'live_connection' &&
+      age <= (gate.maxObservationAgeMs ?? 300000) &&
+      this.ports.liveConnection?.(sample.generation, window) === true
+    )
+      return 'live_connection';
+    return undefined;
+  }
   current(key: ParamKey): AuxObservation<T> | undefined {
     const sample = this.ports.observation(key);
     return this.available(key) &&
       this.ports.monophonic(key) &&
       sample &&
-      this.ports.now() - sample.at >= 0 &&
-      this.ports.now() - sample.at <= (this.gateFor(key)?.freshnessMs ?? 3000) &&
+      this.evidenceBasis(key, sample) &&
       !this.stale(key, sample.sequence)
       ? { ...sample }
       : undefined;
@@ -258,6 +311,7 @@ export class Ui16AuxHandshake<T extends ParamValue = ParamValue> {
         sent: false,
         deadline: this.ports.now() + (this.gateFor(key)!.confirmationTimeoutMs ?? 1500),
         frame,
+        basis: this.evidenceBasis(key, sample) ?? 'sample_age',
         resolve,
         reject,
       };
@@ -351,7 +405,7 @@ export class Ui16AuxHandshake<T extends ParamValue = ParamValue> {
     clearTimeout(f.timer);
     this.flight = undefined;
     const status =
-      reason === 'new_inbound_sample' ? 'observed_target' : f.sent ? 'unconfirmed' : 'not_sent';
+      reason === 'new_inbound_sample' ? 'observed_target' : f.sent ? 'sent_unconfirmed' : 'not_sent';
     const report: AuxWriteReport<T> = {
       id: f.permit.id,
       category: this.profile?.category ?? controlCategory(f.permit.key)!,
@@ -360,6 +414,8 @@ export class Ui16AuxHandshake<T extends ParamValue = ParamValue> {
       requested: f.permit.requested,
       observed: sample ? (sample.value === -Infinity ? '-inf' : sample.value) : null,
       status,
+      basis: f.basis,
+      setdPublication: this.gateFor(f.permit.key)!.setdPublication ?? 'unspecified',
       reason,
       generation: f.permit.previous.generation,
       source: 'independent_socket_input',

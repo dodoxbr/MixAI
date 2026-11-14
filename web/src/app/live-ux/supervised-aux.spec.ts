@@ -102,13 +102,13 @@ describe('teste supervisionado AUX (#101)', () => {
     expect(t.q('sup-result-observed')?.textContent).toContain('−19.5');
     expect(t.q('sup-confirm')).toBeNull();
   });
-  it.each([['unconfirmed', null, 'unconfirmed'], ['not_sent', -20, 'not_sent']])('%s não é tratado como sucesso', async (status, observed, label) => {
+  it.each([['sent_unconfirmed', null, 'sent_unconfirmed'], ['not_sent', -20, 'not_sent']])('%s não é tratado como sucesso', async (status, observed, label) => {
     const t = await boot({ mode: 'real', handler: (u) => u.includes('/preview') ? json(PREVIEW) : u.includes('/confirm') ? json(CONFIRMED(status, observed)) : json(STATUS('enabled')) });
     await t.choose(); await t.click('sup-plus'); await t.click('sup-confirm');
     expect(t.q('sup-status')?.textContent).toContain(label);
     expect(t.q('sup-outcome')?.getAttribute('data-status')).toBe(label);
     expect(t.real().filter(c => c.url.endsWith('/confirm'))).toHaveLength(1);
-    if (status === 'unconfirmed') expect(t.q('sup-result-observed')?.textContent).toContain('Não disponível');
+    if (status === 'sent_unconfirmed') expect(t.q('sup-result-observed')?.textContent).toContain('Não disponível');
   });
   it('timeout/conexão perdida na confirmação: resultado indeterminado, sem reenvio automático', async () => {
     const t = await boot({ mode: 'real', handler: (u) => u.includes('/preview') ? json(PREVIEW) : u.includes('/confirm') ? 'hang' : json(STATUS('enabled')) });

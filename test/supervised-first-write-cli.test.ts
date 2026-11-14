@@ -84,3 +84,56 @@ describe('inicialização supervisionada (fail-closed, sem servidor e sem rede)'
     expect(createRouteGuard(rec, { now: () => 0, query: () => ({ ...decision(true), passed: false, reason: 'interface_down' }) })()).toBe(false);
   });
 });
+
+/** Categoria pa_level (primeira escrita de PA): registro v2 com canais explícitos; `pending` só no protocolo inicial. */
+const recordV2 = (over: Record<string, unknown> = {}, checklist: Record<string, unknown> = {}): Record<string, unknown> => ({
+  schemaVersion: 2, category: 'pa_level', channels: [3], reference: 'ui16-pa-2026-11-12-r1', validatedBy: 'Responsavel Teste', validatedAt: '2026-11-12T11:00:00.000Z',
+  device: { model: 'ui16', ip: '192.168.1.50', firmware: 'fw-1.2.3' }, route: { transport: 'ethernet', interfaceIndex: 7 },
+  checklist: { f0ChecklistCompleted: true, supervisorPresent: true, audioOutputsDisconnected: true, manualBackupDone: true, stereoLinkAbsentOnChannelAndAux: true, setdPublishesNewSampleConfirmed: 'pending', ...checklist },
+  ...over,
+});
+const PA = ['--validation-record', 'registro.json', '--category', 'pa_level'];
+describe('--category pa_level (fail-closed, sem servidor e sem rede)', () => {
+  it('registro v2 + --category pa_level: gate escopado ao CH3, evidência live_connection, publicação pendente declarada e auditada', () => {
+    const r = run(recordV2(), {}, PA); const { gate, category } = r.go();
+    expect(category).toBe('pa_level');
+    expect(gate).toMatchObject({ validation: 'supervised_protocol', freshnessMs: 3000, confirmationTimeoutMs: 1500, evidence: 'live_connection', maxObservationAgeMs: 300_000, channels: [3], setdPublication: 'pending' });
+    expect(() => new Ui16AuxHandshake(undefined, { now: () => 0, connected: () => true, link: () => 'READY', identified: () => true, monophonic: () => true, observation: () => undefined, send: () => undefined }, { pa_level: gate })).not.toThrow();
+    expect(JSON.parse(r.audit[0]!)).toMatchObject({ event: 'supervised_first_write_gate_prepared', category: 'pa_level', channels: [3], setdPublication: 'pending', evidence: 'live_connection', schemaVersion: 2 });
+    expect(r.audit[0]).not.toMatch(/pin|token|secret|senha|password/i);
+  });
+  it('a janela de 3 s não foi afrouxada: a CLI continua entregando freshnessMs 3000 e timeout de 1,5 s', () => {
+    expect(run(recordV2(), {}, PA).go().gate).toMatchObject({ freshnessMs: 3000, confirmationTimeoutMs: 1500 });
+  });
+  it('setdPublishesNewSampleConfirmed "confirmed" também é aceito no v2 e fica registrado como confirmed', () => {
+    expect(run(recordV2({}, { setdPublishesNewSampleConfirmed: 'confirmed' }), {}, PA).go().gate.setdPublication).toBe('confirmed');
+  });
+  it('o padrão continua aux_level e entrega gate sem escopo de canal, com a mesma evidência', () => {
+    const { gate, category } = run(record()).go();
+    expect(category).toBe('aux_level'); expect(gate.channels).toBeUndefined(); expect(gate.setdPublication).toBe('confirmed');
+  });
+  it.each([
+    ['v2 pa_level sem --category (sem herança silenciosa)', recordV2(), undefined, 'CATEGORY_MISMATCH'],
+    ['v1 (AUX) com --category pa_level', record(), PA, 'CATEGORY_MISMATCH'],
+    ['v2 aux_level pedido como pa_level', recordV2({ category: 'aux_level' }), PA, 'CATEGORY_MISMATCH'],
+    ['v2 pa_level pedido como aux_level', recordV2(), ['--validation-record', 'registro.json', '--category', 'aux_level'], 'CATEGORY_MISMATCH'],
+    ['v1 com pendente (pending só no v2)', record({ checklist: { ...(record().checklist as object), setdPublishesNewSampleConfirmed: 'pending' } }), undefined, 'RECORD_INVALID'],
+    ['v2 sem canais', recordV2({ channels: [] }), PA, 'RECORD_INVALID'],
+    ['v2 com canal repetido', recordV2({ channels: [3, 3] }), PA, 'RECORD_INVALID'],
+    ['v2 com canal fora de 1..12', recordV2({ channels: [13] }), PA, 'RECORD_INVALID'],
+    ['v2 com categoria desconhecida', recordV2({ category: 'master_level' }), PA, 'RECORD_INVALID'],
+    ['v2 com item do roteiro falso', recordV2({}, { audioOutputsDisconnected: false }), PA, 'RECORD_INVALID'],
+    ['v2 com valor inventado em setd...', recordV2({}, { setdPublishesNewSampleConfirmed: 'maybe' }), PA, 'RECORD_INVALID'],
+    ['v2 com campo extra (tentativa de habilitar outra categoria)', recordV2({ enableAll: true }), PA, 'RECORD_INVALID'],
+    ['v2 antigo (>24 h)', recordV2({ validatedAt: '2026-11-10T11:00:00.000Z' }), PA, 'RECORD_STALE'],
+    ['v2 com IP diferente do configurado', recordV2({ device: { model: 'ui16', ip: '192.168.1.51', firmware: 'x' } }), PA, 'DEVICE_MISMATCH'],
+  ])('recusa: %s', (_n, file, argv, code) => {
+    const r = run(file as unknown, {}, argv as string[] | undefined); expect(refusal(r.go)).toBe(code); expect(r.audit).toEqual([]);
+  });
+  it('recusa quando a rota falha agora, sem auditar nem devolver gate', () => {
+    const r = run(recordV2(), { query: () => decision(false) }, PA); expect(refusal(r.go)).toBe('ROUTE_FAILED'); expect(r.audit).toEqual([]);
+  });
+  it.each([[['--validation-record', 'a.json', '--category']], [['--validation-record', 'a.json', '--category', 'master_level']], [['--validation-record', 'a.json', '--category', 'pa_level', '--enable']], [['--category', 'pa_level', '--validation-record', 'a.json']], [['--validation-record', '--category', 'pa_level']]])('uso inválido %j não habilita nada', (argv) => {
+    const r = run(recordV2(), {}, argv as string[]); expect(refusal(r.go)).toBe('USAGE'); expect(r.audit).toEqual([]);
+  });
+});

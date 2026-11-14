@@ -119,7 +119,7 @@ it('REAL simulado sem retorno da mesa: unconfirmed, sem repetição automática'
     await page.getByTestId('sup-minus').click();
     await page.getByTestId('sup-confirm').click();
     await page.getByTestId('sup-outcome').waitFor();
-    expect(await page.getByTestId('sup-status').textContent()).toContain('unconfirmed');
+    expect(await page.getByTestId('sup-status').textContent()).toContain('sent_unconfirmed');
     expect(await page.getByTestId('sup-outcome').textContent()).toContain('Nada foi repetido');
     await page.waitForTimeout(2500);
     expect(s.fake.last().commands()).toHaveLength(1);

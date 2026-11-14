@@ -348,7 +348,7 @@ it('a processing sample cannot confirm a PA mute with the same boolean target', 
   s.respond(() => setTimeout(() => s.socket.deliver('SETD^i.1.eq.bypass^1'), 2));
   const reply = await s.confirm(cases[1], pr.proposal.id, 'mismatch');
   expect(reply.result.ok).toBe(false);
-  expect(reply.confirmation.status).toBe('unconfirmed');
+  expect(reply.confirmation.status).toBe('sent_unconfirmed');
   expect(s.frames()).toHaveLength(1);
 });
 it('revocation rejects both services and cancels confirmation without replay across categories', async () => {
