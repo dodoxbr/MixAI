@@ -15,7 +15,6 @@ import { PendingCardsComponent } from '../ui/pending-cards.component';
 import { StatusBarComponent } from '../ui/status-bar.component';
 import { StripComponent } from '../ui/strip.component';
 import { ToastsComponent } from '../ui/toasts.component';
-import { FonesListComponent } from './fones-list.component';
 import { AssistantInputComponent } from '../assistant/assistant-input.component';
 import { AssistantPanelComponent } from '../assistant/assistant-panel.component';
 import { AssistantUiService } from '../core/assistant.service';
@@ -37,7 +36,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 @Component({
   selector: 'mx-mesa',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LiveEqComponent, SupervisedAuxComponent, LiveChannelComponent, SoundcheckComponent, ReferenceWorkspaceComponent, MusiciansComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, FonesListComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
+  imports: [LiveEqComponent, SupervisedAuxComponent, LiveChannelComponent, SoundcheckComponent, ReferenceWorkspaceComponent, MusiciansComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
   host: { class: 'mx-view mx-mesa', '[class.is-passagem]': 'onPassagem()', '[class.has-selection]': 'selectedChannel() !== null' },
   styles: [`.aux-selector{display:flex;gap:8px;overflow-x:auto;padding:8px 12px;flex-shrink:0}.aux-selector .btn{min-width:76px;min-height:48px;flex-shrink:0}.aux-selector .on{background:var(--brass);color:#101522}.aux-reading{margin:4px 12px;overflow-wrap:anywhere}.aux-master{flex-direction:column;width:120px;min-width:84px;max-width:120px;flex-shrink:0;padding:12px;box-sizing:border-box;overflow-wrap:anywhere;color:var(--muted)}.aux-master h2{font-size:1rem}.aux-master p{font-size:1.1rem} @media (max-width:720px) { :host.has-selection .mesa-main { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:'side side' 'strips master'; } :host.has-selection .side { grid-area:side; } :host.has-selection .strips, :host.has-selection mx-fones-list { grid-area:strips; } :host.has-selection .master-area { grid-area:master; } }`],
   template: `
@@ -119,9 +118,6 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       <p class="aux-reading">PRE/POST: indisponível no contrato atual. Não inferido pelo valor do envio.</p>
     }
     <div class="mesa-main">
-      @if (bus() === 'fones' && narrow()) {
-        <mx-fones-list [auxOverride]="aux()" />
-      } @else {
         <div class="strips" #stripRow [class.is-fones]="bus() === 'fones'" (scroll)="rememberScroll()">
           @for (s of strips(); track s.number) {
             <mx-strip
@@ -158,7 +154,6 @@ const UNKNOWN: StateValue = { status: 'unknown' };
             <h2>MASTER AUX {{aux()}}</h2><p>Indisponível</p><small>Sem leitura integrada do master AUX. O master do PA permanece separado na aba PA.</small>
           </section>
         }
-      }
       @if (selectedChannel() !== null || live.pending().length || showHistory() || assistant.open()) {
         <aside class="side" [class.has-assistant]="assistant.open()">
           @if (selectedChannel(); as channel) {
@@ -225,18 +220,17 @@ export class MesaComponent {
   readonly onPassagem = computed(() => this.screen() === 'passagem' && this.soundcheckEligible());
   go(screen: 'mesa' | 'passagem'): void { this.screen.set(screen); }
 
-  readonly showRealEq = signal(false);
   readonly showEq = signal(false);
+  readonly showRealEq = signal(false);
   readonly bus = signal<'pa' | 'fones'>('pa');
   readonly showHistory = signal(false);
   readonly history = signal<LogEntry[]>([]);
   readonly historyBusy = signal(false);
   readonly historyError = signal('');
   private historyGeneration = 0;
-  readonly narrow = signal(false);
 
   readonly aux = computed(() => this.auxOverride() ?? this.live.hello()?.musicianAux ?? 1);
-  readonly auxName = computed(() => this.live.auxes().find((a) => a.number === this.aux())?.name ?? `AUX ${this.aux()}`);
+  readonly auxName = computed(() => this.live.auxes().find((a) => a.number === this.aux())?.name ?? 'Sem nome local');
   readonly simulatedMeters = computed(() => !!this.live.meters()?.simulated);
   readonly strips = computed(() => {
     const params = this.live.connection() === 'online' && !this.live.synchronizing() && this.live.state()?.available ? this.live.state()!.params : {};
@@ -250,8 +244,8 @@ export class MesaComponent {
       meter: levels[`ch.${ch.number}`] ?? null,
     }));
   });
-  readonly registeredAux = computed(() => this.live.auxes().some((a) => a.number === this.aux()));
-  readonly knownSends = computed(() => this.strips().filter((s) => s.level.status === 'known').length);
+  readonly registeredAux=computed(()=>this.live.auxes().some(a=>a.number===this.aux()));
+  readonly knownSends=computed(()=>this.strips().filter(s=>s.level.status==='known').length);
   readonly masterLevel = computed(() => this.live.connection() === 'online' && !this.live.synchronizing() && this.live.state()?.available ? this.live.state()?.params[keys.master]?.value ?? UNKNOWN : UNKNOWN);
   readonly masterMeter = computed(() => this.live.meters()?.levels['master'] ?? null);
   readonly offlineText = computed(() => {
@@ -296,13 +290,7 @@ export class MesaComponent {
       ro.observe(el);
       onCleanup(() => ro.disconnect());
     });
-    const mq = typeof matchMedia === 'function' ? matchMedia('(max-width: 720px)') : null;
-    if (mq) {
-      this.narrow.set(mq.matches);
-      const onChange = (e: MediaQueryListEvent) => this.narrow.set(e.matches);
-      mq.addEventListener?.('change', onChange);
-      inject(DestroyRef).onDestroy(() => mq.removeEventListener?.('change', onChange));
-    }
+
   }
 
   selectChannel(channel: number) { if (this.live.channels().some(c => c.number === channel)) this.selectedChannel.set(channel); }
@@ -315,13 +303,13 @@ export class MesaComponent {
   async openHistory() { this.showHistory.set(true); await this.loadHistory(); }
 
   fader(channel: number, e: FaderMove): void {
-    if (this.live.hello()?.mode === 'real' || (this.bus() === 'fones' && !this.registeredAux())) return;
+    if(this.live.hello()?.mode==='real'||(this.bus()==='fones'&&!this.registeredAux()))return;
     const aux = this.bus() === 'fones' ? this.aux() : undefined;
     this.actions.fader(`${this.bus()}:${channel}`, channel, aux, e.db, e.final);
   }
 
   toggleMute(channel: number, mute: StateValue): void {
-    if (mute.status !== 'known' || this.live.hello()?.mode === 'real' || (this.bus() === 'fones' && !this.registeredAux())) return;
+    if (mute.status !== 'known'||this.live.hello()?.mode==='real'||(this.bus()==='fones'&&!this.registeredAux())) return;
     const aux = this.bus() === 'fones' ? this.aux() : undefined;
     void this.actions.run(`mute:${this.bus()}:${channel}`, { type: 'set_mute', channels: [channel], muted: mute.value !== true, aux });
   }
