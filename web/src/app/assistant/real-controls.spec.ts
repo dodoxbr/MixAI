@@ -72,7 +72,7 @@ describe('assistente: cartões REAL', () => {
     expect(text(b.el)).toContain('−19.0 dB'); expect(text(b.el)).toContain('não prova que o MixAI causou');
   });
   it('unconfirmed: informa resultado incerto, sem repetir e sem desfazer sozinho', async () => {
-    const b = await withCard(); b.respond(() => json({ result: { ok: false, code: 'OK', message: 'x' }, confirmation: { status: 'unconfirmed', previous: -20, requested: -19, observed: -20 } }));
+    const b = await withCard(); b.respond(() => json({ result: { ok: false, code: 'OK', message: 'x' }, confirmation: { status: 'sent_unconfirmed', previous: -20, requested: -19, observed: -20 } }));
     byId(b.el, 'card-confirm')!.click(); await b.settle();
     expect(byId(b.el, 'card-state')!.textContent).toContain('NÃO confirmado'); expect(text(b.el)).toContain('Nada foi repetido');
     await new Promise(r => setTimeout(r, 30)); expect(b.calls).toHaveLength(1); expect(byId(b.el, 'card-undo')).toBeNull();

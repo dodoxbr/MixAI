@@ -4,6 +4,8 @@ Entrega do PR #101, sobre o #100 (`FIRST-REAL-AUX.md`). **Nenhuma Ui16 física f
 nenhuma validação física foi realizada.** Merge não autoriza uso físico: quem decide é o responsável, em sessão
 supervisionada. A escrita REAL continua **desabilitada por padrão**.
 
+> **Atualização (preparação da primeira escrita de PA):** a CLI aceita `--category pa_level`, registro v2 com canais explícitos, evidência `live_connection` e resultados `not_sent` / `sent_unconfirmed` / `observed_target`. Veja [PA-FIRST-WRITE-PREP.md](PA-FIRST-WRITE-PREP.md).
+
 ## O que existe
 
 | Peça | Onde | Observação |

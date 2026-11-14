@@ -169,7 +169,7 @@ export class AssistantUiService {
       this.setState(card.id, 'observed');
       return this.push({ from: 'assistant', tone: 'ok', text: `Enviado. Observação recebida da mesa: ${shown(confirmation.observed)} (antes: ${shown(confirmation.previous)}; pedido: ${shown(confirmation.requested)}). É uma amostra independente no valor pedido: não prova que o MixAI causou a mudança nem melhora de áudio.` });
     }
-    if (confirmation?.status === 'unconfirmed' || code === 'INDETERMINATE') {
+    if (confirmation?.status === 'sent_unconfirmed' || code === 'INDETERMINATE') {
       this.setState(card.id, 'unconfirmed');
       return this.push({ from: 'assistant', tone: 'error', text: 'Enviado, mas a mesa NÃO confirmou o valor pedido (resultado incerto). Confira na mesa antes de qualquer nova operação. Nada foi repetido ou desfeito automaticamente.' });
     }

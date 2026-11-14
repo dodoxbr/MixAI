@@ -269,7 +269,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     expect(result).toMatchObject({
       result: { ok: false },
       confirmation: {
-        status: 'unconfirmed',
+        status: 'sent_unconfirmed',
         reason: 'timeout',
         previous: -20,
         requested: -19,
@@ -281,7 +281,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     s.fake.last().deliver(`SETD^i.1.aux.0.value^${DBToFaderValue(-19)}`);
     expect(s.bridge.read(key)).toEqual({ known: true, value: -19 });
     const duplicate = await s.apply(pr.proposal!.id);
-    expect(duplicate.confirmation.status).toBe('unconfirmed');
+    expect(duplicate.confirmation.status).toBe('sent_unconfirmed');
     expect(s.fake.last().commands()).toHaveLength(1);
   });
   it('does not overwrite an external change between preview and queue execution', async () => {
@@ -307,7 +307,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     expect(result).toMatchObject({
       result: { ok: false },
       confirmation: {
-        status: 'unconfirmed',
+        status: 'sent_unconfirmed',
         reason: 'different_value',
         observed: -22,
       },
@@ -324,7 +324,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     });
     expect(await s.apply(id)).toMatchObject({
       result: { ok: false },
-      confirmation: { status: 'unconfirmed', reason: 'authorization_revoked' },
+      confirmation: { status: 'sent_unconfirmed', reason: 'authorization_revoked' },
     });
     expect(s.fake.last().commands()).toHaveLength(1);
     expect(s.preview()).toMatchObject({ result: { code: 'FORBIDDEN' } });
@@ -335,7 +335,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     s.respond(() => old.drop());
     const result = await s.apply(s.preview().proposal!.id);
     expect(result).toMatchObject({
-      confirmation: { status: 'unconfirmed', reason: 'connection_changed' },
+      confirmation: { status: 'sent_unconfirmed', reason: 'connection_changed' },
     });
     const generation = s.bridge.supervisor.generation();
     await waitFor(
@@ -382,7 +382,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     const s = await setup();
     s.respond(() => s.fake.last().deliver('SETD^a.0.stereoIndex^0'));
     expect(await s.apply(s.preview().proposal!.id)).toMatchObject({
-      confirmation: { status: 'unconfirmed', reason: 'configuration_changed' },
+      confirmation: { status: 'sent_unconfirmed', reason: 'configuration_changed' },
     });
     expect(s.fake.last().commands()).toHaveLength(1);
   });
@@ -444,7 +444,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     s.auth.logout(s.operatorToken);
     s.fake.last().deliver(`SETD^i.0.aux.0.value^${DBToFaderValue(-19)}`);
     expect(await executing).toMatchObject({
-      confirmation: { status: 'unconfirmed' },
+      confirmation: { status: 'sent_unconfirmed' },
     });
     expect(await queued).toMatchObject({
       result: { ok: false, code: 'FORBIDDEN' },
@@ -459,7 +459,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     s.age(81);
     s.fake.last().deliver(`SETD^i.1.aux.0.value^${DBToFaderValue(-19)}`);
     expect(await pending).toMatchObject({
-      confirmation: { status: 'unconfirmed', reason: 'timeout', observed: -19 },
+      confirmation: { status: 'sent_unconfirmed', reason: 'timeout', observed: -19 },
     });
     expect(s.fake.last().commands()).toHaveLength(1);
   });
@@ -475,7 +475,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     expect(await s.apply(s.preview().proposal!.id)).toMatchObject({
       result: { ok: false },
       confirmation: {
-        status: 'unconfirmed',
+        status: 'sent_unconfirmed',
         reason: 'different_value',
         observed: -22,
       },
@@ -516,7 +516,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     await waitFor(() => s.fake.last().commands().length === 1);
     s.fake.last().send('3:::SETD^m.mix^0.5');
     expect(await pending).toMatchObject({
-      confirmation: { status: 'unconfirmed' },
+      confirmation: { status: 'sent_unconfirmed' },
     });
     expect(s.fake.sockets.flatMap((socket) => socket.commands())).toEqual([
       `SETD^i.1.aux.0.value^${DBToFaderValue(-19)}`,
@@ -528,7 +528,7 @@ describe('first Ui16 AUX write: real library + simulated socket only', () => {
     const result = await s.apply(s.preview().proposal!.id);
     expect(JSON.parse(JSON.stringify(result))).toMatchObject({
       confirmation: {
-        status: 'unconfirmed',
+        status: 'sent_unconfirmed',
         reason: 'different_value',
         observed: '-inf',
       },

@@ -171,7 +171,7 @@ describe('assistente → controles REAL (prévia, confirmação humana, executor
   it('perda de conexão: pedido recusado antes da prévia e confirmação em voo sem resposta fica não confirmada, sem reenvio', async () => {
     const s = await setup(); const card = (await s.ask('Sobe 0,5 dB do violão no PA')).proposals[0];
     s.setEcho(false); const r = (await s.post(card.realControl.confirmationPath, s.body())).json();
-    expect(['unconfirmed', 'not_sent']).toContain(r.confirmation.status); expect(r.result.ok).toBe(false); expect(s.frames().length).toBeLessThanOrEqual(1);
+    expect(['sent_unconfirmed', 'not_sent']).toContain(r.confirmation.status); expect(r.result.ok).toBe(false); expect(s.frames().length).toBeLessThanOrEqual(1);
     await new Promise(res => setTimeout(res, 600)); const sent = s.frames().length;
     const again = (await s.post(card.realControl.confirmationPath, s.body())).json(); expect(again.confirmation.status).toBe(r.confirmation.status); expect(s.frames()).toHaveLength(sent);
     s.fake.last().drop(); await waitFor(() => s.bridge.link() !== 'READY', 2000).catch(() => undefined);

@@ -363,12 +363,14 @@ export class FirstRealAuxService {
       requestId: input.requestId,
       confirmation: observation ?? {
         status:
-          response.result.code === 'INDETERMINATE' ? 'unconfirmed' : 'not_sent',
+          response.result.code === 'INDETERMINATE' ? 'sent_unconfirmed' : 'not_sent',
+        // INDETERMINATE: o executor falhou sem relatório; não se sabe se o frame saiu (deliveryKnown:false). Nunca é sucesso.
+        ...(response.result.code === 'INDETERMINATE' ? { deliveryKnown: false } : {}),
         previous: prepared.sample.value,
         requested: prepared.target,
         observed: current === -Infinity ? '-inf' : (current ?? null),
       },
-      ...(observation?.status === 'unconfirmed'
+      ...(observation?.status === 'sent_unconfirmed'
         ? {
             result: {
               ...response.result,

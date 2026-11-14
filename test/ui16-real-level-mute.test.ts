@@ -71,8 +71,8 @@ describe.each(scenarios)('$category: real library, exclusively fake WebSocket', 
   it('library outbound cache is not physical confirmation; timeout/late input cannot reclassify or resend', async () => {
     const s = await setup(), pr = s.preview(scenario.intent), pending = s.apply(pr.proposal!.id);
     await waitFor(() => s.fake.last().commands().length === 1); expect(s.bridge.supervisor.read(scenario.key)).toEqual({ known: true, value: scenario.target }); expect(s.bridge.reading(scenario.key).state).toBe('pending');
-    const r = await pending; expect(r.confirmation).toMatchObject({ status: 'unconfirmed', reason: 'timeout', observed: null }); expect(s.bridge.reading(scenario.key).state).toBe('stale'); expect(s.controller.peekUndo()).toBeUndefined();
-    s.fake.last().deliver(scenario.wire); expect(s.bridge.read(scenario.key)).toEqual({ known: true, value: scenario.target }); expect((await s.apply(pr.proposal!.id)).confirmation.status).toBe('unconfirmed'); expect(s.fake.last().commands()).toHaveLength(1);
+    const r = await pending; expect(r.confirmation).toMatchObject({ status: 'sent_unconfirmed', reason: 'timeout', observed: null }); expect(s.bridge.reading(scenario.key).state).toBe('stale'); expect(s.controller.peekUndo()).toBeUndefined();
+    s.fake.last().deliver(scenario.wire); expect(s.bridge.read(scenario.key)).toEqual({ known: true, value: scenario.target }); expect((await s.apply(pr.proposal!.id)).confirmation.status).toBe('sent_unconfirmed'); expect(s.fake.last().commands()).toHaveLength(1);
   });
   it('fresh independent sample, mono configuration, operator and registered destinations are required', async () => {
     const unknown = await setup({ unknown: scenario.key }); expect(unknown.preview(scenario.intent).proposal).toBeUndefined();
@@ -89,13 +89,13 @@ describe.each(scenarios)('$category: real library, exclusively fake WebSocket', 
   });
   it('disconnect and retired-socket messages do not replay work after recovery', async () => {
     const s = await setup(), old = s.fake.last(), generation = s.bridge.supervisor.generation(); s.respond(() => old.drop());
-    expect((await s.apply(s.preview(scenario.intent).proposal!.id)).confirmation).toMatchObject({ status: 'unconfirmed', reason: 'connection_changed' });
+    expect((await s.apply(s.preview(scenario.intent).proposal!.id)).confirmation).toMatchObject({ status: 'sent_unconfirmed', reason: 'connection_changed' });
     await waitFor(() => s.bridge.supervisor.generation() > generation && s.bridge.link() === 'READY'); old.deliver(scenario.wire);
     expect(s.bridge.read(scenario.key)).toEqual({ known: true, value: scenario.previous }); expect(s.fake.sockets.flatMap(x => x.commands())).toEqual([scenario.wire]);
   });
   it('a session revoked while awaiting observation cannot produce success or undo', async () => {
     const s = await setup(); s.respond(frame => { s.auth.logout(s.token); setTimeout(() => s.fake.last().deliver(frame.slice(4)), 2); });
-    const r = await s.apply(s.preview(scenario.intent).proposal!.id); expect(r.confirmation).toMatchObject({ status: 'unconfirmed', reason: 'authorization_revoked' }); expect(s.controller.peekUndo()).toBeUndefined(); expect(s.fake.last().commands()).toEqual([scenario.wire]);
+    const r = await s.apply(s.preview(scenario.intent).proposal!.id); expect(r.confirmation).toMatchObject({ status: 'sent_unconfirmed', reason: 'authorization_revoked' }); expect(s.controller.peekUndo()).toBeUndefined(); expect(s.fake.last().commands()).toEqual([scenario.wire]);
   });
   it('direct/raw executor calls and disabled categories cannot borrow a permit', async () => {
     const s = await setup({ categories: [] }); expect(s.preview(scenario.intent).proposal).toBeUndefined();
@@ -148,12 +148,12 @@ it.each(scenarios)('external state or stereo change invalidates $category withou
   const s = await setup();
   s.respond(() => s.fake.last().deliver('SETD^i.1.stereoIndex^0'));
   const result = await s.apply(s.preview(scenario.intent).proposal!.id);
-  expect(result.confirmation).toMatchObject({ status: 'unconfirmed', reason: 'configuration_changed' }); expect(s.fake.last().commands()).toEqual([scenario.wire]); expect(s.controller.peekUndo()).toBeUndefined();
+  expect(result.confirmation).toMatchObject({ status: 'sent_unconfirmed', reason: 'configuration_changed' }); expect(s.fake.last().commands()).toEqual([scenario.wire]); expect(s.controller.peekUndo()).toBeUndefined();
 });
 it('a PA mute cannot report success from an incoming batch containing a later unmute', async () => {
   const s = await setup(); s.respond(frame => s.fake.last().deliver(`${frame.slice(4)}\nSETD^i.1.mute^0`));
   const r = await s.apply(s.preview(scenarios[1].intent).proposal!.id);
-  expect(r.confirmation).toMatchObject({ status: 'unconfirmed', reason: 'different_value', observed: false }); expect(s.controller.peekUndo()).toBeUndefined(); expect(s.fake.last().commands()).toHaveLength(1);
+  expect(r.confirmation).toMatchObject({ status: 'sent_unconfirmed', reason: 'different_value', observed: false }); expect(s.controller.peekUndo()).toBeUndefined(); expect(s.fake.last().commands()).toHaveLength(1);
 });
 it('late PA input cannot confirm after the monotonic deadline even when timer callback has not run', async () => {
   const s = await setup(), pending = s.apply(s.preview(scenarios[0].intent).proposal!.id); await waitFor(() => s.fake.last().commands().length === 1);
@@ -163,7 +163,7 @@ it('queued work revalidates a revoked session across different categories in the
   const s = await setup(), mute = s.preview(scenarios[1].intent), level = s.preview(scenarios[0].intent);
   const first = s.apply(mute.proposal!.id, 'mute'); await waitFor(() => s.fake.last().commands().length === 1);
   const queued = s.apply(level.proposal!.id, 'level'); s.auth.logout(s.token); s.fake.last().deliver(scenarios[1].wire);
-  expect((await first).confirmation.status).toBe('unconfirmed'); expect((await queued).result.code).toBe('FORBIDDEN'); expect(s.fake.last().commands()).toEqual([scenarios[1].wire]);
+  expect((await first).confirmation.status).toBe('sent_unconfirmed'); expect((await queued).result.code).toBe('FORBIDDEN'); expect(s.fake.last().commands()).toEqual([scenarios[1].wire]);
 });
 it('a preview expires, is bound to its owner/server/mode and cannot be confirmed by model text', async () => {
   const s = await setup(), pr = s.preview(scenarios[0].intent);
@@ -197,7 +197,7 @@ it('even all enabled categories cannot send a second/different frame during a on
   const s = await setup(), pending = s.apply(s.preview(scenarios[0].intent).proposal!.id);
   await waitFor(() => s.fake.last().commands().length === 1);
   s.fake.last().send(`3:::${scenarios[3].wire}`);
-  expect((await pending).confirmation.status).toBe('unconfirmed');
+  expect((await pending).confirmation.status).toBe('sent_unconfirmed');
   expect(s.fake.sockets.flatMap(socket => socket.commands())).toEqual([scenarios[0].wire]);
 });
 it('the #101 supervised AUX screen/status stays disabled when only a PA capability is granted', async () => {

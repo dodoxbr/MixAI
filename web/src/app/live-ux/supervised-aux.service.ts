@@ -15,7 +15,7 @@ export interface AuxStatus {
   observed: number | '-inf' | null;
 }
 export interface AuxPreview { id: string; channel: number; aux: number; previous: number; requested: number; observed: number | '-inf' | null; expiresAtMs: number; validation: string }
-export type ConfirmationStatus = 'observed_target' | 'unconfirmed' | 'not_sent' | 'indeterminate';
+export type ConfirmationStatus = 'observed_target' | 'sent_unconfirmed' | 'not_sent' | 'indeterminate';
 export interface AuxOutcome { status: ConfirmationStatus; previous: number | null; requested: number | null; observed: number | '-inf' | null; message: string; causalAcknowledgement: false }
 
 const ERRORS: Record<string, string> = {
@@ -145,9 +145,9 @@ export class SupervisedAuxService implements OnDestroy {
     const c = r.json['confirmation'] as { status?: string; previous?: unknown; requested?: unknown; observed?: unknown; reason?: string } | undefined;
     const code = String((r.json['result'] as { code?: string } | undefined)?.code ?? r.json['code'] ?? '');
     if (r.status === 401) { this.error.set(ERRORS['UNAUTHORIZED']!); return; }
-    if (c && (c.status === 'observed_target' || c.status === 'unconfirmed' || c.status === 'not_sent')) {
+    if (c && (c.status === 'observed_target' || c.status === 'sent_unconfirmed' || c.status === 'not_sent')) {
       const message = c.status === 'observed_target' ? 'Observamos uma amostra independente no valor pedido. Isso não prova que o MixAI causou a mudança nem melhora de áudio.'
-        : c.status === 'unconfirmed' ? 'Não confirmado: confira o fader na mesa antes de nova operação. Nada foi repetido ou desfeito automaticamente.'
+        : c.status === 'sent_unconfirmed' ? 'Enviado, mas não confirmado pela mesa: confira o fader na mesa antes de nova operação. Nada foi repetido ou desfeito automaticamente.'
         : (ERRORS[code] ?? 'Nada foi enviado à mesa.');
       this.outcome.set({ status: c.status, previous: num(c.previous) as number | null, requested: num(c.requested) as number | null, observed: num(c.observed), message, causalAcknowledgement: false });
       void this.refresh(); return;

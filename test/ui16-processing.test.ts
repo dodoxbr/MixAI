@@ -366,7 +366,7 @@ describe('Ui16 processing: real library, injected transport only', () => {
     const pre = s.preview();
     const result = await s.confirm(pre.proposal.id);
     expect(result.result.ok).toBe(false);
-    expect(result.confirmation.status).toBe('unconfirmed');
+    expect(result.confirmation.status).toBe('sent_unconfirmed');
     expect(s.bridge.reading('ch.2.eq.b1.gain').state).toBe('stale');
     expect(s.preview().result.ok).toBe(false);
     expect(s.frames()).toHaveLength(1);
@@ -389,7 +389,7 @@ describe('Ui16 processing: real library, injected transport only', () => {
       });
       const result = await s.confirm(pre.proposal.id);
       expect(result.result.ok).toBe(false);
-      expect(result.confirmation.status).toBe('unconfirmed');
+      expect(result.confirmation.status).toBe('sent_unconfirmed');
       expect(s.frames()).toHaveLength(1);
     },
   );
@@ -504,8 +504,8 @@ it('late input cannot retroactively confirm or replay an expired operation', asy
   const pre = s.preview();
   const result = await s.confirm(pre.proposal.id);
   s.socket.deliver(processingFrame('ch.2.eq.b1.gain', 1).slice(4));
-  expect(result.confirmation.status).toBe('unconfirmed');
-  expect((await s.confirm(pre.proposal.id)).confirmation.status).toBe('unconfirmed');
+  expect(result.confirmation.status).toBe('sent_unconfirmed');
+  expect((await s.confirm(pre.proposal.id)).confirmation.status).toBe('sent_unconfirmed');
   expect(s.frames()).toHaveLength(1);
 });
 it('invalid inbound HPF and boolean samples close the session instead of inventing valid readings', async () => {
@@ -535,7 +535,7 @@ it('send failures are indeterminate and never retried', async () => {
   });
   const result = await s.confirm(pre.proposal.id);
   expect(result.result.ok).toBe(false);
-  expect(result.confirmation.status).toBe('unconfirmed');
+  expect(result.confirmation.status).toBe('sent_unconfirmed');
   expect(s.frames()).toHaveLength(1);
 });
 
@@ -556,7 +556,7 @@ it('an unexpected executor failure cannot be labeled as certainly not-sent', asy
   vi.spyOn(s.core, 'execute').mockRejectedValueOnce(Error('fixture executor failure'));
   const result = await s.confirm(pre.proposal.id);
   expect(result.result.code).toBe('INDETERMINATE');
-  expect(result.confirmation.status).toBe('unconfirmed');
+  expect(result.confirmation.status).toBe('sent_unconfirmed');
 });
 it.each([0.0000001, 0.000000000001])(
   'rounded 20 Hz with raw %s cannot prove HPF bypass or an exact reversible origin',
@@ -578,7 +578,7 @@ it('a rounded inbound match is not an exact target observation', async () => {
   });
   const result = await s.confirm(pre.proposal.id);
   expect(result.result.ok).toBe(false);
-  expect(result.confirmation.status).toBe('unconfirmed');
+  expect(result.confirmation.status).toBe('sent_unconfirmed');
   expect(s.frames()).toHaveLength(1);
 });
 it('revoked HTTP sessions receive no in-flight confirmation payload', async () => {

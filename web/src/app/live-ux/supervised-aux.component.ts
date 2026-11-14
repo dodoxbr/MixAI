@@ -6,7 +6,7 @@ import { STEP_DB, SupervisedAuxService, type AuxOutcome } from './supervised-aux
 const db = (v: number | '-inf' | null | undefined) => v === null || v === undefined ? 'Não disponível' : v === '-inf' ? '−∞ dB' : formatDb(v) + ' dB';
 const OUTCOME: Record<AuxOutcome['status'], string> = {
   observed_target: 'observed_target — amostra independente no valor pedido (não é ACK causal)',
-  unconfirmed: 'unconfirmed — não confirmado; confira na mesa',
+  sent_unconfirmed: 'sent_unconfirmed — enviado, sem nova leitura independente; confira na mesa',
   not_sent: 'not_sent — nada foi enviado à mesa',
   indeterminate: 'indeterminado — sem resposta; confira na mesa',
 };
