@@ -44,6 +44,18 @@ export interface BridgeReading {
   source: 'device_stream';
   hardwareValidation: 'pending';
 }
+/** Display-only evidence; never a lease, authorization or write precondition. */
+export interface ProcessingDisplayReading {
+  state: 'confirmed' | 'last_observation' | 'stale' | 'unknown';
+  source: 'independent_socket_input';
+  value?: ParamValue;
+  rawValue?: number;
+  ageMs: number | null;
+  freshnessMs: number;
+  generation: number | null;
+  connectionCurrent: boolean;
+  reason?: BridgeReading['reason'];
+}
 export interface Ui16BridgeOptions extends Omit<RealMixerOptions, 'readOnly' | 'model'> {
   /** Silence is quarantined, not a claim that unchanged parameters should periodically emit. */
   inboundSilenceMs?: number;
@@ -612,6 +624,52 @@ export class Ui16RealBridge extends RealMixer {
     return {
       ...r,
       ...(r.state === 'confirmed' && sample ? { rawValue: sample.raw } : {}),
+    };
+  }
+  /** Retain observable unchanged values for display, without extending write freshness. */
+  processingDisplayReading(key: ParamKey): ProcessingDisplayReading {
+    const operational = this.processingReading(key);
+    const sample = this.independentProcessing.get(key);
+    const last = sample ?? this.history.get(key);
+    const unknown: ProcessingDisplayReading = {
+      state: 'unknown',
+      source: 'independent_socket_input',
+      ageMs: null,
+      freshnessMs: this.processingHandshake.gate?.freshnessMs ?? 3000,
+      generation: null,
+      connectionCurrent: false,
+      reason: operational.reason,
+    };
+    if (!processingSpec(key) || !last) return unknown;
+    const age = this.now() - last.at;
+    const link = super.link();
+    const current =
+      !!sample &&
+      sample.generation === this.supervisor.generation() &&
+      this.supervisor.currentUi()?.conn.status === ConnectionStatus.Open &&
+      ['READY', 'DEGRADED_READ_ONLY', 'SYNCING'].includes(link) &&
+      !this.fault &&
+      !this.quarantined &&
+      sample.sequence >= this.fence &&
+      age >= 0;
+    const uncertain =
+      operational.reason === 'write_pending' || operational.reason === 'write_unconfirmed';
+    const fresh = age >= 0 && age <= (this.processingHandshake.gate?.freshnessMs ?? 3000);
+    return {
+      state:
+        !current || uncertain
+          ? 'stale'
+          : fresh && operational.state === 'confirmed'
+            ? 'confirmed'
+            : 'last_observation',
+      source: 'independent_socket_input',
+      value: last.value,
+      ...(sample?.raw !== undefined ? { rawValue: sample.raw } : {}),
+      ageMs: age >= 0 ? age : null,
+      freshnessMs: this.processingHandshake.gate?.freshnessMs ?? 3000,
+      generation: last.generation,
+      connectionCurrent: current,
+      reason: operational.reason,
     };
   }
   override read(key: ParamKey): ReadResult {

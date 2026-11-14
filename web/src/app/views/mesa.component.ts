@@ -1,3 +1,4 @@
+import { LiveEqComponent } from '../live-eq/live-eq.component';
 import { SupervisedAuxComponent } from '../live-ux/supervised-aux.component';
 import { LiveChannelComponent } from '../live-ux/live-channel.component';
 import { SessionService } from '../core/session.service';
@@ -35,7 +36,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 @Component({
   selector: 'mx-mesa',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SupervisedAuxComponent, LiveChannelComponent, SoundcheckComponent, ReferenceWorkspaceComponent, MusiciansComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
+  imports: [LiveEqComponent, SupervisedAuxComponent, LiveChannelComponent, SoundcheckComponent, ReferenceWorkspaceComponent, MusiciansComponent, EqComponent, StatusBarComponent, StripComponent, PendingCardsComponent, ToastsComponent, AssistantInputComponent, AssistantPanelComponent, ScenesComponent],
   host: { class: 'mx-view mx-mesa', '[class.is-passagem]': 'onPassagem()', '[class.has-selection]': 'selectedChannel() !== null' },
   styles: [`.aux-selector{display:flex;gap:8px;overflow-x:auto;padding:8px 12px;flex-shrink:0}.aux-selector .btn{min-width:76px;min-height:48px;flex-shrink:0}.aux-selector .on{background:var(--brass);color:#101522}.aux-reading{margin:4px 12px;overflow-wrap:anywhere}.aux-master{flex-direction:column;width:120px;min-width:84px;max-width:120px;flex-shrink:0;padding:12px;box-sizing:border-box;overflow-wrap:anywhere;color:var(--muted)}.aux-master h2{font-size:1rem}.aux-master p{font-size:1.1rem} @media (max-width:720px) { :host.has-selection .mesa-main { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:'side side' 'strips master'; } :host.has-selection .side { grid-area:side; } :host.has-selection .strips, :host.has-selection mx-fones-list { grid-area:strips; } :host.has-selection .master-area { grid-area:master; } }`],
   template: `
@@ -157,7 +158,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
         <aside class="side" [class.has-assistant]="assistant.open()">
           @if (selectedChannel(); as channel) {
             <mx-live-channel [channel]="channel" [aux]="bus() === 'fones' ? aux() : undefined"
-              (closed)="selectedChannel.set(null)" (channelChanged)="selectChannel($event)" (routeChanged)="selectRoute($event)"
+              (eqRequested)="showRealEq.set(true)" (closed)="selectedChannel.set(null)" (channelChanged)="selectChannel($event)" (routeChanged)="selectRoute($event)"
               (historyRequested)="openHistory()" (undoRequested)="undo()" />
             <mx-supervised-aux />
           }
@@ -198,6 +199,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
     @if (scenes.open()) {
       <mx-scenes />
     }
+    @if (showRealEq() && live.hello()?.mode === 'real' && selectedChannel(); as channel) { @defer (on immediate) { <mx-live-eq [channel]="channel" (channelChanged)="selectChannel($event)" (closed)="showRealEq.set(false)" /> } }
     @if (showEq()) { <mx-eq (closed)="showEq.set(false)" /> }
     <mx-toasts />
   `,
@@ -219,6 +221,7 @@ export class MesaComponent {
   go(screen: 'mesa' | 'passagem'): void { this.screen.set(screen); }
 
   readonly showEq = signal(false);
+  readonly showRealEq = signal(false);
   readonly bus = signal<'pa' | 'fones'>('pa');
   readonly showHistory = signal(false);
   readonly history = signal<LogEntry[]>([]);
@@ -269,7 +272,7 @@ export class MesaComponent {
   }
 
   constructor() {
-    effect(() => { this.session.token(); this.live.hello()?.serverId; this.live.hello()?.mode; untracked(() => { this.selectedChannel.set(null); this.historyGeneration++; this.history.set([]); this.historyBusy.set(false); this.historyError.set(''); this.auxOverride.set(null); }); });
+    effect(() => { this.session.token(); this.live.hello()?.serverId; this.live.hello()?.mode; untracked(() => { this.selectedChannel.set(null); this.showRealEq.set(false); this.historyGeneration++; this.history.set([]); this.historyBusy.set(false); this.historyError.set(''); this.auxOverride.set(null); }); });
     // Girar a tela muda o tamanho da área dos canais: volta a mostrar o mesmo canal à esquerda.
     effect((onCleanup) => {
       const el = this.stripsEl()?.nativeElement;
@@ -313,7 +316,7 @@ export class MesaComponent {
 
   /** Master: arrastar só escolhe o valor; ao soltar vira pedido com cartão de aprovação. */
   master(e: FaderMove): void {
-    if (!e.final) return;
+    if (!e.final || this.live.hello()?.mode === 'real') return;
     void this.actions.run('master', { type: 'set_master', db: Number.isFinite(e.db) ? e.db : -100 });
   }
 

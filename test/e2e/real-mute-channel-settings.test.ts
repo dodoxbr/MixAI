@@ -7,12 +7,17 @@ beforeAll(async () => {
   browser = await launch();
 });
 afterAll(async () => browser.close());
-it('read-only physical transport events update every PA and AUX MUTE button without page reload, polling or SETD', async () => {
+for (const [label, device] of [
+  ['Yoga', YOGA],
+  ['celular', PHONE],
+] as const)
+it('read-only physical transport events update every PA and AUX MUTE button without page reload, polling or SETD — ' + label, async () => {
   const s = await readonlyRealServer();
   const base = await s.app.listen({ port: 0, host: '127.0.0.1' });
-  const { ctx, page } = await enter(browser, base, OPERATOR_PIN, YOGA);
+  const { ctx, page } = await enter(browser, base, OPERATOR_PIN, device);
   try {
-    for (const bus of ['PA', 'FONES']) {
+    // A navegação atual (PR #106) chama o destino de envios de 'AUX SENDS'; a aba antiga 'FONES' não existe mais.
+    for (const bus of ['PA', 'AUX SENDS']) {
       await page.getByRole('tab', { name: bus, exact: true }).click();
       for (let ch = 1; ch <= 11; ch++) {
         const strip = page

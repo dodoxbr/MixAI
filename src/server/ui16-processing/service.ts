@@ -91,10 +91,23 @@ export class Ui16ProcessingService {
         keys.push(`ch.${channel}.eq.b${band}.${field}`);
     keys.push(`ch.${channel}.eq.hpf.freq`, `ch.${channel}.eq.bypass`);
     const parameters = Object.fromEntries(
-      keys.map((key) => [key, this.bridge()!.processingReading(key)]),
+      keys.map((key) => [
+        key,
+        {
+          ...this.bridge()!.processingReading(key),
+          display: this.bridge()!.processingDisplayReading(key),
+        },
+      ]),
     );
     const hpf = parameters[`ch.${channel}.eq.hpf.freq`]!;
     return {
+      schemaVersion: 1,
+      serverId: this.core.serverId,
+      channel,
+      connection: {
+        generation: this.bridge()!.supervisor.generation(),
+        link: this.bridge()!.link(),
+      },
       capabilities: processingCapabilities,
       physicalWriteEnabled: this.bridge()!.processingHandshake.enabled(),
       physicalWriteAvailable: this.bridge()!.processingHandshake.available(),

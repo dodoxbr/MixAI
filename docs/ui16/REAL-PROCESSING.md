@@ -1,6 +1,6 @@
 # Ui16 — preparação de EQ e processamento, gate fechado por padrão
 
-Esta entrega contém código executável e ensaios com `soundcraft-ui-connection@7.1.0` e socket injetado. **Nenhuma conexão à Soundcraft física, `serve:real`, escrita física ou validação acústica foi realizada.** O bootstrap normal não configura `processingGate`: todos os controles de escrita de processamento REAL permanecem bloqueados. Não há botão Angular novo, opção CLI/YAML, variável de ambiente nem desbloqueio por HTTP ou por modelo de IA.
+Esta entrega contém código executável e ensaios com `soundcraft-ui-connection@7.1.0` e socket injetado. **Nenhuma conexão à Soundcraft física, `serve:real`, escrita física ou validação acústica foi realizada.** O bootstrap normal não configura `processingGate`: todos os controles de escrita de processamento REAL permanecem bloqueados. A preparação original não adicionou botão Angular, opção CLI/YAML, variável de ambiente nem desbloqueio por HTTP ou por modelo de IA. O painel de consulta acrescentado posteriormente está descrito ao final.
 
 Base: merges dos PRs [#97](https://github.com/dodoxbr/MixAI/pull/97) e [#100](https://github.com/dodoxbr/MixAI/pull/100). O gate de AUX e seu limite de 1 dB permanecem independentes. Esta entrega não habilita E6, cenas físicas, AFS2, phantom, pré-amplificador, master, batch ou medição de áudio.
 
@@ -28,7 +28,7 @@ Caminhos e conversões vêm de `eqBandPath`, `eqFilterPath`, `eqBypassPath` e do
 
 - Leitura vem da entrada independente do socket, após validação do envelope e dos valores. O cache da biblioteca também recebe escrita local e **não** é confirmação.
 - Cada observação conserva geração, sequência, instante e valor bruto. `pending`, `stale`, `unavailable` e `confirmed` descrevem o parâmetro; `hardwareValidation: pending` continua presente. `confirmed` aqui não é áudio medido, nem prova de causalidade de um comando.
-- Leitura do processamento fica desatualizada após a janela de frescor (padrão 3 s; gate admite 10–30000 ms). Isso é quarentena conservadora: não se presume que o firmware publique periodicamente um parâmetro inalterado.
+- Leitura operacional do processamento fica desatualizada após a janela de frescor (padrão 3 s; gate admite 10–30000 ms). Isso é quarentena conservadora: não se presume que o firmware publique periodicamente um parâmetro inalterado.
 - A autorização exige valor atual finito/booleano, recente, da geração atual e canônico no codec da biblioteca. Uma leitura arredondada não autoriza restauração de um valor bruto diferente. Em particular, frequência arredondada para 20 Hz com valor bruto maior que zero **não** significa HPF desligado.
 - A escrita aguarda nova entrada independente, posterior à origem e na mesma geração, com alvo canônico. Coincidência retorna `observed_target`, com `causalAcknowledgement:false`. Não há ACK causal, ID de operação ou timestamp do dispositivo neste protocolo. Uma mensagem antiga em trânsito na mesma conexão não pode ser distinguida com certeza; a validação supervisionada permanece necessária.
 - Timeout, divergência, desconexão, mudança de estéreo, revogação, erro após envio ou falta de resposta geram resultado não confirmado. O parâmetro fica cercado pela sequência incerta até nova observação. Não há retry, rollback ou aplicação de recomendação automáticos. Uma falha comprovada antes do gate consumir o frame é `not_sent`; falha inesperada do executor é indeterminada.
@@ -51,7 +51,7 @@ Corpos estritos recusam lote, `values`, parâmetros desconhecidos e flags de apr
 
 ### Assistente e execução única
 
-`source:'assistant'` identifica a origem consultiva da proposta, nunca autoridade. O operador autenticado solicita a prévia para revisar um candidato tipado com chave/alvo explícitos; o servidor calcula anterior e reversão. Não se transforma texto de diagnóstico em comando. O catálogo, roteador, adaptadores de IA, núcleo D/AutoConfig e Angular **não foram modificados**. O consumo desta API pelo chat/UI fica como integração posterior; não se declara conversa de EQ ponta a ponta pronta.
+`source:'assistant'` identifica a origem consultiva da proposta, nunca autoridade. O operador autenticado solicita a prévia para revisar um candidato tipado com chave/alvo explícitos; o servidor calcula anterior e reversão. Não se transforma texto de diagnóstico em comando. O catálogo, roteador, adaptadores de IA, núcleo D/AutoConfig e Angular **não foram modificados**. A consulta visual está descrita ao final; edição visual continua como integração posterior. Não se declara conversa de EQ ponta a ponta pronta.
 
 `ServerCore.execute → dispatch → MixController` continua sendo o único executor. O novo verbo `set_processing` escreve uma única chave e exige `Expectation.authorize` interno; o cliente HTTP/WS não pode fornecer esse callback. A fila, auditoria, revisão, rate limit, aplicação e pilha de desfazer são os existentes. O handshake de #100 foi generalizado com perfil de codec/limites, preservando o perfil AUX original. Não há segunda fila ou executor de processamento. As mudanças no controlador são a entrada unitária e a guarda de reversão; não alteram o núcleo D nem promovem globalmente `simulated_only` a escrita REAL.
 
@@ -89,3 +89,36 @@ O perfil de processamento não é instalado como gate AUX, não aceita chaves de
 Ambos os perfis continuam atrás da mesma fila do `MixController`: propostas independentes podem coexistir, mas cada frame e cada confirmação são serializados. Identificadores de proposta e undo não são intercambiáveis entre os serviços. Cada reversão exige seu fluxo correspondente e uma observação atual. Dados recebidos de uma categoria não confirmam operação de outra, inclusive quando o alvo booleano coincide.
 
 `test/ui16-integrated-capabilities.test.ts` testa seis parâmetros (PA level/mute, AUX level/mute, EQ e HPF) na **mesma instância com socket falso**, aplicação e undo em ordem inversa, concorrência com apenas um frame em voo, gates isolados, padrão fechado, legado #101, frescor/rota por categoria, revogação e tentativa de emprestar permissões/confirmações. O procedimento físico continua pendente; integração de código/fixtures não valida firmware ou escrita na Soundcraft física.
+
+## Painel EQ/HPF REAL: leitura física e validade para exibição
+
+O inspetor de canal da mesa oferece **Abrir EQ/HPF REAL** somente em REAL. O painel consulta o GET autenticado existente, sem POST, setters, propostas implícitas ou ativação de recursos. Quatro bandas mostram frequência, ganho e Q; HPF e bypass têm leitura separada. Faders, PA/AUX, teste supervisionado e EQ LAB conservam seus fluxos. Mesmo com um gate supervisionado configurado no backend, **esta tela permanece somente leitura**. Uma futura edição deverá usar as propostas, confirmação humana e reversão existentes, jamais escrita direta.
+
+### Evidência física relatada e limites
+
+O responsável informou que, em teste independente com a Ui16 física no CH3, recebeu banda 4 −1,0 dB / 6640 Hz / Q 1,00, HPF 98 Hz e EQ bypass false, coincidentes com a interface oficial. Esse relato confirma esses campos **naquela sessão**, não a publicação de todas as bandas, frequência de atualização, codecs em todos os limites ou compatibilidade universal de firmware. O desenvolvimento e as imagens desta entrega usam transporte **simulado**; o agente não conectou à mesa nem repetiu o teste físico. `hardwareValidation: pending` não foi promovido globalmente por esse relato.
+
+### Frescor: consulta não é autorização
+
+A janela operacional padrão de 3000 ms continua intacta, incluindo o limite configurado por gate e toda revalidação da escrita. Após essa janela, `processingReading` continua retornando estado operacional antigo e nenhuma origem apta a escrever. A novidade é um campo **aditivo de exibição**, sem uso pelos executores:
+
+- `schemaVersion: 1`, `serverId`, `channel` e `connection: {generation, link}` identificam a resposta do GET.
+- Cada `parameters[key].display` contém `state`, `source: independent_socket_input`, valor quando disponível, `ageMs`, `freshnessMs`, `generation`, `connectionCurrent` e motivo operacional. `rawValue`, quando presente, é a amostra bruta independente, não o cache da biblioteca.
+- **Confirmado**: amostra independente recente na conexão atual; não é ACK causal ou áudio medido.
+- **Última observação**: amostra independente da conexão atual, fora da janela de escrita. Valor inalterado não precisa ser republicado a cada 3 s para continuar sendo consultável.
+- **Desatualizado**: histórico de conexão anterior, desconexão, quarentena de silêncio, parâmetro anterior ao cercamento ou escrita incerta. Pode ser mostrado como histórico, nunca como dado atual ou base da curva.
+- **Desconhecido**: nenhuma amostra disponível. Campos ausentes não recebem frequência, ganho, Q ou bypass padrão.
+
+`ageMs` é duração monotônica, não data de relógio. O navegador inclui conservadoramente o tempo de trânsito HTTP na idade, atualiza-a entre consultas e rebaixa a qualidade após `freshnessMs`. Uma resposta atrasada não renova a amostra. Consulta a cada 2 s com timeout de 6 s; troca de canal, servidor, sessão, modo ou conexão cancela e cerca respostas em voo. Erros apagam os valores exibidos. Não há persistência nem cache local de processamento entre contextos.
+
+A quarentena de silêncio de entrada (30 s por padrão) permanece. Não se presume que um socket aberto prove sincronismo contínuo; após silêncio, amostras anteriores ao cercamento não recuperam qualidade apenas porque outros parâmetros voltaram. Reconexão exige novas amostras da nova geração para apresentação como atuais. O polling HTTP **não** solicita republicação à Ui16 e não envia SETD.
+
+### Curva e apresentação
+
+O gráfico só aparece com as quatro bandas completas e bypass conhecidos na mesma conexão atual. É uma **estimativa digital RBJ a 48 kHz**, não medição de resposta/espectro nem reprodução comprovada dos filtros do firmware. Quando inclui última observação, usa tracejado. HPF aparece somente como marcador de frequência: sua inclinação não foi comprovada, portanto não entra no cálculo da curva. EQ bypass produz curva plana das bandas; não se infere por isso o roteamento ou bypass do HPF. HPF desligado só é indicado por valor bruto zero; frequência arredondada de 20 Hz não basta.
+
+O painel é informativo, sem sliders ou nós arrastáveis falsamente funcionais. Oferece navegação por teclado, contenção de foco no diálogo, Escape e retorno do foco ao botão de abertura. Layout de quatro/duas colunas para notebook/tablet. Capturas em [live-eq/desktop.png](live-eq/desktop.png) e [live-eq/tablet.png](live-eq/tablet.png) usam servidor REAL com socket falso injetado, não hardware.
+
+### Validação manual futura
+
+Sem habilitar escrita, confirmar no Yoga: legibilidade e toque, quatro bandas realmente publicadas, correspondência com interface oficial após alteração externa, permanência de amostra inalterada após 3 s com tráfego independente ativo, queda/silêncio/reconexão, troca de canal, amostras parciais e ausência de comandos de processamento enviados pelo painel. A conexão oficial pode alterar estado intencionalmente; o MixAI não restaura valores. Firmware, slope, resposta acústica e escrita física continuam fora da validação desta entrega.
