@@ -51,6 +51,10 @@ export class NameResolutionError extends Error {
   }
 }
 
+export function channelTermKeys(text:string,kind:'channels'|'aux'):string[]{
+  return [...new Set([normalize(text),stripPrefixes(text,kind==='channels'?CHANNEL_PREFIXES:AUX_PREFIXES)])];
+}
+
 class Directory {
   private byKey = new Map<string, NamedEntry>();
 
@@ -69,6 +73,11 @@ class Directory {
     }
   }
 
+  snapshot():NamedEntry[]{return this.entries.map(e=>({...e,aliases:[...e.aliases]}));}
+  rename(next:NamedEntry[]){
+    for(const current of this.entries){const update=next.find(e=>e.number===current.number)!;current.name=update.name;current.aliases.splice(0,current.aliases.length,...update.aliases);}
+    this.byKey.clear();for(const e of this.entries)for(const key of [e.name,...e.aliases,String(e.number)]){const k=normalize(key);if(k&&!this.byKey.has(k))this.byKey.set(k,e);}
+  }
   /**
    * Nomes e apelidos cadastrados, como frases normalizadas (minúsculas, sem acento, palavras
    * separadas por um espaço). Usado pelo assistente para achar canais dentro de uma frase.
@@ -98,6 +107,9 @@ class Directory {
   configured(): number[] {
     return [...new Set(this.entries.map((e) => e.number))].filter((n) => n >= 1 && n <= this.max).sort((a, b) => a - b);
   }
+
+  /** Full read-only range; does not register or authorize these buses. */
+  observableNumbers():number[]{return Array.from({length:this.max},(_,i)=>i+1);}
 
   /** Números que podem ser resolvidos (configurados, ou todos se allowUnmapped). */
   resolvable(): number[] {
@@ -155,6 +167,12 @@ export class ChannelMap {
     this.aux = new Directory(config.aux, limits.aux, 'retorno', AUX_PREFIXES, allow);
   }
 
+  configuration():ChannelsConfig{return {channels:this.inputs.snapshot(),aux:this.aux.snapshot()};}
+  updateNames(config:ChannelsConfig){
+    const current=this.configuration();
+    for(const kind of ['channels','aux'] as const)if(JSON.stringify(current[kind].map(e=>e.number).sort((a,b)=>a-b))!==JSON.stringify(config[kind].map(e=>e.number).sort((a,b)=>a-b)))throw Error('Os números físicos não podem mudar.');
+    this.inputs.rename(config.channels);this.aux.rename(config.aux);
+  }
   channel(query: string | number): Resolved {
     return this.inputs.resolve(query);
   }

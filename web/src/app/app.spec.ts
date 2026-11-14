@@ -61,9 +61,9 @@ describe('aplicação', () => {
     expect(ws!.last('meters')).toEqual({ type: 'meters', on: true, hz: 12 });
   });
 
-  it('EQ LAB é uma ação da faixa de estado; o seletor contém somente PA e FONES', async () => {
+  it('EQ LAB é uma ação da faixa de estado; o seletor contém somente PA e AUX SENDS', async () => {
     const { el, fixture } = await boot('operator');
-    expect([...el.querySelectorAll('.segmented button')].map(b => b.textContent!.trim())).toEqual(['PA', 'FONES']);
+    expect([...el.querySelectorAll('.segmented button')].map(b => b.textContent!.trim())).toEqual(['PA', 'AUX SENDS']);
     expect(el.querySelector('.toolbar [status-action]')).toBeNull();
     const eq = el.querySelector('mx-status-bar [status-action]') as HTMLButtonElement;
     expect(eq.textContent!.trim()).toBe('EQ LAB');

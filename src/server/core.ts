@@ -39,6 +39,7 @@ export type PendingStatus = 'approved' | 'rejected' | 'expired' | 'invalidated' 
 
 /** Avisos do servidor para as telas (além dos eventos de estado). */
 export type Notice =
+  | {type:'names_changed'}
   | { type: 'pending'; card: PendingCard }
   | { type: 'pending_resolved'; pendingId: string; status: PendingStatus; by?: string; result?: WireResult };
 
@@ -178,6 +179,8 @@ export class ServerCore {
   subscribeState(listener: (ev: StateEvent) => void): () => void {
     return this.controller.state.subscribe(listener);
   }
+
+  namesChanged(){this.notify({type:'names_changed'},{roles:['operator','musician','agent']});}
 
   onNotice(listener: (n: Notice, audience: { roles: Role[]; principalId?: string }) => void): () => void {
     this.noticeListeners.add(listener);

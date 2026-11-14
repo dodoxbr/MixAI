@@ -60,6 +60,7 @@ export class LiveService {
   readonly meters = signal<MeterFrame | null>(null);
   readonly channels = signal<Named[]>([]);
   readonly auxes = signal<Named[]>([]);
+  readonly auxBuses=computed(()=>this.hello()?.model==='ui16'?Array.from({length:6},(_,i)=>({number:i+1,name:this.auxes().find(a=>a.number===i+1)?.name??'Sem nome local'})):this.auxes());
   readonly toasts = signal<Toast[]>([]);
   /** Pode mexer: conectado e a mesa legível/gravável. */
   readonly writable = computed(() => this.connection() === 'online' && this.state()?.link === 'READY' && this.state()?.available === true && !this.synchronizing());
@@ -274,6 +275,8 @@ export class LiveService {
         if (out === 'ready' || out === 'applied') this.state.set(s ? { ...s, params: { ...s.params } } : null);
         return;
       }
+      case 'names_changed':
+        void this.loadNames();return;
       case 'pending_list':
         this.pending.set((m['items'] as PendingCard[]) ?? []);
         return;
@@ -344,8 +347,9 @@ export class LiveService {
     }
   }
   private async loadNames() {
+    const token=this.session.token(),server=this.hello()?.serverId;
     const r = await this.command({ type: 'list_names' });
-    if (!r.ok || !r.data) return;
+    if (token!==this.session.token()||server!==this.hello()?.serverId||!r.ok || !r.data) return;
     this.channels.set((r.data['channels'] as Named[]) ?? []);
     this.auxes.set((r.data['aux'] as Named[]) ?? []);
   }

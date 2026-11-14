@@ -1377,8 +1377,12 @@ mx-root {
     display: contents;
   }
   .mx-mesa .toolbar .mx-assistant-input input {
+    /* AUX SENDS is longer than FONES: yield space before wrapping touch actions. */
     width: 130px;
-    flex: none;
+    min-width: 80px;
+    max-width: 130px;
+    box-sizing: border-box;
+    flex: 1 1 80px;
   }
   .mx-mesa .toolbar .mx-assistant-input .btn {
     padding: 0 10px;

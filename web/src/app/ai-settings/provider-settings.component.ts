@@ -1,17 +1,22 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, OnDestroy, ViewChild, computed, inject, output } from '@angular/core';
+import { ChannelSettingsComponent } from '../settings/channel-settings.component';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, OnDestroy, ViewChild, computed, inject, output, signal } from '@angular/core';
 import { CatalogProviderSettings } from './catalog-provider-settings';
 import { PROVIDERS, PROVIDER_LABELS, PROVIDER_SETTINGS_PORT } from './provider-settings-port';
 import { ProviderSettingsService } from './provider-settings.service';
 @Component({
   selector: 'mx-ai-provider-settings',
+  imports:[ChannelSettingsComponent],
   providers: [ProviderSettingsService, { provide: PROVIDER_SETTINGS_PORT, useExisting: CatalogProviderSettings }],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <dialog #dialog aria-labelledby="ai-settings-title" (cancel)="$event.preventDefault(); closed.emit()">
       <header>
-        <div><p class="eyebrow">Configurações · LAB</p><h2 id="ai-settings-title">Inteligência Artificial</h2></div>
+        <div><p class="eyebrow">Configurações</p><h2 id="ai-settings-title">{{tab()==='mesa'?'Mesa · Canais e AUX':'Inteligência Artificial'}}</h2></div>
         <button autofocus type="button" class="btn btn-ghost" (click)="closed.emit()" aria-label="Fechar configurações de IA">Fechar</button>
       </header>
+      <nav aria-label="Seções de configurações"><button type="button" class="btn" [attr.aria-pressed]="tab()==='ia'" (click)="tab.set('ia')">Inteligência Artificial</button><button type="button" class="btn" [attr.aria-pressed]="tab()==='mesa'" (click)="tab.set('mesa')">Mesa</button></nav>
+      @if(tab()==='mesa'){<mx-channel-settings />}
+      @else {
       <p class="warning" role="note">Catálogo v1 — seleção exclusiva desta sessão. O modelo escolhido aqui responde ao resumo do diagnóstico/RAG e ao planejador do AutoConfig desta sessão, com consentimento por sessão e por modelo. Embeddings continuam independentes. Sem seleção, valem as configurações da Base de conhecimento. Nada é executado na mesa.</p>
       <section class="active" aria-label="Seleção do catálogo nesta sessão">
         <span class="eyebrow">Seleção confirmada do catálogo</span>
@@ -97,11 +102,13 @@ import { ProviderSettingsService } from './provider-settings.service';
           <button type="submit" class="btn btn-primary" [disabled]="!s.canSave()">Selecionar no catálogo</button>
         </footer>
       </form>
+      }
     </dialog>
   `,
   styleUrl: './provider-settings.component.css',
 })
 export class ProviderSettingsComponent implements AfterViewInit, OnDestroy {
+  readonly tab=signal<'ia'|'mesa'>('ia');
   readonly s = inject(ProviderSettingsService);
   readonly ids = PROVIDERS;
   readonly names = PROVIDER_LABELS;
