@@ -61,9 +61,9 @@ describe('aplicação', () => {
     expect(ws!.last('meters')).toEqual({ type: 'meters', on: true, hz: 12 });
   });
 
-  it('EQ LAB é uma ação da faixa de estado; o seletor contém somente PA e AUX SENDS', async () => {
+  it('EQ LAB é uma ação da faixa de estado; a navegação principal é MIX / GAIN, EDIT, AUX SENDS e FX SENDS', async () => {
     const { el, fixture } = await boot('operator');
-    expect([...el.querySelectorAll('.segmented button')].map(b => b.textContent!.trim())).toEqual(['PA', 'AUX SENDS']);
+    expect([...el.querySelectorAll('.segmented button')].map(b => b.textContent!.trim())).toEqual(['MIX / GAIN', 'EDIT', 'AUX SENDS', 'FX SENDS']);
     expect(el.querySelector('.toolbar [status-action]')).toBeNull();
     const eq = el.querySelector('mx-status-bar [status-action]') as HTMLButtonElement;
     expect(eq.textContent!.trim()).toBe('EQ LAB');
@@ -84,7 +84,7 @@ describe('aplicação', () => {
     const sentBefore = ws!.sent.length;
     const values = () => [...el.querySelectorAll('.strips .strip-value')].map((v) => v.textContent!.trim());
     expect(values()).toEqual(['−10.0 dB', '−10.0 dB', '−10.0 dB']);
-    (el.querySelectorAll('.segmented button')[1] as HTMLButtonElement).click();
+    (el.querySelectorAll('.segmented button')[2] as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(values()).toEqual(['−20.0 dB', '−20.0 dB', '−20.0 dB']);
     expect(el.querySelector('.shared-warning')!.textContent).toContain('TODOS');

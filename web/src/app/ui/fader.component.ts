@@ -44,6 +44,10 @@ const EMIT_MS = 33;
       (lostpointercapture)="up($event)"
       (keydown)="key($event)"
     >
+      <defs>
+        <linearGradient id="mx-thumb-metal" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#f4f5f6" /><stop offset="0.45" stop-color="#b8bcc1" /><stop offset="0.5" stop-color="#8f949a" /><stop offset="1" stop-color="#d3d6d9" /></linearGradient>
+        <linearGradient id="mx-thumb-red" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#ff7e7e" /><stop offset="0.5" stop-color="#d63a3a" /><stop offset="1" stop-color="#8f1d1d" /></linearGradient>
+      </defs>
       @for (m of marks; track m.label) {
         <line class="tick" x1="8" [attr.x2]="m.db === 0 ? 22 : 18" [attr.y1]="y(m.db)" [attr.y2]="y(m.db)" />
         <text class="tick-label" x="6" [attr.y]="y(m.db) + 3">{{ m.label }}</text>
@@ -54,6 +58,8 @@ const EMIT_MS = 33;
       <g class="thumb" [attr.transform]="'translate(0,' + thumbY() + ')'">
         <rect x="22" y="-14" width="38" height="28" rx="5" />
         <line x1="26" x2="56" y1="0" y2="0" />
+        <line class="grip" x1="26" x2="56" y1="-6" y2="-6" />
+        <line class="grip" x1="26" x2="56" y1="6" y2="6" />
       </g>
       }
     </svg>

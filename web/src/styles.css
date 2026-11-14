@@ -1875,3 +1875,221 @@ mx-root {
     bottom: calc(var(--tap) + 28px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* =====================================================================================================
+   Console MixAI — redesign visual inspirado na organização da Soundcraft Ui (sem usar marca/arte deles).
+   Somente apresentação: nenhuma lógica, contrato ou estado novo. Escopo: .mx-mesa.
+   ===================================================================================================== */
+.mx-mesa {
+  --metal-1: #2c3239;
+  --metal-2: #1a1e23;
+  --metal-3: #0f1216;
+  --metal-line: #3d454f;
+  --lcd-bg: #07191f;
+  --lcd-fg: #7ee7ff;
+  --active: #e8693a;
+  --active-hi: #ff9a6b;
+  --aux-tab: #e6c352;
+}
+/* barra superior metálica */
+.mx-mesa .toolbar {
+  background: linear-gradient(180deg, #d7dadd 0%, #9ea3a9 48%, #7d838a 100%);
+  border-bottom: 2px solid #2a2e33;
+  color: #14181c;
+  gap: 8px;
+  padding: 6px 12px;
+  box-shadow: 0 2px 8px #0008;
+}
+.mx-mesa .toolbar .btn {
+  background: linear-gradient(180deg, #3a4048, #20242a);
+  color: #e8ecf1;
+  border: 1px solid #0c0e11;
+  border-radius: 5px;
+}
+.mx-mesa .console-nav {
+  display: flex;
+  gap: 4px;
+  background: transparent;
+  padding: 0;
+  border: 0;
+}
+.mx-mesa .console-nav button {
+  min-height: 48px;
+  padding: 0 16px;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #e8ecf1;
+  background: linear-gradient(180deg, #3c424a, #1d2127);
+  border: 1px solid #0c0e11;
+  border-radius: 5px;
+  box-shadow: inset 0 1px 0 #ffffff22;
+  cursor: pointer;
+}
+.mx-mesa .console-nav button.on {
+  background: linear-gradient(180deg, var(--active-hi), var(--active) 55%, #b8481f);
+  color: #1b0d06;
+  box-shadow: inset 0 1px 0 #ffffff66, 0 0 8px #e8693a66;
+}
+.mx-mesa .shared-warning, .mx-mesa .sim-legend { color: #14181c; }
+.mx-mesa .tools-trigger[aria-expanded='true'] { background: linear-gradient(180deg, var(--active-hi), var(--active)); color: #1b0d06; }
+.tools-menu {
+  position: absolute;
+  right: 12px;
+  top: 112px;
+  z-index: 60;
+  display: grid;
+  min-width: 260px;
+  background: linear-gradient(180deg, #2b3138, #14181c);
+  border: 1px solid #0c0e11;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px #000a;
+  padding: 6px;
+}
+.tools-menu button {
+  min-height: 48px;
+  text-align: left;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+.tools-menu button:hover, .tools-menu button:focus-visible { background: #ffffff14; }
+.tools-menu small { color: var(--muted); }
+
+/* área da mesa */
+.mx-mesa .mesa-main.console {
+  background: radial-gradient(120% 100% at 50% 0%, #20252b 0%, #0d1013 100%);
+  border-top: 1px solid #000;
+  gap: 0;
+  padding: 0 8px 8px;
+}
+.mx-mesa .console .strips { gap: 0; background: #0b0d10; border: 1px solid #000; border-radius: 4px; }
+.mx-mesa .console .mx-strip {
+  max-width: 128px;
+  gap: 5px;
+  padding: 6px 4px 0;
+  border: 0;
+  border-right: 1px solid #000;
+  border-radius: 0;
+  background: linear-gradient(180deg, #23282e 0%, #15191d 100%);
+  box-shadow: inset -1px 0 0 #ffffff0d;
+}
+.mx-mesa .console .mx-strip.is-selected { outline: 0; box-shadow: inset 0 0 0 2px var(--active); }
+.mx-mesa .console .mx-strip.is-master {
+  flex: 0 0 124px;
+  border-left: 2px solid #000;
+  background: linear-gradient(180deg, #2a2420, #15110f);
+}
+/* ordem visual como na Ui: valor (dB) · MUTE/SOLO · fader · CH n · nome */
+.mx-mesa .console .strip-value { order: 0; }
+.mx-mesa .console .strip-keys { order: 1; }
+.mx-mesa .console .master-note { order: 1; }
+.mx-mesa .console .strip-body { order: 2; }
+.mx-mesa .console .strip-number { order: 3; }
+.mx-mesa .console .strip-name, .mx-mesa .console .strip-select { order: 4; }
+.mx-mesa .console .send-topology { order: 5; }
+.mx-mesa .console .strip-value {
+  margin: 0 2px;
+  padding: 4px 2px;
+  background: var(--lcd-bg);
+  color: var(--lcd-fg);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow: inset 0 0 8px #000, 0 1px 0 #ffffff14;
+  font-size: clamp(0.78rem, 13cqi, 1rem);
+  text-shadow: 0 0 6px #3fd0f566;
+}
+.mx-mesa .console .strip-value.is-unknown { color: #5b7e89; text-shadow: none; }
+.mx-mesa .console .is-master .strip-value { color: #ffd966; text-shadow: 0 0 6px #e6b43a66; }
+.strip-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+.mx-mesa .console .mute, .mx-mesa .console .solo {
+  min-height: 44px;
+  padding: 0 2px;
+  font-size: clamp(0.62rem, 11cqi, 0.78rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 4px;
+  border: 1px solid #000;
+  color: #20242a;
+  background: linear-gradient(180deg, #f2f3f4, #b9bec3);
+}
+.mx-mesa .console .mute.on { background: linear-gradient(180deg, #ff7b7f, var(--mute)); color: #fff; }
+.mx-mesa .console .solo:disabled { opacity: 0.45; cursor: not-allowed; color: #3a4048; }
+.mx-mesa .console .mute:disabled:not(.on) { opacity: 0.7; }
+.mx-mesa .console .strip-body { min-height: 190px; background: #090b0e; border: 1px solid #000; border-radius: 3px; box-shadow: inset 0 0 10px #000; }
+.mx-mesa .console .strip-number { font-size: 0.68rem; color: #8d97a3; margin-top: 2px; }
+.mx-mesa .console .strip-name, .mx-mesa .console .strip-select {
+  margin: 0 -4px;
+  padding: 4px 2px;
+  min-height: 48px;
+  background: linear-gradient(180deg, #2a3037, #171b1f);
+  border-top: 3px solid #5b6570;
+  color: #f0f2f5;
+  text-transform: uppercase;
+  font-size: clamp(0.66rem, 12cqi, 0.9rem);
+  letter-spacing: 0.02em;
+}
+.mx-mesa .console .is-selected .strip-name { border-top-color: var(--active); background: linear-gradient(180deg, #f08a5c, #c0501f); color: #fff; }
+.mx-mesa .console .is-master .strip-name { color: #ffd966; border-top-color: #b28a1f; }
+.mx-mesa .console .master-area { border-left: 0; padding-left: 0; }
+/* faders mais realistas: ranhura escura, escala suave, botão metálico com ranhuras */
+.mx-mesa .console .mx-fader .track { fill: #020304; stroke: #000; stroke-width: 1; }
+.mx-mesa .console .mx-fader .track-fill { fill: #9c7322; opacity: 0.85; }
+.mx-mesa .console .mx-fader .tick { stroke: #4a525c; }
+.mx-mesa .console .mx-fader .tick-label { fill: #8d97a3; }
+.mx-mesa .console .mx-fader .thumb rect { fill: url(#mx-thumb-metal); stroke: #0a0c0e; stroke-width: 1.2; }
+.mx-mesa .console .mx-fader .thumb line { stroke: #2b3036; stroke-width: 1.4; }
+.mx-mesa .console .mx-fader .thumb .grip { stroke: #6a7078; stroke-width: 1; }
+.mx-mesa .console .is-master .mx-fader .thumb rect { fill: url(#mx-thumb-red); stroke: #2a0507; }
+.mx-mesa .console .mx-fader.is-disabled svg { opacity: 0.85; }
+.mx-mesa .console .mx-fader.is-dragging .thumb rect { filter: brightness(1.15); }
+
+/* AUX SENDS: abas de barramento amarelas, strips do mesmo padrão */
+.mx-mesa .aux-selector { background: #101317; border-bottom: 1px solid #000; justify-content: flex-end; padding: 6px 12px; gap: 4px; }
+.mx-mesa .aux-selector .btn { background: #1b1f24; color: var(--aux-tab); border: 1px solid #000; border-bottom: 3px solid #4a525c; border-radius: 0; min-width: 76px; }
+.mx-mesa .aux-selector .btn.on { background: linear-gradient(180deg, #f1d46d, #c9a62f); color: #1b1606; border-bottom-color: #fff2b0; }
+.mx-mesa .aux-selector .btn:disabled { color: #6b7480; opacity: 0.7; }
+.mx-mesa .aux-reading { color: var(--muted); }
+
+/* EDIT e FX SENDS */
+.edit-main, .fx-main { padding: 0 8px 12px; }
+.edit-tabs { display: flex; gap: 2px; background: #101317; border-bottom: 1px solid #000; padding: 6px 12px 0; }
+.edit-tabs button { min-height: 44px; padding: 0 18px; font: inherit; font-weight: 700; color: #cfd5dc; background: linear-gradient(180deg, #2b3138, #171b1f); border: 1px solid #000; border-bottom: 0; border-radius: 4px 4px 0 0; }
+.edit-tabs button.on { background: linear-gradient(180deg, #e0553a, #a8321d); color: #fff; }
+.edit-tabs button:disabled { color: #6b7480; opacity: 0.8; }
+.edit-tabs button small { display: block; font-size: 0.6rem; font-weight: 400; }
+.edit-note { margin: 12px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 6px; color: var(--muted); background: #0f1216; }
+.fx-main .aux-selector { justify-content: flex-start; }
+
+/* painel lateral do assistente recolhível sem abandonar a mesa (largura fixa em telas largas) */
+@media (min-width: 1100px) {
+  .mx-mesa .console { align-items: stretch; }
+  .mx-mesa .console .side { width: 340px; border-left: 1px solid #000; padding-left: 8px; margin-left: 8px; }
+}
+@media (max-width: 720px) {
+  .mx-mesa .console-nav button { padding: 0 8px; font-size: 0.78rem; flex: 1; }
+  .mx-mesa .console-nav { width: 100%; }
+  .tools-menu { right: 8px; left: 8px; }
+}
+
+/* celular: rótulos curtos nas abas (o nome acessível continua completo via aria-label) */
+@media (max-width: 720px) {
+  .mx-mesa .toolbar .console-nav { width: auto; flex: 0 0 auto; gap: 3px; }
+  .mx-mesa .toolbar .console-nav button { font-size: 0; padding: 0 8px; min-width: 44px; flex: 0 0 auto; min-height: 48px; }
+  .mx-mesa .toolbar .console-nav button::after { content: attr(data-short); font-size: 0.78rem; }
+  .tools-menu { top: 150px; }
+}
+
+/* celular (retrato ou deitado): rótulos curtos nas abas e Ferramentas compacta, para a barra continuar numa linha */
+@media (max-height: 500px) {
+  .mx-mesa .toolbar .console-nav { width: auto; flex: 0 0 auto; gap: 3px; }
+  .mx-mesa .toolbar .console-nav button { font-size: 0; padding: 0 8px; min-width: 44px; flex: 0 0 auto; }
+  .mx-mesa .toolbar .console-nav button::after { content: attr(data-short); font-size: 0.78rem; }
+}
+@media (max-width: 720px), (max-height: 500px) {
+  .mx-mesa .tools-trigger { display: none; }
+}

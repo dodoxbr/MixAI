@@ -18,7 +18,7 @@ it('read-only physical transport events update every PA and AUX MUTE button with
   try {
     // A navegação atual (PR #106) chama o destino de envios de 'AUX SENDS'; a aba antiga 'FONES' não existe mais.
     for (const bus of ['PA', 'AUX SENDS']) {
-      await page.getByRole('tab', { name: bus, exact: true }).click();
+      await page.getByRole('tab', { name: bus === 'PA' ? 'MIX / GAIN' : bus, exact: true }).click();
       for (let ch = 1; ch <= 11; ch++) {
         const strip = page
           .locator('mx-strip')

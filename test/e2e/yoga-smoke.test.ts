@@ -94,7 +94,7 @@ it('Yoga LAB: HTTP/WS, PA/FONES, EQ, cenas, aprovação, consulta, fixture, logo
     await expect.poll(() => ws.sync.state?.params['ch.1.aux.1.level']?.value).toEqual({ status: 'known', value: -18 });
     await mute.click(); await expect.poll(() => read('ch.1.aux.1.mute')).toBe(true);
     await mute.click(); await expect.poll(() => read('ch.1.aux.1.mute')).toBe(false);
-    await page.getByRole('tab', { name: 'PA', exact: true }).click();
+    await page.getByRole('tab', { name: 'MIX / GAIN', exact: true }).click();
 
     await page.getByRole('button', { name: 'EQ LAB', exact: true }).click();
     await page.getByText('SIMULADO — somente laboratório. Curva estimada, não medida na Ui16 real.').waitFor();

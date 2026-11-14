@@ -3,6 +3,7 @@ import { InstructorLauncherComponent } from '../instructor/instructor-launcher.c
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { LiveService } from '../core/live.service';
 import { SessionService } from '../core/session.service';
+import { ToolsService } from '../core/tools.service';
 
 /** Faixa de modo (azul LAB / vermelho REAL), estado da ligação e saída. */
 @Component({
@@ -33,6 +34,7 @@ import { SessionService } from '../core/session.service';
     <div class="spacer"></div>
     <div class="role-chip">{{ session.role() === 'operator' ? 'Operador' : 'Músico' }}</div>
     <ng-content select="[status-action]" />
+    <ng-content select="[status-tools]" />
     @if (session.role() === 'operator') {
       <button type="button" class="btn btn-ghost ai-settings-trigger" aria-label="Configurações" title="Configurações" aria-haspopup="dialog" [attr.aria-expanded]="settingsOpen()" (click)="settingsOpen.set(true)">
         <svg class="ai-settings-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h4m4 0h10M3 17h10m4 0h4" /><circle cx="9" cy="7" r="2" /><circle cx="15" cy="17" r="2" /></svg>
@@ -48,7 +50,7 @@ import { SessionService } from '../core/session.service';
   `,
 })
 export class StatusBarComponent {
-  readonly settingsOpen = signal(false);
+  readonly settingsOpen = inject(ToolsService).settingsOpen;
   readonly live = inject(LiveService);
   readonly session = inject(SessionService);
 

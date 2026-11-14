@@ -20,6 +20,8 @@ import { AssistantPanelComponent } from '../assistant/assistant-panel.component'
 import { AssistantUiService } from '../core/assistant.service';
 import { ScenesComponent } from '../scenes/scenes.component';
 import { ScenesUiService } from '../scenes/scenes.service';
+import { ToolsService } from '../core/tools.service';
+import { KnowledgeAdminService } from '../knowledge/knowledge.service';
 
 interface LogEntry {
   time: string;
@@ -48,6 +50,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
           <button type="button" class="nav-tab" [class.on]="onPassagem()" [attr.aria-current]="onPassagem() ? 'page' : null" (click)="go('passagem')">Passagem de som</button>
         }
       </nav>
+      <button status-tools type="button" class="btn tools-trigger" aria-label="Ferramentas" data-testid="tools-trigger" aria-haspopup="menu" [attr.aria-expanded]="toolsOpen()" (click)="toolsOpen.set(!toolsOpen())">Ferramentas</button>
       @if (live.hello()?.mode === 'lab' && live.hello()?.role === 'operator') {
         <ng-container status-action>
         <button status-action type="button" class="btn" (click)="showEq.set(true)" [attr.aria-expanded]="showEq()">EQ LAB</button>
@@ -72,13 +75,14 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       <mx-reference-workspace />
     } @else {
     <div class="toolbar">
-      <div class="segmented" role="tablist" aria-label="Mix">
-        <button type="button" role="tab" [attr.aria-selected]="bus() === 'pa'" [class.on]="bus() === 'pa'" (click)="bus.set('pa')">PA</button>
-        <button type="button" role="tab" [attr.aria-selected]="bus() === 'fones'" [class.on]="bus() === 'fones'" (click)="bus.set('fones')">AUX SENDS</button>
+      <div class="segmented console-nav" role="tablist" aria-label="Mesa">
+        @for (t of tabs; track t.id) {
+          <button type="button" role="tab" [attr.aria-selected]="view() === t.id" [attr.aria-label]="t.label" [attr.data-short]="t.short" [class.on]="view() === t.id" [attr.data-view]="t.id" (click)="setView(t.id)">{{ t.label }}</button>
+        }
       </div>
-      @if (bus() === 'fones') {
+      @if (view() === 'aux') {
         <span class="shared-warning">{{ auxName() }}: {{ aux() === 1 ? 'muda o fone de TODOS (HA800)' : 'AUX ' + aux() + ' · roteamento físico não verificado' }}</span>
-      } @else if (simulatedMeters()) {
+      } @else if (view() === 'mix' && simulatedMeters()) {
         <span class="sim-legend"><span class="tb-full">Medidores SIMULADOS (laboratório) — não é o som real</span><span class="tb-short">Medidores SIMULADOS — não é o som real</span></span>
       }
       <span class="spacer"></span>
@@ -105,11 +109,45 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       </div>
     </div>
 
+    @if (toolsOpen()) {
+      <div class="tools-menu" role="menu" aria-label="Ferramentas do MixAI" data-testid="tools-menu">
+        <button type="button" role="menuitem" (click)="openTool('assistant')">Assistente de IA</button>
+        <button type="button" role="menuitem" (click)="openTool('diagnostic')">Diagnóstico <small>(no assistente, somente consulta)</small></button>
+        <button type="button" role="menuitem" (click)="openTool('scenes')">Cenas</button>
+        <button type="button" role="menuitem" (click)="openTool('history')">Histórico</button>
+        <button type="button" role="menuitem" (click)="openTool('knowledge')">Base de conhecimento</button>
+        <button type="button" role="menuitem" (click)="openTool('settings')">Configurações e administração <small>(IA, nomes e aliases)</small></button>
+      </div>
+    }
+
     @if (!live.writable()) {
       <div class="offline-banner" role="alert">{{ offlineText() }}</div>
     }
 
     <mx-reference-workspace />
+    @if (view() === 'edit') {
+      <section class="edit-main" aria-label="EDIT">
+        <div class="edit-tabs" role="tablist" aria-label="Seções de EDIT">
+          <button type="button" role="tab" aria-selected="true" class="on" data-testid="edit-tab-eq">EQ</button>
+          @for (t of ['DYN', 'FX SENDS', 'AUX SENDS']; track t) {
+            <button type="button" role="tab" aria-selected="false" disabled aria-disabled="true" [title]="t + ' ainda não está disponível no MixAI'">{{ t }}<small>indisponível</small></button>
+          }
+        </div>
+        @if (live.hello()?.mode === 'real' && editChannel(); as channel) {
+          @defer (on immediate) { <mx-live-eq [embedded]="true" [channel]="channel" (channelChanged)="selectedChannel.set($event)" /> }
+          @placeholder { <p role="status">Abrindo EQ/HPF…</p> }
+        } @else {
+          <p class="edit-note" role="status" data-testid="edit-unavailable">EQ/HPF observados só existem no servidor REAL (somente leitura). No laboratório, o EQ simulado continua em “EQ LAB” na faixa de estado.</p>
+        }
+      </section>
+    } @else if (view() === 'fx') {
+      <section class="fx-main" aria-label="FX SENDS">
+        <div class="aux-selector" role="tablist" aria-label="Barramentos FX">
+          @for (n of [1, 2, 3, 4]; track n) { <button type="button" class="btn" role="tab" aria-selected="false" disabled aria-disabled="true">FX {{ n }}</button> }
+        </div>
+        <p class="edit-note" role="status" data-testid="fx-unavailable"><strong>FX SENDS indisponível.</strong> O MixAI ainda não lê nem controla envios de efeitos da Ui16. Nenhum valor é exibido e nada pode ser alterado aqui.</p>
+      </section>
+    } @else {
     @if(bus()==='fones'){
       <nav class="aux-selector" aria-label="Barramentos AUX">
       @for(route of live.auxBuses();track route.number){<button type="button" class="btn" [class.on]="aux()===route.number" [attr.aria-pressed]="aux()===route.number" (click)="selectRoute(''+route.number)">AUX {{route.number}}</button>}
@@ -117,7 +155,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       <p class="aux-reading" role="status">AUX {{aux()}} · {{auxName()}} · {{knownSends()}}/{{strips().length}} envios com leitura de fader. {{live.hello()?.mode==='real'?'Estado observado, não áudio medido.':'Estado simulado LAB/MOCK.'}}</p>
       <p class="aux-reading">PRE/POST: indisponível no contrato atual. Não inferido pelo valor do envio.</p>
     }
-    <div class="mesa-main">
+    <div class="mesa-main console">
         <div class="strips" #stripRow [class.is-fones]="bus() === 'fones'" (scroll)="rememberScroll()">
           @for (s of strips(); track s.number) {
             <mx-strip
@@ -155,7 +193,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
           </section>
         }
       @if (selectedChannel() !== null || live.pending().length || showHistory() || assistant.open()) {
-        <aside class="side" [class.has-assistant]="assistant.open()">
+        <aside class="side" [class.has-assistant]="assistant.open()" data-testid="side-panel">
           @if (selectedChannel(); as channel) {
             <mx-live-channel [channel]="channel" [aux]="bus() === 'fones' ? aux() : undefined"
               (eqRequested)="showRealEq.set(true)" (closed)="selectedChannel.set(null)" (channelChanged)="selectChannel($event)" (routeChanged)="selectRoute($event)"
@@ -196,6 +234,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       }
     </div>
     }
+    }
     @if (scenes.open()) {
       <mx-scenes />
     }
@@ -223,6 +262,28 @@ export class MesaComponent {
   readonly showEq = signal(false);
   readonly showRealEq = signal(false);
   readonly bus = signal<'pa' | 'fones'>('pa');
+  /** Navegação principal da mesa (como na Ui16): MIX / GAIN · EDIT · AUX SENDS · FX SENDS. */
+  readonly tabs = [{ id: 'mix', label: 'MIX / GAIN', short: 'MIX' }, { id: 'edit', label: 'EDIT', short: 'EDIT' }, { id: 'aux', label: 'AUX SENDS', short: 'AUX' }, { id: 'fx', label: 'FX SENDS', short: 'FX' }] as const;
+  readonly view = signal<'mix' | 'edit' | 'aux' | 'fx'>('mix');
+  readonly toolsOpen = signal(false);
+  private readonly tools = inject(ToolsService);
+  private readonly knowledge = inject(KnowledgeAdminService);
+  /** Canal do EDIT: o selecionado ou, sem seleção, o primeiro cadastrado. */
+  readonly editChannel = computed(() => this.selectedChannel() ?? this.live.channels()[0]?.number ?? null);
+  setView(v: 'mix' | 'edit' | 'aux' | 'fx'): void {
+    this.view.set(v);
+    if (v === 'mix') this.bus.set('pa');
+    else if (v === 'aux') this.bus.set('fones');
+  }
+  openEdit(): void { this.setView('edit'); }
+  openTool(tool: 'assistant' | 'diagnostic' | 'scenes' | 'history' | 'knowledge' | 'settings'): void {
+    this.toolsOpen.set(false);
+    if (tool === 'assistant' || tool === 'diagnostic') this.assistant.open.set(true);
+    else if (tool === 'scenes') this.scenes.show();
+    else if (tool === 'history') void this.openHistory();
+    else if (tool === 'knowledge') { this.knowledge.open.set(true); setTimeout(() => document.querySelector('mx-knowledge-admin')?.scrollIntoView?.({ block: 'start' })); }
+    else this.tools.settingsOpen.set(true);
+  }
   readonly showHistory = signal(false);
   readonly history = signal<LogEntry[]>([]);
   readonly historyBusy = signal(false);
@@ -295,10 +356,10 @@ export class MesaComponent {
 
   selectChannel(channel: number) { if (this.live.channels().some(c => c.number === channel)) this.selectedChannel.set(channel); }
   selectRoute(route: string) {
-    if (route === 'pa') { this.bus.set('pa'); return; }
+    if (route === 'pa') { this.setView('mix'); return; }
     const aux = Number(route);
     if (!this.live.auxBuses().some(a => a.number === aux)) return;
-    this.auxOverride.set(aux); this.bus.set('fones');
+    this.auxOverride.set(aux); this.setView('aux');
   }
   async openHistory() { this.showHistory.set(true); await this.loadHistory(); }
 
