@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Browser, Locator, Page } from 'playwright';
+import type { Browser, Locator, Page, WebSocketRoute } from 'playwright';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { PROJECT_ROOT } from '../../src/core/config.js';
 import { LocalKnowledge } from '../../src/knowledge/local/service.js';
@@ -232,21 +232,45 @@ it('músico não vê AutoConfig e o servidor nega planejador e núcleo; agente M
 
 it('perda de conexão bloqueia respostas; mudança do diagnóstico invalida a pergunta; sessão expirada volta ao login sem plano', async () => {
   const t = await lab();
-  const { page, ctx } = await enter(browser, t.base, OPERATOR_PIN, PHONE);
+  let outage = false;
+  let blockedReconnects = 0;
+  const liveSockets = new Set<WebSocketRoute>();
+  const { page, ctx } = await enter(browser, t.base, OPERATOR_PIN, PHONE, async context => {
+    // Only the app's loopback WS. Healthy traffic still reaches the actual LAB server.
+    await context.routeWebSocket(url => url.pathname === '/ws', async socket => {
+      if (outage) {
+        blockedReconnects++;
+        await socket.close({ code: 1013, reason: 'LAB test outage' });
+        return;
+      }
+      liveSockets.add(socket);
+      socket.connectToServer();
+    });
+  });
   const write = vi.spyOn(t.mixer, 'write');
   await tell(page, 'Fred está abafado no retorno');
   const auto = await openEvent(page, 'Falhas');
   await button(auto, 'Consultar planejador técnico').click();
   await auto.getByText('O problema ocorre só nos fones ou também no PA?', { exact: true }).waitFor();
 
-  await ctx.setOffline(true);
-  const sockets = (t.server.https[0] as unknown as { websocketServer: { clients: Set<{ terminate(): void }> } }).websocketServer;
-  for (const socket of sockets.clients) socket.terminate();
-  await auto.getByText('Sem conexão — ações bloqueadas', { exact: true }).waitFor({ timeout: 15000 });
-  // No stale question survives a disconnection in the browser; re-consulting is blocked offline.
-  expect(await button(auto, 'Só neste destino').count()).toBe(0);
-  expect(await button(auto, 'Consultar planejador novamente').isDisabled()).toBe(true);
-  await ctx.setOffline(false);
+  try {
+    outage = true;
+    // setOffline can black-hole the browser's native WS close notification. Close the
+    // page side explicitly and keep reconnects blocked until every offline assertion.
+    await Promise.all([...liveSockets].map(socket => socket.close({ code: 1001, reason: 'LAB test outage' })));
+    for (const socket of t.server.https[0]!.websocketServer.clients) socket.terminate();
+    await auto.getByText('Sem conexão — ações bloqueadas', { exact: true }).waitFor({ timeout: 15000 });
+    // Prove this is a sustained WS outage, even while HTTP is still available.
+    await expect.poll(() => blockedReconnects, { timeout: 15000 }).toBeGreaterThan(0);
+    await ctx.setOffline(true);
+    await auto.getByText('Sem conexão — ações bloqueadas', { exact: true }).waitFor({ timeout: 15000 });
+    // No stale question survives; re-consulting remains blocked with HTTP offline too.
+    expect(await button(auto, 'Só neste destino').count()).toBe(0);
+    expect(await button(auto, 'Consultar planejador novamente').isDisabled()).toBe(true);
+  } finally {
+    outage = false;
+    await ctx.setOffline(false);
+  }
   await page.getByTestId('link').filter({ hasText: 'Conectado' }).waitFor();
   // Reconnection may remount the soundcheck; re-select the event only if it was dropped.
   const restored = page.getByLabel('Evento da passagem', { exact: true });
