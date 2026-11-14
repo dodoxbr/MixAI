@@ -21,6 +21,7 @@ import { AssistantUiService } from '../core/assistant.service';
 import { ScenesComponent } from '../scenes/scenes.component';
 import { ScenesUiService } from '../scenes/scenes.service';
 import { ToolsService } from '../core/tools.service';
+import { MuteStateService } from '../live-ux/mute-state.service';
 import { KnowledgeAdminService } from '../knowledge/knowledge.service';
 
 interface LogEntry {
@@ -159,6 +160,9 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       <p class="aux-reading" role="status">AUX {{aux()}} · {{auxName()}} · {{knownSends()}}/{{strips().length}} envios com leitura de fader. {{live.hello()?.mode==='real'?'Estado observado, não áudio medido.':'Estado simulado LAB/MOCK.'}}</p>
       <p class="aux-reading">PRE/POST: indisponível no contrato atual. Não inferido pelo valor do envio.</p>
     }
+    @if (muteBanner(); as banner) {
+      <p class="mute-banner" [class.is-active]="banner.kind === 'active'" role="status" data-testid="mute-all-banner" [attr.data-kind]="banner.kind">{{ banner.text }}</p>
+    }
     <div class="mesa-main console">
         <div class="strips" #stripRow [class.is-fones]="bus() === 'fones'" (scroll)="rememberScroll()">
           @for (s of strips(); track s.number) {
@@ -171,7 +175,7 @@ const UNKNOWN: StateValue = { status: 'unknown' };
               [mute]="s.mute"
               [meter]="s.meter"
               [simulated]="simulatedMeters()"
-              [showMeter]="bus() === 'pa'" [sendView]="bus()==='fones'"
+              [showMeter]="bus() === 'pa'" [sendView]="bus()==='fones'" [muteInfo]="s.eff"
               [disabled]="!live.writable() || live.hello()?.mode==='real' || (bus()==='fones'&&!registeredAux())"
               [busy]="actions.isBusy('mute:' + bus() + ':' + s.number)"
               (moved)="fader(s.number, $event)"
@@ -271,6 +275,16 @@ export class MesaComponent {
   readonly view = signal<'mix' | 'edit' | 'aux' | 'fx'>('mix');
   readonly toolsOpen = signal(false);
   private readonly tools = inject(ToolsService);
+  readonly muteState = inject(MuteStateService);
+  /** Aviso do Mute All (só no PA; os envios AUX não passam por ele neste modelo). */
+  readonly muteBanner = computed(() => {
+    const v = this.muteState.view();
+    if (this.bus() !== 'pa' || this.live.hello()?.mode !== 'real' || !v) return null;
+    if (v.groups.state !== 'confirmed') return { kind: 'unknown' as const, text: 'Estado dos grupos de mute indisponível nesta conexão: o MUTE efetivo pode diferir do MUTE individual mostrado.' };
+    if (v.groups.muteAll === 'active') return { kind: 'active' as const, text: 'MUTE ALL ATIVO na mesa: os canais sem Force Unmute estão silenciados mesmo com o MUTE individual aberto. A precedência do Force Unmute ainda não foi validada na mesa física.' };
+    if (v.groups.otherGroupsActive) return { kind: 'other' as const, text: 'Há um grupo de mute (1–6/FX) ativo: a pertinência dos canais ao grupo não foi validada; o MUTE efetivo pode diferir do individual.' };
+    return null;
+  });
   private readonly knowledge = inject(KnowledgeAdminService);
   /** Canal do EDIT: o selecionado ou, sem seleção, o primeiro cadastrado. */
   readonly editChannel = computed(() => this.selectedChannel() ?? this.live.channels()[0]?.number ?? null);
@@ -307,6 +321,7 @@ export class MesaComponent {
       level: params[keys.level(ch.number, aux)]?.value ?? UNKNOWN,
       mute: params[keys.mute(ch.number, aux)]?.value ?? UNKNOWN,
       meter: levels[`ch.${ch.number}`] ?? null,
+      eff: this.bus() === 'pa' ? (this.muteState.byChannel()[ch.number] ?? null) : null,
     }));
   });
   readonly registeredAux=computed(()=>this.live.auxes().some(a=>a.number===this.aux()));
