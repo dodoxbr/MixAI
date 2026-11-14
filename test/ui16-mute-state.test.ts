@@ -24,8 +24,10 @@ describe('MUTE efetivo — tabela de decisão (pura)', () => {
     ['sem grupo, individual mudo', ok(true), ok(0), ok(false), 'muted', 'individual', 'not_needed'],
     ['Mute All, individual aberto, sem Force Unmute → silenciado pelo Mute All', ok(false), ok(MA), ok(false), 'muted', 'mute_all', 'not_needed'],
     ['Mute All, individual mudo, sem Force Unmute → individual + Mute All', ok(true), ok(MA), ok(false), 'muted', 'individual_and_mute_all', 'not_needed'],
-    ['Mute All, individual aberto, Force Unmute → precedência pendente (caso do CH3 físico)', ok(false), ok(MA), ok(true), 'unknown', 'force_unmute_precedence_pending', 'pending'],
-    ['Mute All, individual mudo, Force Unmute → precedência pendente (caso do CH2 físico)', ok(true), ok(MA), ok(true), 'unknown', 'force_unmute_precedence_pending', 'pending'],
+    ['Mute All, individual aberto, Force Unmute → aberto como a Ui oficial exibe (CH3 físico)', ok(false), ok(MA), ok(true), 'open', 'force_unmute_exempt', 'official_ui_display'],
+    ['Mute All, individual MUDO, Force Unmute → aberto como a Ui oficial exibe (CH2/CH5/CH7 físicos)', ok(true), ok(MA), ok(true), 'open', 'force_unmute_exempt', 'official_ui_display'],
+    ['Mute All + outro grupo, Force Unmute → sem evidência para o outro grupo: precedência pendente', ok(false), ok(MA | 1), ok(true), 'unknown', 'force_unmute_precedence_pending', 'pending'],
+    ['outro grupo sem Mute All, Force Unmute → precedência pendente', ok(false), ok(1), ok(true), 'unknown', 'force_unmute_precedence_pending', 'pending'],
     ['sem grupo, individual mudo, Force Unmute → precedência pendente (não presume)', ok(true), ok(0), ok(true), 'unknown', 'force_unmute_precedence_pending', 'pending'],
     ['sem grupo, individual aberto, Force Unmute → aberto (nada silencia)', ok(false), ok(0), ok(true), 'open', 'none', 'not_needed'],
     ['outro grupo ativo, individual aberto → pertinência não validada', ok(false), ok(1), ok(false), 'unknown', 'other_mute_group_membership_unvalidated', 'not_needed'],
@@ -44,20 +46,27 @@ describe('MUTE efetivo — tabela de decisão (pura)', () => {
   });
   it('mantém os fatos separados: individual, Mute All, Force Unmute e razões das lacunas', () => {
     const r = run(ok(true), ok(MA), ok(true));
-    expect(r).toMatchObject({ individual: true, muteAll: 'active', forceUnmute: true, otherGroupsActive: false, reasons: [] });
+    expect(r).toMatchObject({ individual: true, muteAll: 'active', forceUnmute: true, otherGroupsActive: false, effective: 'open', reasons: [] });
     expect(run(no('disconnected'), no('inbound_silence'), no('not_observed')).reasons).toEqual(['disconnected', 'inbound_silence', 'not_observed']);
     expect(groupFlags(ok(MA | 4))).toEqual({ muteAll: 'active', other: true });
     expect(groupFlags(ok(0))).toEqual({ muteAll: 'inactive', other: false });
     expect(groupFlags(no())).toEqual({ muteAll: 'unknown', other: null });
   });
-  it('invariantes em TODAS as combinações: nunca "aberto" sem evidência; "mudo" só com Force Unmute desligado; Force Unmute + silêncio possível = precedência pendente', () => {
+  it('invariantes em TODAS as combinações: "aberto" só com evidência (sem silenciador, ou Force Unmute + só Mute All como a Ui oficial exibe); "mudo" só com Force Unmute desligado; demais Force Unmute + silenciador = pendente', () => {
     const individuals = [ok(true), ok(false), no()], groups = [ok(0), ok(MA), ok(1), ok(MA | 1), no()], fus = [ok(true), ok(false), no()];
     for (const i of individuals) for (const g of groups) for (const f of fus) {
       const r = run(i, g, f), flags = groupFlags(g);
-      if (r.effective === 'open') expect([i.state === 'confirmed' && i.value === false, flags.muteAll === 'inactive', flags.other === false]).toEqual([true, true, true]);
+      const fuOn = f.state === 'confirmed' && f.value;
+      if (r.effective === 'open') {
+        const noMuter = i.state === 'confirmed' && i.value === false && flags.muteAll === 'inactive' && flags.other === false;
+        const officialDisplay = fuOn && flags.muteAll === 'active' && flags.other === false;
+        expect(noMuter || officialDisplay).toBe(true);
+        if (officialDisplay) expect(r.precedence).toBe('official_ui_display');
+      }
       if (r.effective === 'muted') expect(f.state === 'confirmed' && f.value === false).toBe(true);
       const fu = f.state === 'confirmed' && f.value;
-      const mightBeMuted = g.state === 'confirmed' && ((i.state === 'confirmed' && i.value) || flags.muteAll === 'active' || flags.other === true);
+      const exemptByOfficialUi = flags.muteAll === 'active' && flags.other === false;
+      const mightBeMuted = g.state === 'confirmed' && !exemptByOfficialUi && ((i.state === 'confirmed' && i.value) || flags.muteAll === 'active' || flags.other === true);
       if (fu && mightBeMuted) expect([r.effective, r.precedence]).toEqual(['unknown', 'pending']);
     }
   });
@@ -93,8 +102,8 @@ describe('GET /api/ui16/mute-state (REAL, somente leitura)', () => {
     const j = await s.state();
     expect(j).toMatchObject({ targetMode: 'real', hardwareValidation: 'pending', source: 'independent_socket_input', groups: { state: 'confirmed', mask: MA, muteAll: 'active', otherGroupsActive: false } });
     expect(s.byCh(j, 1)).toMatchObject({ individual: true, forceUnmute: false, effective: 'muted', cause: 'individual_and_mute_all' });
-    expect(s.byCh(j, 2)).toMatchObject({ individual: true, forceUnmute: true, effective: 'unknown', cause: 'force_unmute_precedence_pending', precedence: 'pending' });
-    expect(s.byCh(j, 3)).toMatchObject({ individual: false, forceUnmute: true, effective: 'unknown', cause: 'force_unmute_precedence_pending' });
+    expect(s.byCh(j, 2)).toMatchObject({ individual: true, forceUnmute: true, effective: 'open', cause: 'force_unmute_exempt', precedence: 'official_ui_display' });
+    expect(s.byCh(j, 3)).toMatchObject({ individual: false, forceUnmute: true, effective: 'open', cause: 'force_unmute_exempt', precedence: 'official_ui_display' });
     expect(s.byCh(j, 4)).toMatchObject({ individual: false, forceUnmute: false, effective: 'muted', cause: 'mute_all' });
     expect(s.byCh(j, 5)).toMatchObject({ individual: true, effective: 'muted', cause: 'individual_and_mute_all' });
     expect(s.fake.last().commands()).toEqual([]);
@@ -107,7 +116,7 @@ describe('GET /api/ui16/mute-state (REAL, somente leitura)', () => {
     expect(j.groups).toMatchObject({ muteAll: 'inactive' });
     expect(s.byCh(j, 4)).toMatchObject({ individual: false, effective: 'open', cause: 'none' });
     expect(s.byCh(j, 1)).toMatchObject({ individual: true, effective: 'muted', cause: 'individual' });
-    expect(s.byCh(j, 2)).toMatchObject({ effective: 'unknown', cause: 'force_unmute_precedence_pending' }); // individual mudo + Force Unmute continua sem regra validada
+    expect(s.byCh(j, 2)).toMatchObject({ effective: 'unknown', cause: 'force_unmute_precedence_pending' }); // sem grupo ativo, individual mudo + Force Unmute continua sem evidência
     s.fake.last().deliver('SETD^mgmask^8388608'); await new Promise(r => setTimeout(r, 20));
     expect(s.byCh(await s.state(), 4)).toMatchObject({ effective: 'muted', cause: 'mute_all' });
   });

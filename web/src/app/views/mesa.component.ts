@@ -281,7 +281,7 @@ export class MesaComponent {
     const v = this.muteState.view();
     if (this.bus() !== 'pa' || this.live.hello()?.mode !== 'real' || !v) return null;
     if (v.groups.state !== 'confirmed') return { kind: 'unknown' as const, text: 'Estado dos grupos de mute indisponível nesta conexão: o MUTE efetivo pode diferir do MUTE individual mostrado.' };
-    if (v.groups.muteAll === 'active') return { kind: 'active' as const, text: 'MUTE ALL ATIVO na mesa: os canais sem Force Unmute estão silenciados mesmo com o MUTE individual aberto. A precedência do Force Unmute ainda não foi validada na mesa física.' };
+    if (v.groups.muteAll === 'active') return { kind: 'active' as const, text: 'MUTE ALL ATIVO na mesa: os canais sem Force Unmute estão silenciados mesmo com o MUTE individual aberto. Canais com Force Unmute são exibidos como abertos, como na interface oficial; isso ainda não foi validado em áudio.' };
     if (v.groups.otherGroupsActive) return { kind: 'other' as const, text: 'Há um grupo de mute (1–6/FX) ativo: a pertinência dos canais ao grupo não foi validada; o MUTE efetivo pode diferir do individual.' };
     return null;
   });

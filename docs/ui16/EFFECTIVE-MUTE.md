@@ -15,7 +15,9 @@ Leitura crua da Ui16 física (cliente somente leitura, 2026-11-14):
 
 Da biblioteca `soundcraft-ui-connection@7.1.0` (`index.mjs`): `muteGroup('all')` usa o **bit 23** de `mgmask`; grupos 1–6 = bits 0–5; FX = bit 22; `clearMuteGroups()` zera `mgmask`. A interface oficial mostra o MUTE **efetivo** (por isso não coincidia com o `i.N.mute` quando o Mute All estava ativo); os MUTE azul-claros da captura eram exatamente CH2 e CH3, os dois com `forceunmute = 1`.
 
-**Não validado fisicamente (portanto nunca presumido):** a precedência do Force Unmute sobre o MUTE individual e sobre os grupos. Onde essa regra decidiria o resultado, o MUTE efetivo é `unknown` com a causa `force_unmute_precedence_pending`.
+**Exibição da interface oficial (capturas de 2026-11-14, 8 observações em dois momentos):** com o Mute All ativo e nenhum outro grupo, o canal com Force Unmute aparece **azul-claro (não silenciado)**, tanto com MUTE individual ligado (CH2, CH5, CH7) quanto aberto (CH3); os canais sem Force Unmute aparecem em vermelho (CH1, CH4, CH6, CH8–CH11), inclusive CH4, cujo MUTE individual está aberto. O MixAI segue essa **exibição** (`force_unmute_exempt`, `precedence: official_ui_display`).
+
+**Não validado em áudio (portanto nunca presumido além da exibição):** a precedência real do Force Unmute. Fora do caso acima (outro grupo ativo, ou sem grupo ativo com MUTE individual ligado), o MUTE efetivo é `unknown` com a causa `force_unmute_precedence_pending`.
 
 ## Observação e frescor
 
@@ -33,17 +35,19 @@ I = MUTE individual, A = Mute All, O = outro grupo (1–6/FX) ativo, F = Force U
 | Sem grupo, I mudo, F=0 | mudo | `individual` |
 | A, F=0, I aberto | mudo | `mute_all` |
 | A, F=0, I mudo | mudo | `individual_and_mute_all` |
-| F=1 com A/O ativo, ou F=1 com I mudo | **desconhecido** | `force_unmute_precedence_pending` |
+| A ativo, sem outro grupo, F=1 (I mudo ou aberto) | **aberto** (como a Ui oficial exibe) | `force_unmute_exempt` (`official_ui_display`) |
+| F=1 com outro grupo ativo, ou sem grupo ativo com I mudo | **desconhecido** | `force_unmute_precedence_pending` |
 | O ativo (pertinência não validada), sem F, I aberto | desconhecido | `other_mute_group_membership_unvalidated` |
 | Estado dos grupos não observado | desconhecido (só I mudo com F=0 é conclusivo) | `group_state_unavailable` |
 | Force Unmute não observado quando importa | desconhecido | `force_unmute_unavailable` |
 | MUTE individual indisponível sem grupo | desconhecido | `individual_unavailable` |
 
-Invariantes testados em **todas** as combinações: nunca "aberto" sem evidência (só com I aberto, A inativo e O inativo); "mudo" só com Force Unmute desligado; Force Unmute somado a um possível silenciador = precedência pendente.
+Invariantes testados em **todas** as combinações: "aberto" só com evidência (sem silenciador, ou Force Unmute com só o Mute All, como a Ui oficial exibe); "mudo" só com Force Unmute desligado; demais combinações de Force Unmute com um possível silenciador = precedência pendente.
 
 ## Interface (MIX / GAIN, REAL)
 
-- Selo por canal abaixo de "CH n": `MUDO · individual`, `MUDO · Mute All`, `MUDO · indiv. + Mute All`, `ABERTO`, `FORCE UNMUTE · efetivo ?` etc. O botão MUTE continua mostrando só o estado **individual**.
+- O **botão MUTE exibe o MUTE efetivo** quando ele é conclusivo (vermelho = silenciado, claro = aberto), como a interface oficial; quando o efetivo é desconhecido, volta a mostrar o MUTE individual. O individual continua disponível em `data-individual`, no título do botão e na API.
+- Selo por canal abaixo de "CH n": `MUDO · individual`, `MUDO · Mute All`, `MUDO · indiv. + Mute All`, `ABERTO`, `ABERTO · Force Unmute`, `FORCE UNMUTE · efetivo ?` etc.
 - Aviso quando o Mute All está ativo (e quando o estado dos grupos está indisponível ou há outro grupo ativo).
 - O **AUX SENDS** não recebe selo nem aviso: o MUTE individual dos envios segue como antes (não se afirma que o Mute All os afete).
 - LAB/MOCK: nenhuma consulta, selo ou aviso. Falha de rede, 401, instância diferente → sem selo (desconhecido, nunca "aberto").

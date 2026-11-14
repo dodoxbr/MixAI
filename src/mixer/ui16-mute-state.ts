@@ -3,8 +3,8 @@
  *
  * Evidência física (leitura crua, 2026-11-14): `mgmask` global = 8388608 (bit 23); `i.N.mute` individual; `i.N.forceunmute`.
  * Evidência do código (soundcraft-ui-connection 7.1.0): `muteGroup('all')` usa o bit 23 de `mgmask`; grupos 1..6 = bits 0..5, FX = bit 22.
- * NÃO validado fisicamente (portanto nunca presumido aqui): a precedência de Force Unmute sobre o MUTE individual e sobre os grupos.
- * Onde essa regra decidiria o resultado, o estado efetivo é `unknown` com a causa pendente. Pura, sem E/S, sem escrita.
+ * Interface oficial (exibição, capturas): Force Unmute com Mute All ativo = canal exibido como aberto (`force_unmute_exempt`, `official_ui_display`).
+ * NÃO validado em áudio: a precedência real de Force Unmute sobre o MUTE individual fora desse caso e sobre outros grupos; nesses casos o efetivo é `unknown`. Pura, sem E/S, sem escrita.
  */
 export const MUTE_ALL_BIT = 1 << 23;
 export const MUTE_GROUP_MASK_BITS = 24;
@@ -26,6 +26,7 @@ export type MuteCause =
   | 'mute_all'
   | 'individual_and_mute_all'
   | 'force_unmute_precedence_pending'
+  | 'force_unmute_exempt'
   | 'other_mute_group_membership_unvalidated'
   | 'group_state_unavailable'
   | 'individual_unavailable'
@@ -40,7 +41,8 @@ export interface EffectiveMute {
   effective: 'muted' | 'open' | 'unknown';
   cause: MuteCause;
   /** `pending`: a regra do firmware que decidiria este caso ainda depende de validação física. */
-  precedence: 'not_needed' | 'pending';
+  /** `pending`: regra ainda sem evidência (efetivo desconhecido). `official_ui_display`: segue o que a interface oficial EXIBE (capturas); áudio não validado. */
+  precedence: 'not_needed' | 'pending' | 'official_ui_display';
   reasons: FactReason[];
 }
 
@@ -75,6 +77,9 @@ export function effectiveMute(input: { channel: number; individual: Fact<boolean
     if (I === true && F === false) return out('muted', 'individual');
     return out('unknown', 'group_state_unavailable');
   }
+  // Interface oficial (capturas de 2026-11-14, 4 canais): com o Mute All ativo e nenhum outro grupo, o canal com Force Unmute é EXIBIDO como não silenciado,
+  // tanto com o MUTE individual ligado (CH2/CH5/CH7) quanto aberto (CH3). Regra de EXIBIÇÃO; não prova o áudio, que continua sem validação física.
+  if (F === true && muteAll === 'active' && other === false) return out('open', 'force_unmute_exempt', 'official_ui_display');
   const groupActive = muteAll === 'active' || other === true;
   if (F === true && (groupActive || I === true)) return out('unknown', 'force_unmute_precedence_pending', 'pending');
   if (other === true) return I === true && F === false ? out('muted', 'individual') : out('unknown', 'other_mute_group_membership_unvalidated');

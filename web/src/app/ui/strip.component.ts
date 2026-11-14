@@ -11,7 +11,7 @@ import { muteLabel, type ChannelMuteState } from '../live-ux/mute-state.service'
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FaderComponent, MeterComponent],
   styles: [':host.is-selected { outline:2px solid var(--brass); outline-offset:-2px; } .strip-select { min-height:48px; background:none; border:0; padding:0; color:inherit; cursor:pointer; border-radius:4px; }'],
-  host: { class: 'mx-strip', '[class.is-master]': 'master()', '[class.is-muted]': 'muted()', '[class.is-selected]': 'selected()' },
+  host: { class: 'mx-strip', '[class.is-master]': 'master()', '[class.is-muted]': 'shownMuted()', '[class.is-selected]': 'selected()' },
   template: `
     @if (selectable()) {
       <button type="button" class="strip-name strip-select" [title]="name()" [attr.aria-label]="'Selecionar CH' + number() + ' — ' + name()" [attr.aria-pressed]="selected()" (click)="chosen.emit()">{{ name() }}</button>
@@ -31,9 +31,11 @@ import { muteLabel, type ChannelMuteState } from '../live-ux/mute-state.service'
       <button
         type="button"
         class="mute"
-        [class.on]="muted()"
+        [class.on]="shownMuted()"
         [disabled]="disabled() || mute().status !== 'known' || busy()"
-        [attr.aria-pressed]="mute().status==='known'?muted():null"
+        [attr.aria-pressed]="mute().status==='known'?shownMuted():null"
+        [attr.data-individual]="mute().status==='known'?muted():null"
+        [title]="muteTitle()"
         (click)="toggleMute.emit()"
       >
         {{ busy() ? '…' : mute().status!=='known' && sendView()?'MUTE — ?':'MUTE' }}
@@ -70,6 +72,13 @@ export class StripComponent {
   readonly db = computed(() => {
     const l = this.level();
     return l.status === 'known' && typeof l.value === 'number' ? l.value : null;
+  });
+  /** O que o botão MUTE exibe: no REAL com leitura efetiva conclusiva, o MUTE EFETIVO (como a interface oficial); sem ela, o MUTE individual de sempre. */
+  readonly shownMuted = computed(() => { const m = this.muteInfo(); return m && m.effective !== 'unknown' ? m.effective === 'muted' : this.muted(); });
+  readonly muteTitle = computed(() => {
+    const m = this.muteInfo(); if (!m) return null;
+    const ind = m.individual === null ? 'indisponível' : m.individual ? 'ligado' : 'desligado';
+    return `MUTE individual: ${ind}. ` + muteLabel(m).title;
   });
   readonly muted = computed(() => {
     const m = this.mute();

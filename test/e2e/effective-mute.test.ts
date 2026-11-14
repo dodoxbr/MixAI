@@ -53,12 +53,14 @@ for (const [label, device] of DEVICES) {
       const banner = page.getByTestId('mute-all-banner');
       expect(await banner.getAttribute('data-kind')).toBe('active');
       expect(await banner.textContent()).toContain('MUTE ALL ATIVO');
-      expect([await cause(page, 1), await cause(page, 2), await cause(page, 3), await cause(page, 4)]).toEqual(['individual_and_mute_all', 'force_unmute_precedence_pending', 'force_unmute_precedence_pending', 'mute_all']);
+      expect([await cause(page, 1), await cause(page, 2), await cause(page, 3), await cause(page, 4)]).toEqual(['individual_and_mute_all', 'force_unmute_exempt', 'force_unmute_exempt', 'mute_all']);
       expect(await badge(page, 4).textContent()).toContain('Mute All'); // silenciado pelo grupo, MUTE individual aberto
-      expect(await badge(page, 2).getAttribute('data-tone')).toBe('unknown'); // não afirma aberto nem mudo
-      // o botão MUTE continua sendo o individual (CH1 mudo, CH4 aberto)
+      expect(await badge(page, 2).getAttribute('data-tone')).toBe('open'); // como a Ui oficial exibe (Force Unmute), áudio não validado
+      // o botão MUTE exibe o EFETIVO (igual à interface oficial): CH1 mudo, CH2/CH3 abertos (Force Unmute), CH4 mudo (Mute All); o individual fica em data-individual
       const mute = (n: number) => page.locator('.strips mx-strip').nth(n - 1).locator('.mute').getAttribute('aria-pressed');
-      expect([await mute(1), await mute(3), await mute(4)]).toEqual(['true', 'false', 'false']);
+      const individual = (n: number) => page.locator('.strips mx-strip').nth(n - 1).locator('.mute').getAttribute('data-individual');
+      expect([await mute(1), await mute(2), await mute(3), await mute(4)]).toEqual(['true', 'false', 'false', 'true']);
+      expect([await individual(1), await individual(2), await individual(3), await individual(4)]).toEqual(['true', 'true', 'false', 'false']);
       await mkdir(shots, { recursive: true });
       await page.screenshot({ path: join(shots, `${label}-mute-all.png`) });
       // Mute All desligado na mesa: o CH4 passa a aberto com evidência; CH1 segue mudo individual; CH2 continua sem regra validada
@@ -66,7 +68,8 @@ for (const [label, device] of DEVICES) {
       await expect.poll(() => cause(page, 4), { timeout: 6000 }).toBe('none');
       expect(await badge(page, 4).textContent()).toContain('ABERTO');
       expect(await cause(page, 1)).toBe('individual');
-      expect(await cause(page, 2)).toBe('force_unmute_precedence_pending');
+      expect(await cause(page, 2)).toBe('force_unmute_precedence_pending'); // sem grupo ativo, individual mudo + Force Unmute: sem evidência
+      expect(await mute(2)).toBe('true'); // efetivo desconhecido: o botão volta a mostrar o individual
       expect(await page.getByTestId('mute-all-banner').count()).toBe(0);
       await page.screenshot({ path: join(shots, `${label}-sem-mute-all.png`) });
       expect(s.fake.sockets.flatMap((x) => x.commands())).toEqual([]);
