@@ -61,7 +61,7 @@ describe('interface E3 (LAB, navegador real)', () => {
     const l = await lab();
     const yoga = await open(l, OPERATOR_PIN);
     const phone = await open(l, MUSICIAN_PIN, PHONE);
-    await yoga.getByRole('tab', { name: 'FONES' }).click();
+    await yoga.getByRole('tab', { name: 'AUX SENDS' }).click();
     const fonesCavaco = paramKey.level(1, auxBus(1));
     const before = value(l, fonesCavaco)!;
 
@@ -113,12 +113,12 @@ describe('interface E3 (LAB, navegador real)', () => {
     const page = await open(l, OPERATOR_PIN);
     const before = JSON.stringify(l.controller.state.snapshot().params);
     for (let i = 0; i < 4; i++) {
-      await page.getByRole('tab', { name: 'FONES' }).click();
+      await page.getByRole('tab', { name: 'AUX SENDS' }).click();
       await page.getByRole('tab', { name: 'PA' }).click();
     }
     await page.waitForTimeout(200);
     expect(JSON.stringify(l.controller.state.snapshot().params)).toBe(before);
-    await page.getByRole('tab', { name: 'FONES' }).click();
+    await page.getByRole('tab', { name: 'AUX SENDS' }).click();
     await expect(page.locator('.shared-warning').textContent()).resolves.toContain('TODOS');
   });
 
@@ -219,8 +219,8 @@ describe('interface E3 (LAB, navegador real)', () => {
     const phoneOp = await open(l, OPERATOR_PIN, PHONE);
     const [pageW, viewW] = await phoneOp.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
     expect(pageW).toBeLessThanOrEqual(viewW); // a página não rola para o lado (só a fileira de canais)
-    await phoneOp.getByRole('tab', { name: 'FONES' }).click();
-    await phoneOp.locator('mx-fones-list').waitFor(); // celular: lista − / +, sem faders
+    await phoneOp.getByRole('tab', { name: 'AUX SENDS' }).click();
+    await phoneOp.locator('.strips mx-fader').first().waitFor(); // AUX SENDS mantém faders por canal no celular
 
     const phoneMus = await open(l, MUSICIAN_PIN, PHONE);
     const sizes = await phoneMus.locator('.step').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));

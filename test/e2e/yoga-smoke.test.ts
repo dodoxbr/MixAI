@@ -87,7 +87,7 @@ it('Yoga LAB: HTTP/WS, PA/FONES, EQ, cenas, aprovação, consulta, fixture, logo
     const mute = page.locator('.strips mx-strip').first().getByRole('button', { name: 'MUTE', exact: true });
     await mute.click(); await expect.poll(() => read('ch.1.main.mute')).toBe(true);
     await mute.click(); await expect.poll(() => read('ch.1.main.mute')).toBe(false);
-    await page.getByRole('tab', { name: 'FONES', exact: true }).click();
+    await page.getByRole('tab', { name: 'AUX SENDS', exact: true }).click();
     await phone.getByRole('button', { name: 'Aumentar Voz 1 no fone' }).click();
     await expect.poll(() => read('ch.1.aux.1.level')).toBe(-18);
     await expect.poll(() => page.locator('.strips .strip-value').first().textContent()).toContain('−18.0 dB');

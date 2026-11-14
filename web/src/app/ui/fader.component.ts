@@ -49,11 +49,13 @@ const EMIT_MS = 33;
         <text class="tick-label" x="6" [attr.y]="y(m.db) + 3">{{ m.label }}</text>
       }
       <rect class="track" x="38" [attr.y]="top" width="6" [attr.height]="span()" rx="3" />
+      @if(shown()!==null){
       <rect class="track-fill" x="38" [attr.y]="thumbY()" width="6" [attr.height]="bottom() - thumbY()" rx="3" />
       <g class="thumb" [attr.transform]="'translate(0,' + thumbY() + ')'">
         <rect x="22" y="-14" width="38" height="28" rx="5" />
         <line x1="26" x2="56" y1="0" y2="0" />
       </g>
+      }
     </svg>
   `,
 })
