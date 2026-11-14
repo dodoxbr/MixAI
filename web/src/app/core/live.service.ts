@@ -60,6 +60,7 @@ export class LiveService {
   readonly meters = signal<MeterFrame | null>(null);
   readonly channels = signal<Named[]>([]);
   readonly auxes = signal<Named[]>([]);
+  readonly auxBuses=computed(()=>this.hello()?.model==='ui16'?Array.from({length:6},(_,i)=>({number:i+1,name:this.auxes().find(a=>a.number===i+1)?.name??'Sem nome local'})):this.auxes());
   readonly toasts = signal<Toast[]>([]);
   /** Pode mexer: conectado e a mesa legível/gravável. */
   readonly writable = computed(() => this.connection() === 'online' && this.state()?.link === 'READY' && this.state()?.available === true && !this.synchronizing());

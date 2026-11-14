@@ -31,7 +31,7 @@ it('capturas da interface (Yoga e celular)', async () => {
     await yoga.page.waitForTimeout(300);
     await yoga.page.screenshot({ path: join(out, 'e3-yoga-cartao-aprovacao.png') });
 
-    await yoga.page.getByRole('tab', { name: 'FONES' }).click();
+    await yoga.page.getByRole('tab', { name: 'AUX SENDS' }).click();
     await yoga.page.waitForTimeout(300);
     await yoga.page.screenshot({ path: join(out, 'e3-yoga-fones.png') });
 

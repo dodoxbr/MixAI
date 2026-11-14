@@ -104,8 +104,8 @@ describe('Mesa do operador no celular Android', () => {
     await expectFadersUsable(page);
     await page.locator('.master-area mx-fader').scrollIntoViewIfNeeded();
     expect((await box(page, '.master-area mx-fader')).height).toBeGreaterThanOrEqual(140);
-    await page.getByRole('tab', { name: 'FONES' }).click();
-    await page.locator('mx-fones-list').waitFor(); // em retrato, os FONES viram a lista
+    await page.getByRole('tab', { name: 'AUX SENDS' }).click();
+    await page.locator('.strips mx-fader').first().waitFor(); // AUX SENDS mantém faders em retrato
     await page.getByRole('tab', { name: 'PA' }).click();
     await page.locator('.strips').waitFor();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -129,7 +129,7 @@ describe('Mesa do operador no celular Android', () => {
     // barra superior compacta: uma linha, com todos os controles na tela
     const bar = await box(page, '.toolbar');
     expect(bar.height).toBeLessThanOrEqual(64);
-    for (const name of ['PA', 'FONES']) await page.getByRole('tab', { name }).waitFor();
+    for (const name of ['PA', 'AUX SENDS']) await page.getByRole('tab', { name }).waitFor();
     for (const name of ['Assistente', 'Desfazer', 'Histórico', 'Cenas']) {
       const b = (await page.getByRole('button', { name, exact: true }).boundingBox())!;
       expect(b.x + b.width, name).toBeLessThanOrEqual(LANDSCAPE.viewport!.width);
@@ -144,7 +144,7 @@ describe('Mesa do operador no celular Android', () => {
     await page.keyboard.press('ArrowUp');
     await expect.poll(() => v(l, paramKey.level(1, MASTER))).toBe(-9);
     // troca PA/FONES deitado mantém os faders
-    await page.getByRole('tab', { name: 'FONES' }).click();
+    await page.getByRole('tab', { name: 'AUX SENDS' }).click();
     await expect.poll(() => page.locator('.strips .strip-value').first().textContent()).toContain('−20.0 dB');
     await expectFadersUsable(page);
     // Assistente, Histórico e Cenas abrem

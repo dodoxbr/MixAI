@@ -18,8 +18,8 @@ const levelLabel = (v: StateValue) => v.status === 'known' ? typeof v.value === 
     </select></label>
     <label>Destino dos controles <select aria-label="Destino dos controles" [value]="aux() === undefined ? 'pa' : '' + aux()" (change)="routeChanged.emit($any($event.target).value)">
       <option value="pa">PA</option>
-      @for (route of live.auxes(); track route.number) {
-        <option [value]="route.number" [disabled]="live.hello()?.mode === 'real' && route.number !== live.hello()?.musicianAux">AUX {{ route.number }} — {{ route.name }}</option>
+      @for (route of live.auxBuses(); track route.number) {
+        <option [value]="route.number">AUX {{ route.number }} — {{ route.name }}</option>
       }
     </select></label>
     <p class="live-name"><strong>CH{{ channel() }} — {{ name() }}</strong> · {{ aux() === undefined ? 'PA' : 'AUX ' + aux() }}</p>
@@ -30,7 +30,7 @@ const levelLabel = (v: StateValue) => v.status === 'known' ? typeof v.value === 
       <dt>Modo</dt><dd>{{ live.hello()?.mode === 'real' ? 'REAL — estado observado não é áudio medido' : 'LAB/MOCK — simulação' }}</dd>
     </dl>
     @if (aux() === 1) { <p class="live-warning">AUX1 é compartilhado no HA800. Alterações afetam todos que o utilizam.</p> }
-    @else if (aux() !== undefined) { <p class="live-warning">Rota do cadastro do servidor. Saída física não validada por esta tela. AUX adicional disponível somente em LAB/MOCK.</p> }
+    @else if (aux() !== undefined) { <p class="live-warning">Barramento selecionado para observação. A leitura depende de dados recebidos; número visível não comprova saída física ou autorização de escrita.</p> }
     @if (live.pending().length) { <p role="status" class="live-warning">{{ live.pending().length }} aprovação(ões) especial(is) pendente(s). Confira os cartões antes de decidir.</p> }
     @if (actions.busy().size || actions.deciding()) { <p role="status">Operação aguardando resposta do servidor…</p> }
     <details>

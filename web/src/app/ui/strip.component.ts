@@ -23,16 +23,17 @@ import { MeterComponent } from './meter.component';
       <mx-fader [value]="db()" [disabled]="disabled()" [label]="name() + ' ' + where()" (moved)="moved.emit($event)" />
     </div>
     <div class="strip-value" [class.is-unknown]="db() === null">{{ valueText() }}</div>
+    @if(sendView()){<small class="send-topology">PRE/POST: —</small>}
     @if (!master()) {
       <button
         type="button"
         class="mute"
         [class.on]="muted()"
         [disabled]="disabled() || mute().status !== 'known' || busy()"
-        [attr.aria-pressed]="muted()"
+        [attr.aria-pressed]="mute().status==='known'?muted():null"
         (click)="toggleMute.emit()"
       >
-        {{ busy() ? '…' : 'MUTE' }}
+        {{ busy() ? '…' : mute().status!=='known' && sendView()?'MUTE — ?':'MUTE' }}
       </button>
     } @else {
       <div class="master-note">aprovação no cartão</div>
@@ -40,6 +41,7 @@ import { MeterComponent } from './meter.component';
   `,
 })
 export class StripComponent {
+  readonly sendView=input(false);
   readonly name = input.required<string>();
   readonly selectable = input(false);
   readonly selected = input(false);
@@ -68,7 +70,7 @@ export class StripComponent {
   readonly valueText = computed(() => {
     const l = this.level();
     if (l.status === 'unavailable') return 'sem leitura';
-    if (l.status === 'unknown') return '?';
+    if (l.status === 'unknown') return this.sendView()?'Desconhecido':'?';
     return `${formatDb(this.db())} dB`;
   });
 }

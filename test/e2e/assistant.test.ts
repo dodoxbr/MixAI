@@ -66,7 +66,7 @@ describe('assistente na tela (LAB, navegador real)', () => {
     await say(phone, 'sobe o surdo');
     await lastCard(phone).getByRole('button', { name: 'Confirmar ajuste' }).click();
     await expect.poll(() => v(l, paramKey.level(9, auxBus(1)))).toBe(-18);
-    await yoga.getByRole('tab', { name: 'FONES' }).click();
+    await yoga.getByRole('tab', { name: 'AUX SENDS' }).click();
     await expect.poll(() => yoga.locator('.strips .strip-value').nth(8).textContent()).toContain('−18.0 dB');
 
     // "Melhorou? Não, voltar" no celular → nova proposta → volta ao valor anterior

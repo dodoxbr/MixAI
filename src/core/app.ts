@@ -34,7 +34,8 @@ export function keysFor(names: ChannelMap): { required: ParamKey[]; watched: Par
     return keys;
   };
   const required = build(names.inputs.configured(), names.aux.configured());
-  const watched = [...new Set([...required, ...build(names.inputs.resolvable(), names.aux.resolvable())])];
+  // Observation is not registration or permission to write. Missing AUX samples stay unknown.
+  const watched = [...new Set([...required, ...build(names.inputs.resolvable(), names.aux.observableNumbers())])];
   return { required, watched, nameChannels: names.inputs.resolvable() };
 }
 

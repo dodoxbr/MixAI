@@ -108,6 +108,9 @@ class Directory {
     return [...new Set(this.entries.map((e) => e.number))].filter((n) => n >= 1 && n <= this.max).sort((a, b) => a - b);
   }
 
+  /** Full read-only range; does not register or authorize these buses. */
+  observableNumbers():number[]{return Array.from({length:this.max},(_,i)=>i+1);}
+
   /** Números que podem ser resolvidos (configurados, ou todos se allowUnmapped). */
   resolvable(): number[] {
     return this.allowUnmapped ? Array.from({ length: this.max }, (_, i) => i + 1) : this.configured();
