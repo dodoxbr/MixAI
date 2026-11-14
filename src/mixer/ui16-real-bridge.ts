@@ -71,6 +71,7 @@ export class Ui16RealBridge extends RealMixer {
   private readonly paramListeners = new Set<
     (key: ParamKey, value: ParamValue, origin: import('./types.js').ParamChangeOrigin) => void
   >();
+  private readonly observedNames=new Map<number,string>();
   private readonly received = new Map<ParamKey, Seen>();
   private readonly history = new Map<
     ParamKey,
@@ -253,6 +254,7 @@ export class Ui16RealBridge extends RealMixer {
     super.onLinkChange((state) => {
       if (state === 'CONNECTING') {
         this.received.clear();
+        this.observedNames.clear();
         this.independentControls.clear();
         this.independentProcessing.clear();
         this.stereo.clear();
@@ -346,6 +348,13 @@ export class Ui16RealBridge extends RealMixer {
   }
   private independentInput(data: unknown) {
     if (typeof data !== 'string' || !data.startsWith('3:::')) return;
+    for(const line of data.slice(4).split('\n')){
+      const name=/^SETS\^i\.(\d+)\.name\^([\s\S]*)$/.exec(line);
+      if(name&&Number(name[1])<this.capabilities().inputs){
+        if(name[2]!.length<=256&&!/[\p{C}\p{Zl}\p{Zp}]/u.test(name[2]!))this.observedNames.set(Number(name[1])+1,name[2]!);
+        else this.observedNames.delete(Number(name[1])+1);
+      }
+    }
     for (const line of data.slice(4).split('\n')) {
       const [kind, path, raw, ...extra] = line.split('^');
       if (!/^[ia]\.\d+\.stereoIndex$/.test(path ?? '')) continue;
@@ -553,6 +562,10 @@ export class Ui16RealBridge extends RealMixer {
         reason: 'write_unconfirmed',
       };
     const rawControl = this.independentControls.get(key) ?? this.independentProcessing.get(key);
+    // mute$ defaults to false before wire input. READY is a connection state, not sample evidence.
+    // An incoming batch can advance metadata before decoding/independentInput completes.
+    if(key.endsWith('.mute') && (!seen || !rawControl || rawControl.generation!==base.generation || rawControl.sequence!==seen.sequence))
+      return {...base,state:'pending',...(lastObserved?{lastObserved}:{}),reason:'not_received'};
     const value =
       controlCategory(key) || !!processingSpec(key)
         ? rawControl
@@ -607,7 +620,7 @@ export class Ui16RealBridge extends RealMixer {
   }
   override channelName(channel: number) {
     return ['READY', 'DEGRADED_READ_ONLY'].includes(this.link()) && !this.quarantined
-      ? super.channelName(channel)
+      ? this.observedNames.get(channel)||undefined
       : undefined;
   }
   override statusText() {
