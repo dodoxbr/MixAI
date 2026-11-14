@@ -25,6 +25,7 @@ import { MeterComponent } from './meter.component';
     <div class="strip-value" [class.is-unknown]="db() === null">{{ valueText() }}</div>
     @if(sendView()){<small class="send-topology">PRE/POST: —</small>}
     @if (!master()) {
+      <div class="strip-keys">
       <button
         type="button"
         class="mute"
@@ -35,6 +36,8 @@ import { MeterComponent } from './meter.component';
       >
         {{ busy() ? '…' : mute().status!=='known' && sendView()?'MUTE — ?':'MUTE' }}
       </button>
+      <button type="button" class="solo" disabled aria-disabled="true" title="SOLO ainda não está integrado ao MixAI">SOLO</button>
+      </div>
     } @else {
       <div class="master-note">aprovação no cartão</div>
     }

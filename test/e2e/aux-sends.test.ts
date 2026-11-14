@@ -137,7 +137,7 @@ for (const [label, device] of [
         expect(
           await page.locator('.aux-reading').allTextContents(),
         ).toContainEqual(expect.stringContaining('PRE/POST: indisponível'));
-        await page.getByRole('tab', { name: 'PA', exact: true }).click();
+        await page.getByRole('tab', { name: 'MIX / GAIN', exact: true }).click();
         await expect
           .poll(() => strip.locator('.strip-value').textContent())
           .toBe(pa);

@@ -114,7 +114,7 @@ describe('interface E3 (LAB, navegador real)', () => {
     const before = JSON.stringify(l.controller.state.snapshot().params);
     for (let i = 0; i < 4; i++) {
       await page.getByRole('tab', { name: 'AUX SENDS' }).click();
-      await page.getByRole('tab', { name: 'PA' }).click();
+      await page.getByRole('tab', { name: 'MIX / GAIN' }).click();
     }
     await page.waitForTimeout(200);
     expect(JSON.stringify(l.controller.state.snapshot().params)).toBe(before);
