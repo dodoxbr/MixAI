@@ -16,7 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { FirstRealAuxGate } from './mixer/ui16-aux-write.js';
-import { isObserverPrivateIP, queryWindowsObserverRoute, type ObserverTransport } from './mixer/observer-network.js';
+import { isObserverPrivateIP, queryWindowsObserverRoute, queryWindowsObserverRouteAsync, type ObserverTransport } from './mixer/observer-network.js';
 import type { RouteDecision } from './mixer/observer-route.js';
 
 export type SupervisedCategory = 'aux_level' | 'pa_level';
@@ -64,6 +64,8 @@ export interface SupervisedDeps {
   now(): number;
   query(ip: string, transport: ObserverTransport, index: number): RouteDecision;
   audit(line: string): void;
+  /** Consulta de rota NÃO bloqueante, para o caminho de execução (a síncrona congela o socket por ~2 s). Ausente = guarda síncrona com cache de 1 s (testes). */
+  queryAsync?(ip: string, transport: ObserverTransport, index: number): Promise<RouteDecision>;
 }
 export class SupervisedRefusal extends Error {
   constructor(readonly code: string, message: string) { super(message); }
@@ -80,6 +82,34 @@ export function createRouteGuard(record: ValidationRecord, deps: Pick<Supervised
   };
 }
 
+export interface BackgroundRouteGuard {
+  /** Nunca consulta o Windows nem bloqueia: só olha a última decisão e a idade dela (falha fechada). */
+  guard: () => boolean;
+  start(): void;
+  stop(): void;
+}
+/**
+ * Guarda de rota para o caminho de execução. A rota é verificada em segundo plano a cada `intervalMs`; a decisão vale `ttlMs` (padrão 6 s) e
+ * qualquer falha, recusa ou atraso a invalida na hora. Uma consulta síncrona dentro de autorização/envio congelaria a entrada do socket (~2 s),
+ * quebrando a evidência de conexão viva e o prazo de confirmação. A verificação síncrona completa continua obrigatória na inicialização.
+ */
+export function createBackgroundRouteGuard(record: ValidationRecord, deps: Pick<SupervisedDeps, 'now'> & { queryAsync: NonNullable<SupervisedDeps['queryAsync']> }, opts: { ttlMs?: number; intervalMs?: number } = {}): BackgroundRouteGuard {
+  const ttlMs = opts.ttlMs ?? 6000, intervalMs = opts.intervalMs ?? 1000;
+  let ok = true, decidedAt = deps.now(), inFlight = false, timer: ReturnType<typeof setInterval> | undefined;
+  const refresh = () => {
+    if (inFlight) return;
+    inFlight = true; const started = deps.now();
+    deps.queryAsync(record.device.ip, record.route.transport, record.route.interfaceIndex)
+      .then((d) => { ok = d.passed === true; decidedAt = started; }, () => { ok = false; })
+      .finally(() => { inFlight = false; });
+  };
+  return {
+    guard: () => { const age = deps.now() - decidedAt; return ok && age >= 0 && age <= ttlMs; },
+    start: () => { if (timer) return; refresh(); timer = setInterval(refresh, intervalMs); timer.unref?.(); },
+    stop: () => { if (timer) clearInterval(timer); timer = undefined; },
+  };
+}
+
 function parseArgs(argv: string[]): { path: string; category: SupervisedCategory; explicitCategory: boolean } {
   const usage = new SupervisedRefusal('USAGE', 'Informe --validation-record CAMINHO.json e, opcionalmente, --category aux_level|pa_level.');
   if (argv[0] !== '--validation-record' || !argv[1] || argv[1].startsWith('--')) throw usage;
@@ -89,7 +119,7 @@ function parseArgs(argv: string[]): { path: string; category: SupervisedCategory
 }
 
 /** Valida tudo ANTES de qualquer conexão. Lança SupervisedRefusal; nunca devolve um gate parcial. */
-export function prepareSupervisedGate(argv: string[], configuredIp: string, deps: SupervisedDeps): { gate: FirstRealAuxGate; record: ValidationRecord; category: SupervisedCategory } {
+export function prepareSupervisedGate(argv: string[], configuredIp: string, deps: SupervisedDeps): { gate: FirstRealAuxGate; record: ValidationRecord; category: SupervisedCategory; routeGuard?: BackgroundRouteGuard } {
   const args = parseArgs(argv);
   const path = resolve(args.path);
   let raw: unknown;
@@ -107,20 +137,23 @@ export function prepareSupervisedGate(argv: string[], configuredIp: string, deps
   const age = deps.now() - Date.parse(record.validatedAt);
   if (!Number.isFinite(age) || age < -60_000 || age > MAX_AGE_MS) throw new SupervisedRefusal('RECORD_STALE', 'Registro de validação fora da janela de 24 h (ou com data futura). Refaça a validação supervisionada.');
   if (!isObserverPrivateIP(record.device.ip) || record.device.ip !== configuredIp) throw new SupervisedRefusal('DEVICE_MISMATCH', 'O IP do registro não é uma rede privada ou difere do IP configurado para a mesa.');
-  const route = createRouteGuard(record, deps);
-  if (!route()) throw new SupervisedRefusal('ROUTE_FAILED', 'A rota até a mesa não passou na verificação agora. Nada foi habilitado.');
+  const syncRoute = createRouteGuard(record, deps);
+  if (!syncRoute()) throw new SupervisedRefusal('ROUTE_FAILED', 'A rota até a mesa não passou na verificação agora. Nada foi habilitado.');
   const setdPublication = record.schemaVersion === 2 ? record.checklist.setdPublishesNewSampleConfirmed : 'confirmed';
   const channels = record.schemaVersion === 2 ? [...record.channels] : undefined;
   deps.audit(JSON.stringify({ event: 'supervised_first_write_gate_prepared', at: new Date(deps.now()).toISOString(), category: args.category, reference: record.reference,
     validatedBy: record.validatedBy, validatedAt: record.validatedAt, firmware: record.device.firmware, ip: record.device.ip,
     transport: record.route.transport, interfaceIndex: record.route.interfaceIndex, schemaVersion: record.schemaVersion, channels: channels ?? 'todos_os_cadastrados',
     setdPublication, evidence: 'live_connection' }));
-  return { record, category: args.category, gate: { validation: 'supervised_protocol', validationReference: record.reference, routeGuard: route, freshnessMs: 3000, confirmationTimeoutMs: 1500,
+  // Verificação síncrona completa feita acima (inicialização). No caminho de execução: guarda não bloqueante quando há consulta assíncrona.
+  const background = deps.queryAsync ? createBackgroundRouteGuard(record, { now: deps.now, queryAsync: deps.queryAsync }) : undefined;
+  const route = background ? background.guard : syncRoute;
+  return { record, category: args.category, ...(background ? { routeGuard: background } : {}), gate: { validation: 'supervised_protocol', validationReference: record.reference, routeGuard: route, freshnessMs: 3000, confirmationTimeoutMs: 1500,
     evidence: 'live_connection', maxObservationAgeMs: 300_000, setdPublication, ...(channels ? { channels } : {}) } };
 }
 
 export const realDeps = (dataDir: string): SupervisedDeps => ({
-  readFile: (p) => readFileSync(p, 'utf8'), fileSize: (p) => statSync(p).size, now: () => Date.now(), query: queryWindowsObserverRoute,
+  readFile: (p) => readFileSync(p, 'utf8'), fileSize: (p) => statSync(p).size, now: () => Date.now(), query: queryWindowsObserverRoute, queryAsync: queryWindowsObserverRouteAsync,
   audit: (line) => { const f = join(dataDir, 'ui16-supervised-validation.log'); mkdirSync(dirname(f), { recursive: true }); appendFileSync(f, line + '\n', 'utf8'); },
 });
 
@@ -131,12 +164,13 @@ async function main(argv: string[]) {
     const { loadConfig } = await import('./core/config.js');
     const loaded = loadConfig();
     if (loaded.config.mixer.mode !== 'real' || loaded.config.mixer.model !== 'ui16') throw new SupervisedRefusal('MODE', 'Requer mixer.mode: real e model: ui16 na configuração.');
-    const { gate, record, category } = prepareSupervisedGate(argv, loaded.config.mixer.ip, realDeps(loaded.dataDir ?? join(process.cwd(), 'data')));
+    const { gate, record, category, routeGuard } = prepareSupervisedGate(argv, loaded.config.mixer.ip, realDeps(loaded.dataDir ?? join(process.cwd(), 'data')));
     info(`validação ${record.reference} (${record.validatedBy}) aceita; rota verificada. Categoria habilitada: ${category}${gate.channels ? ` (canais ${gate.channels.join(',')})` : ''}; ${gate.setdPublication === 'pending' ? 'publicação de nova amostra após SETD PENDENTE (o resultado é a evidência); ' : ''}uma operação por vez, com confirmação humana.`);
+    routeGuard?.start();
     const { startServer } = await import('./server/start.js');
     const server = await startServer(loaded, { ...(category === 'pa_level' ? { realControls: { pa_level: gate } } : { firstRealAux: gate }), log: info });
     for (const url of server.urls) info(`escutando em ${url}`);
-    const stop = async () => { info('desligando e desabilitando o gate...'); await server.close(); process.exit(0); };
+    const stop = async () => { info('desligando e desabilitando o gate...'); routeGuard?.stop(); await server.close(); process.exit(0); };
     process.on('SIGINT', stop); process.on('SIGTERM', stop);
     return undefined;
   } catch (e) {

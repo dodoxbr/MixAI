@@ -137,3 +137,57 @@ describe('--category pa_level (fail-closed, sem servidor e sem rede)', () => {
     const r = run(recordV2(), {}, argv as string[]); expect(refusal(r.go)).toBe('USAGE'); expect(r.audit).toEqual([]);
   });
 });
+
+/** Guarda de rota NÃO bloqueante: a consulta síncrona do Windows (~2 s) congelava a entrada do socket dentro de autorização/envio. */
+import { createBackgroundRouteGuard } from '../src/supervised-first-write-cli.js';
+import { queryWindowsObserverRouteAsync } from '../src/mixer/observer-network.js';
+describe('guarda de rota em segundo plano (fail-closed, sem bloquear)', () => {
+  const rec = () => run(recordV2(), {}, PA).go().record;
+  const mk = (over: { passed?: boolean; fail?: boolean; hang?: boolean } = {}) => {
+    let now = 1_000; let calls = 0; const state = { ...over }; const pending: Array<(d: RouteDecision) => void> = [];
+    const queryAsync = vi.fn(() => { calls++; if (state.hang) return new Promise<RouteDecision>((res) => pending.push(res)); return state.fail ? Promise.reject(new Error('x')) : Promise.resolve(decision(state.passed !== false)); });
+    const g = createBackgroundRouteGuard(rec(), { now: () => now, queryAsync }, { ttlMs: 6000, intervalMs: 1000 });
+    return { g, state, queryAsync, advance: (ms: number) => (now += ms), calls: () => calls, release: () => pending.splice(0).forEach((r) => r(decision(true))) };
+  };
+  it('guard() jamais consulta o Windows: só lê a última decisão', () => {
+    const t = mk(); for (let i = 0; i < 50; i++) t.g.guard(); expect(t.queryAsync).not.toHaveBeenCalled(); expect(t.g.guard()).toBe(true);
+  });
+  it('decisão vale só o TTL: sem atualização, fecha (fail-closed)', () => {
+    const t = mk(); t.advance(5900); expect(t.g.guard()).toBe(true); t.advance(200); expect(t.g.guard()).toBe(false);
+  });
+  it('start() atualiza em segundo plano; rota reprovada fecha na hora e recupera na verificação seguinte', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = mk(); t.g.start(); await vi.advanceTimersByTimeAsync(0); expect(t.queryAsync).toHaveBeenCalledTimes(1); expect(t.g.guard()).toBe(true);
+      t.state.passed = false; t.advance(1000); await vi.advanceTimersByTimeAsync(1000); expect(t.g.guard()).toBe(false);
+      t.state.passed = true; t.advance(1000); await vi.advanceTimersByTimeAsync(1000); expect(t.g.guard()).toBe(true);
+      t.g.stop(); const n = t.calls(); await vi.advanceTimersByTimeAsync(5000); expect(t.calls()).toBe(n);
+    } finally { vi.useRealTimers(); }
+  });
+  it('falha da consulta (erro) fecha imediatamente; nunca mantém "ok" antigo', async () => {
+    vi.useFakeTimers();
+    try { const t = mk({ fail: true }); t.g.start(); await vi.advanceTimersByTimeAsync(0); expect(t.g.guard()).toBe(false); t.g.stop(); } finally { vi.useRealTimers(); }
+  });
+  it('consultas não se sobrepõem (uma em voo por vez) e uma consulta travada deixa a decisão expirar', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = mk({ hang: true }); t.g.start(); await vi.advanceTimersByTimeAsync(3500); expect(t.calls()).toBe(1);
+      t.advance(7000); expect(t.g.guard()).toBe(false); t.g.stop();
+    } finally { vi.useRealTimers(); }
+  });
+  it('prepareSupervisedGate com queryAsync entrega a guarda não bloqueante e mantém a verificação síncrona inicial', () => {
+    const queryAsync = vi.fn(async () => decision(true)); const query = vi.fn(() => decision(true));
+    const r = run(recordV2(), { query, queryAsync }, PA).go();
+    expect(r.routeGuard).toBeDefined(); expect(query).toHaveBeenCalledTimes(1); // inicialização síncrona
+    for (let i = 0; i < 20; i++) r.gate.routeGuard();
+    expect(query).toHaveBeenCalledTimes(1); expect(queryAsync).not.toHaveBeenCalled();
+  });
+  it('rota reprovada na inicialização continua recusando, mesmo com queryAsync', () => {
+    const r = run(recordV2(), { query: () => decision(false), queryAsync: async () => decision(true) }, PA); expect(refusal(r.go)).toBe('ROUTE_FAILED');
+  });
+  it('a consulta assíncrona valida os argumentos sem executar nada (IP público, índice, transporte)', async () => {
+    await expect(queryWindowsObserverRouteAsync('8.8.8.8', 'wifi', 19)).rejects.toThrow('F0D_WINDOWS_ROUTE_CHECK_REQUIRED');
+    await expect(queryWindowsObserverRouteAsync('10.10.1.1', 'wifi', 0)).rejects.toThrow('F0D_WINDOWS_ROUTE_CHECK_REQUIRED');
+    await expect(queryWindowsObserverRouteAsync('10.10.1.1', 'bluetooth' as never, 19)).rejects.toThrow('F0D_WINDOWS_ROUTE_CHECK_REQUIRED');
+  });
+});

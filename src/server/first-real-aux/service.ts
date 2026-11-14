@@ -195,7 +195,8 @@ export class FirstRealAuxService {
     const bridge = this.bridge();
     return { schemaVersion: 1, targetMode: 'real', serverId: this.core.serverId,
       categories: UI16_CONTROL_CATEGORIES.map(category => {
-        const key: ParamKey = category === 'master_level' ? 'master.level' : `ch.1.${category.startsWith('aux') ? 'aux.1' : 'main'}.${category.endsWith('mute') ? 'mute' : 'level'}`;
+        const channel = bridge?.auxHandshake.probeChannel(category) ?? 1;
+        const key: ParamKey = category === 'master_level' ? 'master.level' : `ch.${channel}.${category.startsWith('aux') ? 'aux.1' : 'main'}.${category.endsWith('mute') ? 'mute' : 'level'}`;
         return { category, enabled: bridge?.auxHandshake.enabled(key) ?? false, available: bridge?.auxHandshake.available(key) ?? false,
           ...(category === 'master_level' ? { reason: 'separate_approval_and_physical_validation_pending' } : {}) };
       }), master: bridge?.reading('master.level') ?? { state: 'unavailable' } };
