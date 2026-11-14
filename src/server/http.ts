@@ -1,3 +1,5 @@
+import type { ChannelSettings } from '../core/channel-settings.js';
+import { channelSettingsRoutes } from './channel-settings-routes.js';
 import { mixerOperatorRoutes } from '../assistant/mixer-operator/routes.js';
 import type { AutoConfigAdvisor } from '../autoconfig/suggestion-source.js';
 import type { AutoConfigService } from '../autoconfig/service.js';
@@ -76,7 +78,7 @@ function sendCommand(core: ServerCore, reply: FastifyReply, r: CommandResponse) 
  * instância por endereço de escuta: 127.0.0.1 e, se configurado, o IP do Wi-Fi), sempre com o
  * MESMO core: um só controlador, um só estado, uma só fila.
  */
-export async function buildHttp(core: ServerCore, opts: { modelCatalog?: ModelCatalogService; logger?: boolean; webRoot?: string; labProxyOrigin?: string; privatePtt?: PrivatePtt; references?: ReferenceService; autoConfig?: AutoConfigService; autoConfigAdvisor?: AutoConfigAdvisor; knowledge?: LocalKnowledge } = {}): Promise<FastifyInstance> {
+export async function buildHttp(core: ServerCore, opts: { channelSettings?:ChannelSettings; modelCatalog?: ModelCatalogService; logger?: boolean; webRoot?: string; labProxyOrigin?: string; privatePtt?: PrivatePtt; references?: ReferenceService; autoConfig?: AutoConfigService; autoConfigAdvisor?: AutoConfigAdvisor; knowledge?: LocalKnowledge } = {}): Promise<FastifyInstance> {
   // forceCloseConnections: ao desligar, encerra TODAS as conexões na hora. Sem isso, conexões
   // abertas pelo navegador sem requisição (pré-conexão) seguram o desligamento por até 60 s.
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 512 * 1024, forceCloseConnections: true });
@@ -185,6 +187,8 @@ export async function buildHttp(core: ServerCore, opts: { modelCatalog?: ModelCa
     const {ui16ProcessingRoutes}=await import('./ui16-processing/routes.js');
     await app.register(ui16ProcessingRoutes,{core,principal:(req:FastifyRequest,reply:FastifyReply)=>principalOf(core,req,reply)});
   }
+
+  if(opts.channelSettings)await app.register(channelSettingsRoutes,{core,settings:opts.channelSettings,origin:opts.labProxyOrigin,principal:(req:FastifyRequest,reply:FastifyReply)=>principalOf(core,req,reply)});
 
   app.get('/api/hello', async () => core.hello());
 

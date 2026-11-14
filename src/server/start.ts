@@ -1,3 +1,4 @@
+import { ChannelSettings } from '../core/channel-settings.js';
 import type { Ui16ControlGates } from '../mixer/ui16-controls.js';
 import type { FirstRealAuxGate } from '../mixer/ui16-aux-write.js';
 import { ExternalConsent } from './external-consent.js';
@@ -174,9 +175,10 @@ export async function startServer(
       removeModelCatalogRevoke = auth.onRevoke(id => modelCatalog?.revoke(id));
       router = new AiRouter(modelCatalog);
     }
+    const channelSettings=new ChannelSettings(loaded,names,app.mixer,()=>core.namesChanged());
     let boundPort = port;
     for (const host of hosts) {
-      const http = await buildHttp(core, { modelCatalog, autoConfig, autoConfigAdvisor, references, knowledge, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const http = await buildHttp(core, { channelSettings, modelCatalog, autoConfig, autoConfigAdvisor, references, knowledge, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(http);
       await http.listen({ host, port: boundPort });
       const addr = http.server.address();
@@ -184,7 +186,7 @@ export async function startServer(
     }
     if (proxy) {
       if (proxy.port === boundPort) throw new Error('HTTPS LAB: porta do proxy deve diferir da porta HTTP local.');
-      const ingress = await buildHttp(core, { modelCatalog, labProxyOrigin: proxy.origin, autoConfig, autoConfigAdvisor, references, knowledge, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
+      const ingress = await buildHttp(core, { channelSettings, modelCatalog, labProxyOrigin: proxy.origin, autoConfig, autoConfigAdvisor, references, knowledge, privatePtt: config.server.privatePtt.enabled ? new PrivatePtt(config.server.privatePtt, opts.pttRecognizer, opts.clock) : undefined, webRoot: opts.webRoot ?? join(PROJECT_ROOT, 'dist', 'web', 'browser') });
       https.push(ingress);
       await ingress.listen({ host: '127.0.0.1', port: proxy.port });
       opts.log?.(`HTTPS LAB: entrada do proxy em 127.0.0.1:${proxy.port}; origem HTTPS privada esperada: ${proxy.origin}`);
