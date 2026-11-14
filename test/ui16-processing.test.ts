@@ -636,3 +636,96 @@ it('HTTP refuses MCP, foreign origins and confirmation flags smuggled into previ
   expect((await req(s.token, { ...input, humanConfirmed: true })).status).toBe(400);
   expect(s.frames()).toHaveLength(0);
 });
+
+describe('display-only physical evidence (no extension of write authority)', () => {
+  it('retains unchanged independent samples after 3s while writes still reject stale origin', async () => {
+    const s = await setup({ enabled: false });
+    const key = 'ch.2.eq.b4.gain';
+    expect(s.bridge.processingDisplayReading(key)).toMatchObject({
+      state: 'confirmed',
+      value: 0,
+      connectionCurrent: true,
+      freshnessMs: 3000,
+    });
+    s.age(4000);
+    expect(s.bridge.processingReading(key)).toMatchObject({ state: 'stale', value: undefined });
+    expect(s.bridge.processingDisplayReading(key)).toMatchObject({
+      state: 'last_observation',
+      value: 0,
+      ageMs: 4000,
+      connectionCurrent: true,
+    });
+    const body = s.service.state(s.op, 2) as any;
+    expect(body).toMatchObject({
+      schemaVersion: 1,
+      serverId: s.core.serverId,
+      channel: 2,
+      physicalWriteEnabled: false,
+    });
+    expect(body.parameters[key].display.state).toBe('last_observation');
+    s.socket.deliver(processingFrame(key, -1).slice(4));
+    expect(s.bridge.processingDisplayReading(key)).toMatchObject({
+      state: 'confirmed',
+      value: -1,
+      ageMs: 0,
+    });
+    expect(s.frames()).toEqual([]);
+  });
+  it('preserves the configured operational freshness and blocks stale proposals', async () => {
+    const s = await setup();
+    s.age(1001);
+    expect(s.bridge.processingDisplayReading('ch.2.eq.b1.gain')).toMatchObject({
+      state: 'last_observation',
+      freshnessMs: 1000,
+    });
+    expect(s.preview().proposal).toBeUndefined();
+    expect(s.frames()).toEqual([]);
+  });
+  it('never manufactures missing bands from partial independent input', async () => {
+    const s = await setup({ noProcessing: true, enabled: false });
+    expect(s.bridge.processingDisplayReading('ch.2.eq.b1.freq').state).toBe('unknown');
+    s.socket.deliver(processingFrame('ch.2.eq.b4.gain', -1).slice(4));
+    expect(s.bridge.processingDisplayReading('ch.2.eq.b4.gain')).toMatchObject({
+      state: 'confirmed',
+      value: -1,
+    });
+    expect(s.bridge.processingDisplayReading('ch.2.eq.b1.freq').state).toBe('unknown');
+    expect(s.frames()).toEqual([]);
+  });
+  it('marks previous-connection history stale, and accepts only new-generation samples', async () => {
+    const s = await setup({ enabled: false });
+    const old = s.bridge.processingDisplayReading('ch.2.eq.b4.gain').generation;
+    await s.bridge.disconnect();
+    expect(s.bridge.processingDisplayReading('ch.2.eq.b4.gain')).toMatchObject({
+      state: 'stale',
+      connectionCurrent: false,
+    });
+    await s.bridge.connect();
+    await waitFor(() => s.bridge.link() === 'READY');
+    expect(s.bridge.processingDisplayReading('ch.2.eq.b4.gain')).toMatchObject({
+      state: 'confirmed',
+      connectionCurrent: true,
+    });
+    expect(s.bridge.processingDisplayReading('ch.2.eq.b4.gain').generation).not.toBe(old);
+    expect(s.fake.last().commands()).toEqual([]);
+  });
+  it('global inbound silence quarantines display and cannot restore old evidence after other keys recover', async () => {
+    const s = await setup({ enabled: false });
+    s.age(31000);
+    expect(s.bridge.processingDisplayReading('ch.2.eq.b1.gain')).toMatchObject({
+      state: 'stale',
+      connectionCurrent: false,
+    });
+    s.socket.deliver(...stateMessages({ channels: [1, 2], aux: [1] }));
+    expect(s.bridge.processingDisplayReading('ch.2.eq.b1.gain')).toMatchObject({
+      state: 'stale',
+      connectionCurrent: false,
+    });
+    s.socket.deliver(processingFrame('ch.2.eq.b1.gain', 0).slice(4));
+    expect(s.bridge.processingDisplayReading('ch.2.eq.b1.gain')).toMatchObject({
+      state: 'confirmed',
+      connectionCurrent: true,
+    });
+    expect(s.frames()).toEqual([]);
+  });
+});

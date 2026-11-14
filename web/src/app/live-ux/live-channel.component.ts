@@ -44,6 +44,7 @@ const levelLabel = (v: StateValue) => v.status === 'known' ? typeof v.value === 
         @empty { <li>Nenhuma alteração observada desde a abertura. Isso não prova ausência de mudanças na mesa.</li> }
       </ol>
     </details>
+    @if (live.hello()?.mode === 'real') { <button type="button" class="btn" (click)="eqRequested.emit()">Abrir EQ/HPF REAL</button> }
     <div class="live-tools"><button type="button" class="btn" (click)="historyRequested.emit()">Ver histórico</button><button type="button" class="btn" [disabled]="!live.writable() || actions.isBusy('undo')" (click)="undoRequested.emit()">Desfazer último ajuste</button></div>
   `,
   styles: [`
@@ -62,6 +63,7 @@ export class LiveChannelComponent {
   readonly channel = input.required<number>();
   readonly aux = input<number | undefined>();
   readonly closed = output<void>();
+  readonly eqRequested = output<void>();
   readonly channelChanged = output<number>();
   readonly routeChanged = output<string>();
   readonly historyRequested = output<void>();
