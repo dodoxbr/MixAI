@@ -173,6 +173,11 @@ export class Ui16AuxHandshake<T extends ParamValue = ParamValue> {
         : undefined
       : controlFrame(key, value);
   }
+  /** Canal usado como sonda de capacidade de uma categoria (primeiro canal do escopo do gate, ou 1). */
+  probeChannel(category: Ui16ControlCategory): number {
+    const g = category === 'master_level' ? undefined : this.gates[category];
+    return g?.channels?.[0] ?? 1;
+  }
   gateFor(key: ParamKey): FirstRealAuxGate | undefined {
     if (this.profile) return this.profile.accepts(key) ? this.gate : undefined;
     const category = controlCategory(key);

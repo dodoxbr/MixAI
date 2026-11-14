@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { evaluateObserverRoute, isObserverPrivateIP, type ObserverTransport, type RouteDecision } from './observer-route.js';
 export { evaluateObserverRoute, isObserverPrivateIP, RouteDecisionSchema, WindowsRouteSnapshotSchema, type ObserverTransport } from './observer-route.js';
 
@@ -41,6 +41,22 @@ export function queryWindowsObserverRoute(ip: string, transport: ObserverTranspo
     if (result.error || result.status !== 0 || result.signal || result.stderr.trim()) throw new Error();
     return evaluateObserverRoute(JSON.parse(result.stdout.replace(/^\uFEFF/, '')), ip, transport, index);
   } catch { throw new Error('F0D_ROUTE_PREFLIGHT_FAILED'); } // nunca ecoa stderr, endereços ou caminhos
+}
+
+/**
+ * Mesma consulta local, mas ASSÍNCRONA (não bloqueia o laço de eventos). A síncrona leva ~1,5–2 s no Windows e, usada dentro do caminho de
+ * autorização/envio, congela a entrada do socket (a evidência de conexão viva e o prazo de confirmação dependem desse laço).
+ */
+export function queryWindowsObserverRouteAsync(ip: string, transport: ObserverTransport, index: number): Promise<RouteDecision> {
+  if (process.platform !== 'win32' || !isObserverPrivateIP(ip) || !['wifi', 'ethernet'].includes(transport) || !Number.isSafeInteger(index) || index < 1 || index > 0xffffffff) return Promise.reject(new Error('F0D_WINDOWS_ROUTE_CHECK_REQUIRED'));
+  return new Promise((resolve, reject) => {
+    execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', WINDOWS_ROUTE_QUERY],
+      { encoding: 'utf8', timeout: 15_000, maxBuffer: 262_144, windowsHide: true, env: windowsRouteEnvironment(ip) },
+      (error, stdout, stderr) => {
+        if (error || String(stderr).trim()) return reject(new Error('F0D_ROUTE_PREFLIGHT_FAILED')); // nunca ecoa stderr, endereços ou caminhos
+        try { resolve(evaluateObserverRoute(JSON.parse(String(stdout).replace(/^\uFEFF/, '')), ip, transport, index)); } catch { reject(new Error('F0D_ROUTE_PREFLIGHT_FAILED')); }
+      });
+  });
 }
 
 /** Mantém a assinatura do F0D; root não é mais usado para executar arquivos. */
