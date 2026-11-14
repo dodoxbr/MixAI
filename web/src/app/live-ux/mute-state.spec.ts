@@ -34,12 +34,13 @@ const eff = (el: HTMLElement) => [...el.querySelectorAll('.strips [data-testid=e
 const banner = (el: HTMLElement) => el.querySelector('[data-testid=mute-all-banner]') as HTMLElement | null;
 
 describe('rótulos do MUTE efetivo', () => {
-  const causes: MuteCause[] = ['none', 'individual', 'mute_all', 'individual_and_mute_all', 'force_unmute_precedence_pending', 'other_mute_group_membership_unvalidated', 'group_state_unavailable', 'individual_unavailable', 'force_unmute_unavailable'];
+  const causes: MuteCause[] = ['none', 'individual', 'mute_all', 'individual_and_mute_all', 'force_unmute_exempt', 'force_unmute_precedence_pending', 'other_mute_group_membership_unvalidated', 'group_state_unavailable', 'individual_unavailable', 'force_unmute_unavailable'];
   it.each(causes)('%s: texto e explicação não vazios', (cause) => { const l = muteLabel(ch(1, { cause })); expect(l.text.length).toBeGreaterThan(2); expect(l.title.length).toBeGreaterThan(20); });
   it('Mute All é diferente de MUTE individual; Force Unmute pendente nunca vira aberto ou mudo', () => {
     expect(muteLabel(ch(1, { cause: 'mute_all' }))).toMatchObject({ text: 'MUDO · Mute All', tone: 'muted' });
     expect(muteLabel(ch(1, { cause: 'individual', muteAll: 'inactive' }))).toMatchObject({ text: 'MUDO · individual', tone: 'muted' });
     expect(muteLabel(ch(1, { cause: 'force_unmute_precedence_pending', effective: 'unknown' })).tone).toBe('unknown');
+    expect(muteLabel(ch(1, { cause: 'force_unmute_exempt', effective: 'open' }))).toMatchObject({ text: 'ABERTO · Force Unmute', tone: 'open' });
     expect(muteLabel(ch(1, { cause: 'group_state_unavailable', effective: 'unknown' })).tone).toBe('unknown');
   });
 });
@@ -48,18 +49,24 @@ describe('MUTE efetivo na mesa', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('REAL com Mute All: selo por canal (individual, Mute All, Force Unmute) e aviso; o botão MUTE continua individual', async () => {
-    const channels = [ch(1, { individual: true, cause: 'individual_and_mute_all' }), ch(2, { individual: true, forceUnmute: true, effective: 'unknown', cause: 'force_unmute_precedence_pending', precedence: 'pending' }), ch(3, { forceUnmute: true, effective: 'unknown', cause: 'force_unmute_precedence_pending', precedence: 'pending' })];
+    const channels = [ch(1, { individual: true, cause: 'individual_and_mute_all' }), ch(2, { individual: true, forceUnmute: true, effective: 'open', cause: 'force_unmute_exempt', precedence: 'official_ui_display' }), ch(3, { forceUnmute: true, effective: 'unknown', cause: 'force_unmute_precedence_pending', precedence: 'pending' })];
     const { el } = await boot('real', () => json(view('active', channels)));
     const badges = eff(el);
     expect(badges.length).toBe(3);
-    expect(badges.map((b) => b.dataset['cause'])).toEqual(['individual_and_mute_all', 'force_unmute_precedence_pending', 'force_unmute_precedence_pending']);
+    expect(badges.map((b) => b.dataset['cause'])).toEqual(['individual_and_mute_all', 'force_unmute_exempt', 'force_unmute_precedence_pending']);
     expect(badges[0]!.textContent).toContain('Mute All');
-    expect(badges[1]!.dataset['tone']).toBe('unknown');
+    expect(badges[1]!.dataset['tone']).toBe('open');
+    expect(badges[2]!.dataset['tone']).toBe('unknown');
     expect(banner(el)!.dataset['kind']).toBe('active');
     expect(banner(el)!.textContent).toContain('MUTE ALL ATIVO');
     // MUTE individual preservado: vem do estado da mesa (snapshot), não do efetivo
     const mutes = [...el.querySelectorAll('.strips .mute')] as HTMLButtonElement[];
     expect(mutes.every((b) => b.disabled)).toBe(true);
+    // o botão MUTE exibe o EFETIVO quando conclusivo (como a interface oficial); o individual fica em data-individual e no título
+    expect(mutes[0]!.getAttribute('aria-pressed')).toBe('true'); // silenciado (Mute All)
+    expect(mutes[1]!.getAttribute('aria-pressed')).toBe('false'); // aberto pelo Force Unmute (exibição da Ui oficial)
+    expect(mutes[1]!.title).toContain('MUTE individual');
+    expect(mutes[2]!.getAttribute('aria-pressed')).toBe(mutes[2]!.getAttribute('data-individual')); // efetivo desconhecido: mostra o individual de sempre
   });
   it('sem Mute All: aberto aparece só com evidência; sem aviso', async () => {
     const { el } = await boot('real', () => json(view('inactive', [ch(1, { muteAll: 'inactive', cause: 'none', effective: 'open' }), ch(2, { muteAll: 'inactive', individual: true, cause: 'individual' })])));

@@ -4,7 +4,7 @@ import { SessionService } from '../core/session.service';
 
 /** Espelho do contrato de GET /api/ui16/mute-state (somente leitura). */
 export type MuteCause =
-  | 'none' | 'individual' | 'mute_all' | 'individual_and_mute_all' | 'force_unmute_precedence_pending'
+  | 'none' | 'individual' | 'mute_all' | 'individual_and_mute_all' | 'force_unmute_exempt' | 'force_unmute_precedence_pending'
   | 'other_mute_group_membership_unvalidated' | 'group_state_unavailable' | 'individual_unavailable' | 'force_unmute_unavailable';
 export interface ChannelMuteState {
   channel: number;
@@ -14,7 +14,7 @@ export interface ChannelMuteState {
   forceUnmute: boolean | null;
   effective: 'muted' | 'open' | 'unknown';
   cause: MuteCause;
-  precedence: 'not_needed' | 'pending';
+  precedence: 'not_needed' | 'pending' | 'official_ui_display';
   reasons: string[];
 }
 export interface MuteStateView {
@@ -30,6 +30,7 @@ export function muteLabel(s: ChannelMuteState): { text: string; title: string; t
     case 'individual': return { text: 'MUDO · individual', title: 'Silenciado pelo MUTE do próprio canal.', tone: 'muted' };
     case 'mute_all': return { text: 'MUDO · Mute All', title: 'O MUTE individual está aberto, mas o Mute All da mesa silencia este canal (sem Force Unmute).', tone: 'muted' };
     case 'individual_and_mute_all': return { text: 'MUDO · indiv. + Mute All', title: 'Silenciado pelo MUTE do canal e também pelo Mute All.', tone: 'muted' };
+    case 'force_unmute_exempt': return { text: 'ABERTO · Force Unmute', title: 'Como a interface oficial exibe: o Force Unmute isenta o canal do Mute All (inclusive com MUTE individual ligado). Áudio ainda não validado na mesa física.', tone: 'open' };
     case 'force_unmute_precedence_pending': return { text: 'FORCE UNMUTE · efetivo ?', title: 'Force Unmute ligado com Mute All ou MUTE individual: a precedência do firmware ainda não foi validada na mesa física, então o estado efetivo não é afirmado.', tone: 'unknown' };
     case 'other_mute_group_membership_unvalidated': return { text: 'GRUPO DE MUTE · efetivo ?', title: 'Há um grupo de mute (1–6/FX) ativo e a pertinência do canal ainda não foi validada.', tone: 'unknown' };
     case 'force_unmute_unavailable': return { text: 'Force Unmute ?', title: 'O Force Unmute deste canal não foi observado nesta conexão; o estado efetivo não é afirmado.', tone: 'unknown' };
