@@ -129,3 +129,37 @@ for (const [label, device] of DEVICES) {
     } finally { await ctx.close(); await s.close(); }
   });
 }
+
+for (const [label, device] of [
+  ['celular em retrato', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 }],
+  ['celular deitado', { viewport: { width: 780, height: 360 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 }],
+] as const) {
+  it(`${label}: ferramentas acessíveis (Configurações e Base de conhecimento) sem quebrar a barra compacta`, async () => {
+    const lab = await startLab();
+    const { ctx, page } = await enter(browser, lab.base, OPERATOR_PIN, device);
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    try {
+      await page.evaluate(() => scrollTo(0, 0));
+      const trigger = page.getByTestId('tools-trigger-compact');
+      await trigger.waitFor({ state: 'visible' });
+      const box = (await trigger.boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(await page.getByTestId('tools-trigger').isVisible()).toBe(false); // só uma cópia visível
+      await trigger.click();
+      await page.getByTestId('tools-menu').waitFor();
+      const items = await page.locator('[data-testid=tools-menu] [role=menuitem]').allTextContents();
+      expect(items.map((t) => t.split('(')[0]!.trim())).toEqual(['Assistente de IA', 'Diagnóstico', 'Cenas', 'Histórico', 'Base de conhecimento', 'Configurações e administração']);
+      for (const item of await page.locator('[data-testid=tools-menu] [role=menuitem]').all()) expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      // Base de conhecimento: se a seção existir neste servidor, é aberta; nunca gera erro de página
+      await page.getByRole('menuitem', { name: /Base de conhecimento/ }).click();
+      if (await page.locator('mx-knowledge-admin .knowledge-admin').count()) expect(await page.locator('mx-knowledge-admin [aria-expanded]').first().getAttribute('aria-expanded')).toBe('true');
+      // Configurações e administração: abre o diálogo existente
+      await trigger.click();
+      await page.getByRole('menuitem', { name: /Configurações e administração/ }).click();
+      await page.getByRole('dialog').first().waitFor();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await ctx.close(); await lab.server.close(); }
+  });
+}

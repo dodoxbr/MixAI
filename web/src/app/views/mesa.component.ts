@@ -109,6 +109,17 @@ const UNKNOWN: StateValue = { status: 'unknown' };
       </div>
     </div>
 
+
+    @if (!live.writable()) {
+      <div class="offline-banner" role="alert">{{ offlineText() }}</div>
+    }
+
+    <div class="ref-row">
+      <mx-reference-workspace />
+      <button type="button" class="btn tools-compact" aria-label="Ferramentas" data-testid="tools-trigger-compact" aria-haspopup="menu" [attr.aria-expanded]="toolsOpen()" (click)="toolsOpen.set(!toolsOpen())">
+        <svg class="tb-icon-always" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+      </button>
+    </div>
     @if (toolsOpen()) {
       <div class="tools-menu" role="menu" aria-label="Ferramentas do MixAI" data-testid="tools-menu">
         <button type="button" role="menuitem" (click)="openTool('assistant')">Assistente de IA</button>
@@ -119,12 +130,6 @@ const UNKNOWN: StateValue = { status: 'unknown' };
         <button type="button" role="menuitem" (click)="openTool('settings')">Configurações e administração <small>(IA, nomes e aliases)</small></button>
       </div>
     }
-
-    @if (!live.writable()) {
-      <div class="offline-banner" role="alert">{{ offlineText() }}</div>
-    }
-
-    <mx-reference-workspace />
     @if (view() === 'edit') {
       <section class="edit-main" aria-label="EDIT">
         <div class="edit-tabs" role="tablist" aria-label="Seções de EDIT">

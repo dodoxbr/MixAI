@@ -2090,6 +2090,15 @@ mx-root {
   .mx-mesa .toolbar .console-nav button { font-size: 0; padding: 0 8px; min-width: 44px; flex: 0 0 auto; }
   .mx-mesa .toolbar .console-nav button::after { content: attr(data-short); font-size: 0.78rem; }
 }
+.mx-mesa .tools-compact { display: none; }
 @media (max-width: 720px), (max-height: 500px) {
   .mx-mesa .tools-trigger { display: none; }
+  .mx-mesa .tools-compact { display: inline-flex; align-items: center; justify-content: center; width: 48px; min-width: 48px; min-height: 48px; padding: 0; }
+  .mx-mesa .tools-compact svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; }
+  .tools-menu { position: relative; top: auto; right: auto; left: auto; margin: 6px 8px; }
+}
+
+.mx-mesa .ref-row { display: contents; }
+@media (max-width: 720px), (max-height: 500px) {
+  .mx-mesa .ref-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 8px; }
 }
