@@ -1933,10 +1933,10 @@ mx-root {
 }
 .mx-mesa .shared-warning, .mx-mesa .sim-legend { color: #14181c; }
 .mx-mesa .tools-trigger[aria-expanded='true'] { background: linear-gradient(180deg, var(--active-hi), var(--active)); color: #1b0d06; }
-.tools-menu {
-  position: absolute;
-  right: 12px;
-  top: 112px;
+.tools-menu {
+  position: absolute;
+  right: 12px;
+  top: 100%;
   z-index: 60;
   display: grid;
   min-width: 260px;
@@ -2073,32 +2073,36 @@ mx-root {
 @media (max-width: 720px) {
   .mx-mesa .console-nav button { padding: 0 8px; font-size: 0.78rem; flex: 1; }
   .mx-mesa .console-nav { width: 100%; }
-  .tools-menu { right: 8px; left: 8px; }
+  .tools-menu { right: 8px; left: 8px; }
 }
 
 /* celular: rótulos curtos nas abas (o nome acessível continua completo via aria-label) */
 @media (max-width: 720px) {
-  .mx-mesa .toolbar .console-nav { width: auto; flex: 0 0 auto; gap: 3px; }
-  .mx-mesa .toolbar .console-nav button { font-size: 0; padding: 0 8px; min-width: 44px; flex: 0 0 auto; min-height: 48px; }
-  .mx-mesa .toolbar .console-nav button::after { content: attr(data-short); font-size: 0.78rem; }
-  .tools-menu { top: 150px; }
+  .mx-mesa .toolbar .console-nav { width: auto; flex: 0 0 auto; gap: 2px; }
+  .mx-mesa .toolbar .console-nav button { font-size: 0; padding: 0 4px; min-width: 38px; flex: 0 0 auto; min-height: 48px; }
+  .mx-mesa .toolbar .console-nav button::after { content: attr(data-short); font-size: 0.72rem; }
 }
 
 /* celular (retrato ou deitado): rótulos curtos nas abas e Ferramentas compacta, para a barra continuar numa linha */
 @media (max-height: 500px) {
-  .mx-mesa .toolbar .console-nav { width: auto; flex: 0 0 auto; gap: 3px; }
-  .mx-mesa .toolbar .console-nav button { font-size: 0; padding: 0 8px; min-width: 44px; flex: 0 0 auto; }
-  .mx-mesa .toolbar .console-nav button::after { content: attr(data-short); font-size: 0.78rem; }
-}
-.mx-mesa .tools-compact { display: none; }
-@media (max-width: 720px), (max-height: 500px) {
-  .mx-mesa .tools-trigger { display: none; }
-  .mx-mesa .tools-compact { display: inline-flex; align-items: center; justify-content: center; width: 48px; min-width: 48px; min-height: 48px; padding: 0; }
-  .mx-mesa .tools-compact svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; }
-  .tools-menu { position: relative; top: auto; right: auto; left: auto; margin: 6px 8px; }
+  .mx-mesa .toolbar .console-nav { width: auto; flex: 0 0 auto; gap: 2px; }
+  .mx-mesa .toolbar .console-nav button { font-size: 0; padding: 0 4px; min-width: 36px; flex: 0 0 auto; }
+  .mx-mesa .toolbar .console-nav button::after { content: attr(data-short); font-size: 0.72rem; }
 }
 
-.mx-mesa .ref-row { display: contents; }
-@media (max-width: 720px), (max-height: 500px) {
-  .mx-mesa .ref-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 8px; }
+
+/* Ferramentas: um único botão na linha "Referência e pedidos" (não aumenta a barra nem a faixa de estado) */
+.mx-mesa .ref-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 12px; }
+.mx-mesa .tools-trigger { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 14px; background: linear-gradient(180deg, #3a4048, #20242a); color: #e8ecf1; border: 1px solid #0c0e11; border-radius: 5px; }
+.mx-mesa .tools-trigger svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
+@media (max-width: 720px), (max-height: 500px) {
+  .mx-mesa .tools-trigger { width: 48px; min-width: 48px; padding: 0; justify-content: center; }
+  .mx-mesa .tools-trigger .tools-label { display: none; }
+  .mx-mesa .ref-row { padding-right: 8px; }
+}
+
+/* celular em retrato: o fader sobe (MUTE/SOLO descem para baixo do fader) para os faders ficarem na primeira tela */
+@media (max-width: 720px) {
+  .mx-mesa .console .strip-keys { order: 2; }
+  .mx-mesa .console .strip-body { order: 1; }
 }

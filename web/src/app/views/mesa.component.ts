@@ -50,7 +50,6 @@ const UNKNOWN: StateValue = { status: 'unknown' };
           <button type="button" class="nav-tab" [class.on]="onPassagem()" [attr.aria-current]="onPassagem() ? 'page' : null" (click)="go('passagem')">Passagem de som</button>
         }
       </nav>
-      <button status-tools type="button" class="btn tools-trigger" aria-label="Ferramentas" data-testid="tools-trigger" aria-haspopup="menu" [attr.aria-expanded]="toolsOpen()" (click)="toolsOpen.set(!toolsOpen())">Ferramentas</button>
       @if (live.hello()?.mode === 'lab' && live.hello()?.role === 'operator') {
         <ng-container status-action>
         <button status-action type="button" class="btn" (click)="showEq.set(true)" [attr.aria-expanded]="showEq()">EQ LAB</button>
@@ -116,20 +115,20 @@ const UNKNOWN: StateValue = { status: 'unknown' };
 
     <div class="ref-row">
       <mx-reference-workspace />
-      <button type="button" class="btn tools-compact" aria-label="Ferramentas" data-testid="tools-trigger-compact" aria-haspopup="menu" [attr.aria-expanded]="toolsOpen()" (click)="toolsOpen.set(!toolsOpen())">
-        <svg class="tb-icon-always" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+      <button type="button" class="btn tools-trigger" aria-label="Ferramentas" data-testid="tools-trigger" aria-haspopup="menu" [attr.aria-expanded]="toolsOpen()" (click)="toolsOpen.set(!toolsOpen())">
+        <svg class="tb-icon-always" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg><span class="tools-label">Ferramentas</span>
       </button>
+      @if (toolsOpen()) {
+        <div class="tools-menu" role="menu" aria-label="Ferramentas do MixAI" data-testid="tools-menu">
+          <button type="button" role="menuitem" (click)="openTool('assistant')">Assistente de IA</button>
+          <button type="button" role="menuitem" (click)="openTool('diagnostic')">Diagnóstico <small>(no assistente, somente consulta)</small></button>
+          <button type="button" role="menuitem" (click)="openTool('scenes')">Cenas</button>
+          <button type="button" role="menuitem" (click)="openTool('history')">Histórico</button>
+          <button type="button" role="menuitem" (click)="openTool('knowledge')">Base de conhecimento</button>
+          <button type="button" role="menuitem" (click)="openTool('settings')">Configurações e administração <small>(IA, nomes e aliases)</small></button>
+        </div>
+      }
     </div>
-    @if (toolsOpen()) {
-      <div class="tools-menu" role="menu" aria-label="Ferramentas do MixAI" data-testid="tools-menu">
-        <button type="button" role="menuitem" (click)="openTool('assistant')">Assistente de IA</button>
-        <button type="button" role="menuitem" (click)="openTool('diagnostic')">Diagnóstico <small>(no assistente, somente consulta)</small></button>
-        <button type="button" role="menuitem" (click)="openTool('scenes')">Cenas</button>
-        <button type="button" role="menuitem" (click)="openTool('history')">Histórico</button>
-        <button type="button" role="menuitem" (click)="openTool('knowledge')">Base de conhecimento</button>
-        <button type="button" role="menuitem" (click)="openTool('settings')">Configurações e administração <small>(IA, nomes e aliases)</small></button>
-      </div>
-    }
     @if (view() === 'edit') {
       <section class="edit-main" aria-label="EDIT">
         <div class="edit-tabs" role="tablist" aria-label="Seções de EDIT">

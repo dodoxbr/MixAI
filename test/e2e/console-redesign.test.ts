@@ -141,11 +141,10 @@ for (const [label, device] of [
     page.on('pageerror', (e) => errors.push(e.message));
     try {
       await page.evaluate(() => scrollTo(0, 0));
-      const trigger = page.getByTestId('tools-trigger-compact');
+      const trigger = page.getByTestId('tools-trigger');
       await trigger.waitFor({ state: 'visible' });
       const box = (await trigger.boundingBox())!;
       expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44);
-      expect(await page.getByTestId('tools-trigger').isVisible()).toBe(false); // só uma cópia visível
       await trigger.click();
       await page.getByTestId('tools-menu').waitFor();
       const items = await page.locator('[data-testid=tools-menu] [role=menuitem]').allTextContents();
