@@ -2106,3 +2106,12 @@ mx-root {
   .mx-mesa .console .strip-keys { order: 2; }
   .mx-mesa .console .strip-body { order: 1; }
 }
+
+/* MUTE efetivo (REAL, somente leitura): selo por canal e aviso do Mute All */
+.strip-eff { order: 3; margin: 2px 2px 0; padding: 2px 3px; font-size: 0.6rem; line-height: 1.15; text-align: center; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); overflow-wrap: anywhere; }
+.strip-eff[data-tone="muted"] { color: #ffb0b3; border-color: #7a2a2e; background: #2a1214; }
+.strip-eff[data-tone="open"] { color: #9fe3b9; border-color: #2c6a45; background: #10241a; }
+.strip-eff[data-tone="unknown"] { color: var(--warn); border-color: #6b5a22; background: #231d0c; border-style: dashed; }
+.mx-mesa .console .strip-number { order: 3; }
+.mute-banner { margin: 6px 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: #1b2230; color: var(--warn); font-size: 0.85rem; }
+.mute-banner.is-active { border-color: #7a2a2e; background: #2a1214; color: #ffd0d2; }

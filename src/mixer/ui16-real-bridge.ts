@@ -1,3 +1,4 @@
+import { MUTE_GROUP_MASK_MAX, type Fact, type FactReason } from './ui16-mute-state.js';
 import {
   processingSpec,
   processingPath,
@@ -80,6 +81,9 @@ export class Ui16RealBridge extends RealMixer {
   private readonly independentProcessing = new Map<ParamKey, AuxObservation<ParamValue>>();
   private readonly stereo = new Map<string, { value: number; at: number; generation: number }>();
   private readonly independentControls = new Map<ParamKey, AuxObservation>();
+  /** Somente observação (nunca escrita): máscara global de grupos de mute e Force Unmute por canal, da entrada bruta do socket. `value: null` = amostra inválida. */
+  private muteMask?: { value: number | null; generation: number; sequence: number };
+  private readonly forceUnmuteSeen = new Map<number, { value: boolean | null; generation: number; sequence: number }>();
   private readonly paramListeners = new Set<
     (key: ParamKey, value: ParamValue, origin: import('./types.js').ParamChangeOrigin) => void
   >();
@@ -269,6 +273,8 @@ export class Ui16RealBridge extends RealMixer {
         this.observedNames.clear();
         this.independentControls.clear();
         this.independentProcessing.clear();
+        this.muteMask = undefined;
+        this.forceUnmuteSeen.clear();
         this.stereo.clear();
         this.reported = undefined;
         this.quarantined = false;
@@ -366,6 +372,19 @@ export class Ui16RealBridge extends RealMixer {
         if(name[2]!.length<=256&&!/[\p{C}\p{Zl}\p{Zp}]/u.test(name[2]!))this.observedNames.set(Number(name[1])+1,name[2]!);
         else this.observedNames.delete(Number(name[1])+1);
       }
+    }
+    for (const line of data.slice(4).split('\n')) {
+      const [kind, path, raw, ...extra] = line.split('^');
+      if (kind !== 'SETD') continue;
+      const stamp = { generation: this.supervisor.generation(), sequence: this.sequence };
+      if (path === 'mgmask') {
+        const n = !extra.length && /^\d+$/.test(raw ?? '') ? Number(raw) : NaN;
+        this.muteMask = { value: Number.isInteger(n) && n >= 0 && n <= MUTE_GROUP_MASK_MAX ? n : null, ...stamp };
+        continue;
+      }
+      const fu = /^i\.(\d+)\.forceunmute$/.exec(path ?? '');
+      if (fu && Number(fu[1]) < this.capabilities().inputs)
+        this.forceUnmuteSeen.set(Number(fu[1]) + 1, { value: !extra.length && (raw === '0' || raw === '1') ? raw === '1' : null, ...stamp });
     }
     for (const line of data.slice(4).split('\n')) {
       const [kind, path, raw, ...extra] = line.split('^');
@@ -671,6 +690,31 @@ export class Ui16RealBridge extends RealMixer {
       connectionCurrent: current,
       reason: operational.reason,
     };
+  }
+  private muteFact<T>(sample: { value: T | null; generation: number; sequence: number } | undefined): Fact<T> {
+    const unknown = (reason: FactReason): Fact<T> => ({ state: 'unknown', reason });
+    if (this.fault) return unknown(this.fault === 'invalid_sample' ? 'invalid_sample' : 'disconnected');
+    if (!['READY', 'DEGRADED_READ_ONLY', 'SYNCING'].includes(super.link())) return unknown('disconnected');
+    this.checkSilence();
+    if (!sample) return unknown('not_observed');
+    if (sample.generation !== this.supervisor.generation()) return unknown('disconnected');
+    if (this.fence !== -Infinity && sample.sequence < this.fence) return unknown('inbound_silence');
+    return sample.value === null ? unknown('invalid_sample') : { state: 'confirmed', value: sample.value };
+  }
+  /** Máscara de grupos de mute (bit 23 = Mute All). Só da conexão atual e da entrada independente; nunca um valor padrão. */
+  muteGroupsFact(): Fact<number> {
+    return this.muteFact(this.muteMask);
+  }
+  /** Force Unmute do canal (i.N.forceunmute). Observação; não há escrita neste caminho. */
+  forceUnmuteFact(channel: number): Fact<boolean> {
+    return this.muteFact(this.forceUnmuteSeen.get(channel));
+  }
+  /** MUTE individual do canal no PA (o mesmo `i.N.mute` de sempre), convertido em fato com a razão quando não confirmado. */
+  individualMuteFact(channel: number): Fact<boolean> {
+    const r = this.reading(`ch.${channel}.main.mute` as ParamKey);
+    if (r.state === 'confirmed') return typeof r.value === 'boolean' ? { state: 'confirmed', value: r.value } : { state: 'unknown', reason: 'invalid_sample' };
+    const reason: FactReason = r.state === 'pending' ? 'write_pending' : r.reason === 'disconnected' ? 'disconnected' : r.reason === 'inbound_silence' ? 'inbound_silence' : r.reason === 'unsupported' ? 'unsupported' : r.reason === 'invalid_sample' ? 'invalid_sample' : 'not_observed';
+    return { state: 'unknown', reason };
   }
   override read(key: ParamKey): ReadResult {
     const r = this.reading(key);

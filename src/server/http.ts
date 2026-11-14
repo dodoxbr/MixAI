@@ -186,6 +186,8 @@ export async function buildHttp(core: ServerCore, opts: { channelSettings?:Chann
     await app.register(firstRealAuxRoutes,{core,principal:(req:FastifyRequest,reply:FastifyReply)=>principalOf(core,req,reply)});
     const {ui16ProcessingRoutes}=await import('./ui16-processing/routes.js');
     await app.register(ui16ProcessingRoutes,{core,principal:(req:FastifyRequest,reply:FastifyReply)=>principalOf(core,req,reply)});
+    const {ui16MuteStateRoutes}=await import('./ui16-mute-state/routes.js');
+    await app.register(ui16MuteStateRoutes,{core,principal:(req:FastifyRequest,reply:FastifyReply)=>principalOf(core,req,reply)});
   }
 
   if(opts.channelSettings)await app.register(channelSettingsRoutes,{core,settings:opts.channelSettings,origin:opts.labProxyOrigin,principal:(req:FastifyRequest,reply:FastifyReply)=>principalOf(core,req,reply)});
