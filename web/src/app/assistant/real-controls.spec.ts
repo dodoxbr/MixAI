@@ -13,7 +13,7 @@ async function boot(mode: Mode = 'real', role: 'operator' | 'musician' = 'operat
   let handler: (url: string, body: any) => Promise<Response> | Response = () => new Response('{}', { status: 200 });
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    if (String(url).startsWith('/api/ui16/')) calls.push({ url: String(url), body });
+    if (String(url).startsWith('/api/ui16/') && !String(url).includes('/mute-state')) calls.push({ url: String(url), body });
     return String(url).startsWith('/api/ui16/') ? handler(String(url), body) : new Response('{}', { status: 200 });
   }));
   const fixture = TestBed.createComponent(App);

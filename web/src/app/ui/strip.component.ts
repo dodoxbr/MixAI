@@ -3,6 +3,7 @@ import { formatDb } from '../core/db';
 import type { StateValue } from '../core/protocol';
 import { FaderComponent, type FaderMove } from './fader.component';
 import { MeterComponent } from './meter.component';
+import { muteLabel, type ChannelMuteState } from '../live-ux/mute-state.service';
 
 /** Um canal: nome, medidor, fader, valor em dB e MUTE. */
 @Component({
@@ -24,6 +25,7 @@ import { MeterComponent } from './meter.component';
     </div>
     <div class="strip-value" [class.is-unknown]="db() === null">{{ valueText() }}</div>
     @if(sendView()){<small class="send-topology">PRE/POST: —</small>}
+    @if (effLabel(); as e) { <div class="strip-eff" data-testid="eff-mute" [attr.data-tone]="e.tone" [attr.data-cause]="muteInfo()?.cause" [title]="e.title" [attr.aria-label]="'MUTE efetivo: ' + e.text + '. ' + e.title" role="note">{{ e.text }}</div> }
     @if (!master()) {
       <div class="strip-keys">
       <button
@@ -45,6 +47,9 @@ import { MeterComponent } from './meter.component';
 })
 export class StripComponent {
   readonly sendView=input(false);
+  /** MUTE efetivo observado (REAL, somente leitura). null = sem dado (LAB/MOCK, AUX SENDS ou ainda sem leitura). Não altera o botão MUTE individual. */
+  readonly muteInfo = input<ChannelMuteState | null>(null);
+  readonly effLabel = computed(() => { const m = this.muteInfo(); return m ? muteLabel(m) : null; });
   readonly name = input.required<string>();
   readonly selectable = input(false);
   readonly selected = input(false);
